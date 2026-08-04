@@ -33,9 +33,26 @@ test_builder_task_branch_allowed if {
     "identity": identity("hermes-builder"),
     "tool": "repo_create_task_branch",
     "args": {
-      "branch": "agent/REQ-1-change",
-      "expected_version": "sha-base",
+      "work_item_id": "REQ-1",
+      "repository_id": "service-a",
+      "task_branch": "agent/REQ-1-change",
+      "expected_base_sha": "sha-base",
       "idempotency_key": "idem-1",
+    },
+  }
+}
+
+test_builder_apply_patch_allowed if {
+  mcp.allow with input as {
+    "identity": identity("hermes-builder"),
+    "tool": "repo_apply_patch",
+    "args": {
+      "work_item_id": "REQ-1",
+      "repository_id": "service-a",
+      "task_branch": "agent/REQ-1-change",
+      "expected_base_sha": "sha-base",
+      "expected_head_sha": "sha-head",
+      "idempotency_key": "idem-1b",
     },
   }
 }
@@ -44,14 +61,20 @@ test_builder_main_denied if {
   not mcp.allow with input as {
     "identity": identity("hermes-builder"),
     "tool": "repo_create_task_branch",
-    "args": {"branch": "main", "expected_version": "sha-base", "idempotency_key": "idem-2"},
+    "args": {
+      "work_item_id": "REQ-1",
+      "repository_id": "service-a",
+      "task_branch": "main",
+      "expected_base_sha": "sha-base",
+      "idempotency_key": "idem-2",
+    },
   }
 }
 
 test_reviewer_write_requires_independence if {
   not mcp.allow with input as {
     "identity": identity("hermes-reviewer"),
-    "tool": "repo_approve_pull_request",
+    "tool": "repo_approve_change_request",
     "args": {"idempotency_key": "idem-3", "independence_verified": false},
   }
 }

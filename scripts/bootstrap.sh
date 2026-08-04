@@ -5,7 +5,7 @@ bundle_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 if [[ ! -f "${bundle_root}/.env" ]]; then
   install -m 0600 "${bundle_root}/.env.example" "${bundle_root}/.env"
-  echo "Created ${bundle_root}/.env; set an absolute REPO_DIR before startup."
+  echo "Created ${bundle_root}/.env; pin HERMES_IMAGE before startup."
 fi
 
 for example in "${bundle_root}"/secrets/*.env.example; do

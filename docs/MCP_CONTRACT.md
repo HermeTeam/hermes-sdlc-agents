@@ -53,6 +53,56 @@ Gateway выполняет schema validation, authorisation, optimistic-concurre
 
 `ok=true` означает завершённую upstream operation, а не только принятие сообщения. Для асинхронной операции response содержит `status=accepted`, execution ID и отдельный read tool для reconciliation.
 
+## Repository provider facade
+
+Repository access is provider-neutral. Hermes must call only normalized `repo_*` tools on this SDLC MCP gateway. GitHub, GitLab, Forgejo, or provider MCP servers are upstream implementation details of the gateway adapter and must not be exposed directly to Hermes.
+
+Repository-scoped tools receive a stable `repository_id`; provider URL, project ID, owner/group and credentials stay in the gateway repository registry:
+
+```json
+{
+  "repository_id": "service-a",
+  "provider": "github|gitlab|forgejo",
+  "default_branch": "main"
+}
+```
+
+Provider mapping examples:
+
+| SDLC concept | GitHub | GitLab |
+|---|---|---|
+| change request | Pull Request | Merge Request |
+| review comment | Review comment | Diff note/discussion |
+| approval | PR review approval | MR approval |
+| status evidence | Checks/Actions | Pipelines/jobs |
+
+Do not expose broad provider tools such as `github_request`, `gitlab_request`, `create_or_update_file`, raw GraphQL, repository admin, merge, workflow edit, or branch protection mutation. If a provider MCP server is used, wrap it behind this facade and publish only the exact allowlisted SDLC tools.
+
+## Repository mutation envelope
+
+Every repository mutation requires:
+
+```json
+{
+  "work_item_id": "REQ-123",
+  "repository_id": "service-a",
+  "base_ref": "main",
+  "expected_base_sha": "abc123",
+  "task_branch": "agent/REQ-123-short-slug",
+  "expected_head_sha": "def456-or-null",
+  "reason": "Acceptance criterion AC-4",
+  "idempotency_key": "uuid-v7",
+  "correlation": {
+    "hermes_run_id": "run_...",
+    "session_id": "..."
+  }
+}
+```
+
+Gateway rejects mutations when repository/work item scope does not match, branch prefix is not `agent/<work-item-id>-`, expected revisions are stale, protected paths are touched, or the upstream operation would require merge/admin/protected-branch privileges.
+
+`repo_apply_patch` accepts only bounded text changes: create text file, update text file by unified diff, delete explicitly scoped files, or rename files when both paths are allowed. Binary changes, LFS/submodule changes, protected paths and generated lockfile changes require a trusted workspace worker or human/platform approval.
+
 ## Запрещённые универсальные инструменты
 
 Не публикуйте в role endpoint инструменты вроде:
@@ -78,14 +128,15 @@ Gateway выполняет schema validation, authorisation, optimistic-concurre
 ### builder
 
 - `repo_create_task_branch` генерирует/проверяет prefix `agent/<work-item-id>-` и base revision.
-- `repo_push_task_branch` принимает commit bundle/patch только для созданной task branch, fast-forward или expected-head protected update.
-- `repo_create_pull_request` всегда target-ит protected base, но не merge-ит.
-- Upstream Forgejo token не имеет merge/admin/branch-protection scopes.
-- Отдельный CI gate сравнивает diff с `policies/protected-paths.txt`; пример проверки — `scripts/check-protected-paths.sh`. В production CI запускайте скрипт и policy из trusted base revision, а не из PR checkout, иначе автор PR сможет изменить сам gate.
+- `repo_apply_patch` и `repo_commit_changes` принимают только bounded text change-set для созданной task branch, expected-base и expected-head protected update.
+- `repo_create_change_request` всегда target-ит protected base, но не merge-ит.
+- `ci_trigger_pipeline` запускает или запрашивает trusted validation; `PR_READY_FOR_REVIEW` запрещён без `ci_get_status`/`ci_get_test_results` или workspace evidence.
+- Upstream GitHub/GitLab/Forgejo token находится только у gateway adapter или workspace worker и не имеет merge/admin/branch-protection scopes.
+- Отдельный CI gate сравнивает diff с `policies/protected-paths.txt`; пример проверки — `scripts/check-protected-paths.sh`. В production CI запускайте скрипт и policy из trusted base revision, а не из change request checkout, иначе автор change request сможет изменить сам gate.
 
 ### reviewer
 
-- Read tools фиксируются на PR head/base revisions, чтобы diff не менялся между анализом и review.
+- Read tools фиксируются на change request head/base revisions, чтобы diff не менялся между анализом и review.
 - Review write tools меняют только comment/review state.
 - Gateway отклоняет self-review по provenance: author subject, implementation run IDs и reviewer subject должны быть независимы.
 - Token не имеет content-write и merge scopes.

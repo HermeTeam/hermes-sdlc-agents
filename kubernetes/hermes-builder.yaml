@@ -7,17 +7,6 @@ spec:
   resources:
     requests:
       storage: 20Gi
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: hermes-builder-workspace
-spec:
-  accessModes: [ReadWriteOnce]
-  resources:
-    requests:
-      storage: 50Gi
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -48,29 +37,6 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       initContainers:
-        - name: clone-repository
-          image: alpine/git:2.49.1
-          imagePullPolicy: IfNotPresent
-          command: [/bin/sh, -ec]
-          args:
-            - |
-              if [ ! -d /workspace/repo/.git ]; then
-                git clone --no-tags "${REPO_CLONE_URL}" /workspace/repo
-                git -C /workspace/repo remote set-url origin "${REPO_REMOTE_URL}"
-              fi
-          envFrom:
-            - secretRef:
-                name: hermes-builder-repo
-          env:
-            - {name: GIT_TERMINAL_PROMPT, value: "0"}
-          securityContext:
-            runAsUser: 10000
-            runAsGroup: 10000
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: [ALL]
-          volumeMounts:
-            - {name: workspace, mountPath: /workspace}
         - name: sync-shared-skills
           image: alpine/git:2.49.1
           imagePullPolicy: IfNotPresent
@@ -108,7 +74,7 @@ spec:
             - {name: API_SERVER_ENABLED, value: "true"}
             - {name: API_SERVER_HOST, value: 0.0.0.0}
             - {name: API_SERVER_PORT, value: "8642"}
-            - {name: HERMES_WRITE_SAFE_ROOT, value: "/opt/data:/workspace/repo"}
+            - {name: HERMES_WRITE_SAFE_ROOT, value: "/opt/data"}
           ports:
             - {name: api, containerPort: 8642, protocol: TCP}
           livenessProbe:
@@ -134,7 +100,6 @@ spec:
           volumeMounts:
             - {name: data, mountPath: /opt/data}
             - {name: shared-skills, mountPath: /opt/hermes-shared-skills/current, readOnly: true}
-            - {name: workspace, mountPath: /workspace}
             - {name: profile, mountPath: /etc/hermes, readOnly: true}
             - {name: profile, mountPath: /opt/data/SOUL.md, subPath: SOUL.md, readOnly: true}
       volumes:
@@ -143,9 +108,6 @@ spec:
             claimName: hermes-builder-data
         - name: shared-skills
           emptyDir: {}
-        - name: workspace
-          persistentVolumeClaim:
-            claimName: hermes-builder-workspace
         - name: profile
           configMap:
             name: hermes-builder-profile

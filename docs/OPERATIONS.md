@@ -3,8 +3,8 @@
 ## Initial rollout
 
 1. Разверните и проверьте LLM gateway с role quotas и model allowlist.
-2. Разверните SDLC MCP gateway/adapters и примените `policies/roles.yaml` плюс argument-level rules.
-3. Настройте upstream service accounts. Проверьте, что ни один agent token не работает напрямую в upstream API.
+2. Разверните SDLC MCP gateway/adapters, включая repository adapter для GitHub/GitLab/Forgejo, и примените `policies/roles.yaml` плюс argument-level rules.
+3. Настройте upstream service accounts. Проверьте, что ни один agent token не работает напрямую в upstream API, включая Git provider API.
 4. Запустите `scripts/bootstrap.sh`, заполните secrets, pin image digest.
 5. Выполните `scripts/validate.sh` и OPA unit/negative tests на gateway.
 6. Запустите сначала planner/reviewer/learning, затем builder, release и incident.
@@ -24,7 +24,7 @@
 
 - diff role config ↔ `policies/roles.yaml` через `scripts/validate.sh`;
 - active token subjects/JTI, TTL и unused identities;
-- branch protection, protected-path gate и reviewer independence;
+- branch protection, protected-path gate, repository adapter scopes и reviewer independence;
 - runbook/flag allowlists и release policy version;
 - pending skill proposals и просроченные human approvals.
 
@@ -41,7 +41,7 @@
 1. Прочитайте upstream release/security notes.
 2. Обновите digest в отдельной ветке этого bundle.
 3. Запустите `hermes config check`/`doctor` в disposable copy каждого data volume.
-4. Выполните structural validation, MCP discovery snapshot и все role canaries.
+4. Выполните structural validation, MCP discovery snapshot, repository adapter canaries и все role canaries.
 5. Canary одной low-risk роли, затем последовательный rollout.
 6. Не запускайте два контейнера на одном `/opt/data`: Hermes state не рассчитан на concurrent writers.
 
@@ -68,4 +68,4 @@ docker compose stop hermes-release
 
 ## Incident involving an agent
 
-Сохраните immutable copies audit/logs, run IDs, token JTI и policy revision. Не помещайте raw tokens в тикет. Определите последние successful mutations, reconcile фактическое upstream state и при необходимости выполните rollback только через человеческий break-glass процесс. Learning pipeline не должен автоматически обучаться на security incident до redaction и отдельного approval.
+Сохраните immutable copies audit/logs, run IDs, token JTI, provider request IDs и policy revision. Не помещайте raw tokens в тикет. Определите последние successful mutations, reconcile фактическое upstream state и при необходимости выполните rollback только через человеческий break-glass процесс. Learning pipeline не должен автоматически обучаться на security incident до redaction и отдельного approval.

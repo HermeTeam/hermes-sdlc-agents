@@ -6,7 +6,6 @@ model:
 toolsets:
   - file
   - skills
-  - terminal
   - todo
   - clarify
   - mcp-sdlc
@@ -30,6 +29,7 @@ agent:
     - search
     - session_search
     - spotify
+    - terminal
     - tts
     - video
     - video_gen
@@ -38,15 +38,8 @@ agent:
     - x_search
     - yuanbao
 
-terminal:
-  backend: local
-  cwd: /workspace/repo
-  timeout: 900
-  home_mode: profile
-  env_passthrough: []
-
-worktree: true
-worktree_sync: true
+worktree: false
+worktree_sync: false
 
 memory:
   memory_enabled: false
@@ -89,10 +82,11 @@ approvals:
     - "ansible-playbook *"
     - "docker context *"
   smart_policy: |
-    Approve ordinary repository-local build, lint and test commands. Escalate commands that
-    modify remote state, credentials, package registries, protected branches, CI settings,
-    quality thresholds, infrastructure or deployment systems. The builder may push only its
-    task branch and may never merge a pull request.
+    Terminal is disabled in repository API/MCP mode. Escalate any attempt to obtain
+    repository credentials, create a local checkout, modify protected branches, change CI
+    settings, alter quality thresholds, or access infrastructure/deployment systems. The
+    builder may mutate repository state only through exact SDLC MCP repository tools for its
+    task branch and may never merge a change request.
 
 checkpoints:
   enabled: true
@@ -142,10 +136,14 @@ mcp_servers:
         - spec_get
         - plan_get
         - repo_get_default_branch
+        - repo_read_file
+        - repo_list_tree
         - repo_create_task_branch
-        - repo_push_task_branch
-        - repo_create_pull_request
-        - repo_update_pull_request_description
+        - repo_apply_patch
+        - repo_commit_changes
+        - repo_create_change_request
+        - repo_update_change_request_description
+        - ci_trigger_pipeline
         - ci_get_status
         - ci_get_test_results
         - quality_get_gates

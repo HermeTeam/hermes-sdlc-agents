@@ -46,10 +46,14 @@ spec:
         - spec_get
         - plan_get
         - repo_get_default_branch
+        - repo_read_file
+        - repo_list_tree
         - repo_create_task_branch
-        - repo_push_task_branch
-        - repo_create_pull_request
-        - repo_update_pull_request_description
+        - repo_apply_patch
+        - repo_commit_changes
+        - repo_create_change_request
+        - repo_update_change_request_description
+        - ci_trigger_pipeline
         - ci_get_status
         - ci_get_test_results
         - quality_get_gates
@@ -57,7 +61,7 @@ spec:
       constraints:
         branchPrefix: agent/
         protectedBranches: [main, master, release/*]
-        allowedPushMode: fast-forward-task-branch-only
+        allowedPushMode: api-managed-task-branch-only
         merge: deny
         production: deny
         qualityGateMutation: deny
@@ -68,7 +72,7 @@ spec:
         - work_item_get
         - spec_get
         - plan_get
-        - repo_get_pull_request
+        - repo_get_change_request
         - repo_get_diff
         - repo_get_file_at_revision
         - ci_get_status
@@ -80,7 +84,7 @@ spec:
         - repo_add_review_comment
         - repo_submit_review
         - repo_request_changes
-        - repo_approve_pull_request
+        - repo_approve_change_request
       constraints:
         repositoryMode: read-only
         authorBranchMutation: deny

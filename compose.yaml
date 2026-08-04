@@ -84,13 +84,12 @@ services:
     env_file: [./secrets/hermes-builder.env]
     environment:
       <<: *hermes-environment
-      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace/repo
+      HERMES_WRITE_SAFE_ROOT: /opt/data
     ports:
       - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
     volumes:
       - builder-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
-      - "${REPO_DIR:?Set REPO_DIR in .env to an absolute writable repository path}:/workspace/repo:rw"
       - ./profiles/hermes-builder:/etc/hermes:ro
       - ./profiles/hermes-builder/SOUL.md:/opt/data/SOUL.md:ro
 

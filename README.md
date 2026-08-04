@@ -1,55 +1,59 @@
 # Hermes SDLC Agents
 
-Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MCP gateway, bootstrap, structural validation и smoke tests.
+A ready-to-run bundle of six isolated Hermes Agent roles for controlled software delivery lifecycle (SDLC) automation. The bundle includes real `config.yaml` and `SOUL.md` files, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize templates, a shared read-only skills superset, server-side MCP gateway policy examples, bootstrap scripts, structural validation, and smoke tests.
 
-## Главное архитектурное решение
+Russian version: [README_RU.md](README_RU.md).
 
-`SOUL.md` управляет поведением модели, но не является границей безопасности. `tools.include` уменьшает видимую поверхность MCP, однако окончательное решение обязан повторно принимать MCP gateway. Поэтому полномочия фиксируются сразу в нескольких независимых слоях:
+## Core architectural decision
 
-1. Отдельный Hermes profile/state для каждой роли.
-2. Отдельный контейнер или Pod и отдельный входной API key.
-3. Отдельный короткоживущий MCP token с claim `role`.
-4. Exact allowlist MCP tools в `config.yaml`.
-5. Та же allowlist и argument constraints на сервере через OPA/эквивалент.
-6. Отдельные upstream service accounts у MCP gateway.
-7. Server-side branch protection, protected paths, approvals и immutable release candidates.
-8. Отсутствие Kubernetes service-account token у самих агентов.
-9. Общий каталог skills монтируется read-only и используется через `skills.external_dirs`; skill writes остаются gated human approval.
+`SOUL.md` controls model behavior, but it is not a security boundary. `tools.include` reduces the visible MCP surface, but the final authorization decision must be repeated by the MCP gateway. Permissions are therefore enforced across several independent layers:
 
-Официальная документация Hermes прямо разделяет profile и sandbox: profile изолирует состояние, но сам по себе не ограничивает файловую систему. Отдельные контейнеры рекомендованы, когда нужны разные credentials, network segmentation и меньший blast radius. См. [Profiles](https://hermes-agent.nousresearch.com/docs/user-guide/profiles/) и [Docker](https://hermes-agent.nousresearch.com/docs/user-guide/docker/).
+1. Separate Hermes profile/state per role.
+2. Separate container or Pod and separate inbound API key.
+3. Separate short-lived MCP token with a `role` claim.
+4. Exact MCP tool allowlist in `config.yaml`.
+5. The same allowlist and argument constraints enforced server-side through OPA or an equivalent policy engine.
+6. Separate upstream service accounts held by the MCP gateway.
+7. Server-side branch protection, protected paths, approvals, and immutable release candidates.
+8. No Kubernetes service-account token mounted into agent Pods.
+9. Shared skills are mounted read-only through `skills.external_dirs`; skill writes remain gated by human approval.
 
-## Роли
+Hermes documentation separates profile isolation from sandboxing: a profile isolates state but does not, by itself, restrict the filesystem. Separate containers are recommended when different credentials, network segmentation, and reduced blast radius are required. See [Profiles](https://hermes-agent.nousresearch.com/docs/user-guide/profiles/) and [Docker](https://hermes-agent.nousresearch.com/docs/user-guide/docker/).
 
-| Роль | Разрешено | Жёстко исключено |
+## Roles
+
+| Role | Allowed | Strictly excluded |
 |---|---|---|
-| `hermes-planner` | requirements/code/catalog/skills read; `spec` и `plan` create/update | code write, branch/PR, deployment, production, skill mutation |
-| `hermes-builder` | skills read, task worktree, code/tests, local checks, task-branch push, PR | merge, protected branch, production, quality-gate mutation, skill mutation |
-| `hermes-reviewer` | skills/PR/diff/tests/findings read; comments, approve/request changes | author-branch mutation, merge, production, skill mutation |
-| `hermes-release` | skills/CI/quality/SLO read; promote или abort существующего candidate | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation |
+| `hermes-planner` | requirements/code/catalog/skills read; `spec` and `plan` create/update | code write, branch/change request, deployment, production, skill mutation |
+| `hermes-builder` | skills read, repository read, task branch, patch/change-set, CI/workspace evidence, change request | local checkout, GitHub/GitLab credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
+| `hermes-reviewer` | skills/change request/diff/tests/findings read; comments, approve/request changes | author-branch mutation, merge, production, skill mutation |
+| `hermes-release` | skills/CI/quality/SLO read; promote or abort an existing candidate | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation |
 | `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation |
 | `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write | independent activation/publication, direct docs/code/production write |
 
-Точные разрешённые имена инструментов находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если списки разойдутся.
+Exact allowed tool names are stored in both `profiles/*/config.yaml` and `policies/roles.yaml`. `scripts/validate.sh` fails if the lists drift.
 
-## Структура
+## Repository structure
 
 ```text
 hermes-sdlc-agents/
-├── compose.yaml                  # один контейнер на роль
-├── kustomization.yaml            # Kubernetes deployment через Kustomize
+├── compose.yaml                  # one container per role
+├── kustomization.yaml            # Kubernetes deployment through Kustomize
 ├── profiles/
 │   └── hermes-*/
-│       ├── .gitignore            # исключает credentials и runtime state
+│       ├── .gitignore            # excludes credentials and runtime state
 │       ├── distribution.yaml     # Hermes profile distribution manifest
 │       ├── config.yaml           # managed role config
 │       ├── SOUL.md               # identity, process, stop conditions
 │       └── skills/               # role-safe shared skills, including self-evolution
 ├── policies/
-│   ├── roles.yaml                # каноническая role/tool/constraint matrix
-│   ├── mcp-policy.rego           # пример server-side OPA decision
-│   └── protected-paths.txt       # quality/CI/prod paths для отдельного gate
-├── secrets/*.env.example         # только шаблоны, без секретов
+│   ├── roles.yaml                # canonical role/tool/constraint matrix
+│   ├── mcp-policy.rego           # sample server-side OPA decision
+│   └── protected-paths.txt       # quality/CI/prod paths for a separate gate
+├── secrets/*.env.example         # templates only; no secrets
 ├── docs/
+│   ├── REPOSITORY_API_MCP_FLOW_EN.md
+│   ├── REPOSITORY_API_MCP_FLOW_RU.md
 │   ├── MCP_CONTRACT.md
 │   ├── SECURITY.md
 │   └── OPERATIONS.md
@@ -57,47 +61,67 @@ hermes-sdlc-agents/
 └── scripts/
 ```
 
-## Общий superset skills
+## Shared skills superset
 
-Каждая роль имеет включённый Hermes toolset `skills` и два external skill directories:
+Each role enables the Hermes `skills` toolset and uses two external skill directories:
 
-- `/etc/hermes/skills` — skills, поставляемые вместе с конкретным role profile;
-- `/opt/hermes-shared-skills/current` — общий read-only superset из `https://github.com/stanta/skills_superset/tree/main/skills`.
+- `/etc/hermes/skills` — skills shipped with the specific role profile;
+- `/opt/hermes-shared-skills/current` — shared read-only superset from `https://github.com/stanta/skills_superset/tree/main/skills`.
 
-В Docker Compose сервис `skills-superset-sync` перед запуском агентов обновляет named volume `shared-skills` из `SKILLS_SUPERSET_REPO_URL`/`SKILLS_SUPERSET_REF`; агенты ждут его успешного завершения и монтируют volume read-only. В Kubernetes каждый Pod использует initContainer `sync-shared-skills`, который клонирует тот же репозиторий в `emptyDir`, после чего основной контейнер видит каталог read-only.
+In Docker Compose, the `skills-superset-sync` service updates the `shared-skills` named volume from `SKILLS_SUPERSET_REPO_URL` / `SKILLS_SUPERSET_REF` before agents start. Agents wait for that service to complete and mount the volume read-only. In Kubernetes, each Pod uses the `sync-shared-skills` initContainer to clone the same repository into an `emptyDir`; the main container then sees the directory read-only.
 
-Это даёт агентам динамический выбор релевантных skills через `skills_list`/`skill_view`, но не расширяет SDLC MCP allowlist. Мутации skills по-прежнему требуют `skills.write_approval: true`; роли, кроме `hermes-learning`, должны оформлять улучшения skills как handoff/proposal, а не менять их напрямую.
+This lets agents select relevant skills dynamically through `skills_list` / `skill_view`, but it does not extend the SDLC MCP allowlist. Skill mutations still require `skills.write_approval: true`; roles other than `hermes-learning` must submit skill improvements as handoffs/proposals rather than changing skills directly.
 
-## Быстрый запуск через Docker Compose
+## Repository API/MCP flow
 
-Требования: Docker Engine с Compose v2, writable clone проекта для builder, OpenAI-совместимый LLM gateway и Streamable HTTP SDLC MCP gateway с контрактом из `docs/MCP_CONTRACT.md`. Compose предназначен для локального/single-host запуска; production egress ограничьте firewall/egress proxy или используйте Kubernetes NetworkPolicy из bundle.
+Repositories are not mounted into agent containers. Access to GitHub, GitLab, Forgejo, or a provider MCP is performed only by the SDLC MCP gateway through a provider-neutral repository adapter. Hermes sees only narrow `repo_*` tools: read/tree/search, task branch, patch/commit, change request, review comments, and CI evidence.
+
+For the builder this means:
+
+- no `REPO_DIR` and no `/workspace/repo`;
+- no GitHub/GitLab token in the agent container;
+- changes are submitted as bounded patch/change-sets through `repo_apply_patch` / `repo_commit_changes`;
+- task branches always use the `agent/<work-item-id>-` prefix;
+- GitHub Pull Requests and GitLab Merge Requests are normalized as `change_request`;
+- `PR_READY_FOR_REVIEW` is valid only after CI/workspace evidence exists.
+
+If a project needs local checks before opening a change request, run them in a separate ephemeral workspace worker behind the SDLC MCP gateway. The worker may clone the repository, apply the patch, run allowlisted checks, and push the task branch through upstream credentials, but Hermes receives only typed status/evidence.
+
+Detailed flow documentation:
+
+- [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
+- [Repository API/MCP Flow — Russian](docs/REPOSITORY_API_MCP_FLOW_RU.md)
+
+## Quick start with Docker Compose
+
+Requirements: Docker Engine with Compose v2, an OpenAI-compatible LLM gateway, and a Streamable HTTP SDLC MCP gateway with a repository adapter that follows `docs/MCP_CONTRACT.md`. Compose is intended for local/single-host runs; for production, restrict egress with a firewall/egress proxy or use the Kubernetes NetworkPolicy from this bundle.
 
 ```bash
 cd hermes-sdlc-agents
 scripts/bootstrap.sh
 ```
 
-Затем:
+Then:
 
-1. В `.env` укажите абсолютный `REPO_DIR` и зафиксируйте `HERMES_IMAGE` по immutable digest.
-2. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`.
-3. Выпустите шесть разных MCP tokens; один token нельзя использовать для двух ролей.
-4. Проверьте конфигурацию:
+1. Pin `HERMES_IMAGE` to an immutable digest in `.env`.
+2. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file.
+3. Issue six different MCP tokens; one token must not be reused across roles.
+4. Validate the configuration:
 
 ```bash
 scripts/validate.sh
 ```
 
-5. Запустите:
+5. Start the stack:
 
 ```bash
 docker compose up -d
 scripts/smoke-test.sh
 ```
 
-API по умолчанию доступен только на loopback хоста:
+By default, APIs are bound only to the host loopback interface:
 
-| Роль | URL |
+| Role | URL |
 |---|---|
 | planner | `http://127.0.0.1:18642/v1` |
 | builder | `http://127.0.0.1:18643/v1` |
@@ -106,9 +130,9 @@ API по умолчанию доступен только на loopback хост
 | incident | `http://127.0.0.1:18646/v1` |
 | learning | `http://127.0.0.1:18647/v1` |
 
-Hermes API требует Bearer key и поддерживает `/v1/responses`, `/v1/runs`, `/health` и authenticated `/health/detailed`; см. [официальный API Server reference](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server/).
+The Hermes API requires a Bearer key and supports `/v1/responses`, `/v1/runs`, `/health`, and authenticated `/health/detailed`; see the official [API Server reference](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server/).
 
-Пример canary-вызова planner:
+Planner canary example:
 
 ```bash
 set -a
@@ -117,55 +141,63 @@ set +a
 curl --fail http://127.0.0.1:18642/v1/responses \
   -H "Authorization: Bearer ${API_SERVER_KEY}" \
   -H 'Content-Type: application/json' \
-  -d '{"model":"hermes-planner","input":"Прочитай REQ-123 и создай только черновик spec; не меняй код."}'
+  -d '{"model":"hermes-planner","input":"Read REQ-123 and create only a draft spec; do not change code."}'
 ```
 
-Не передавайте через внешний request поле `provider`: в конфигурациях отключён `direct_model_requests`, чтобы клиент не мог выбрать иной provider/model route.
+Do not pass the `provider` field in external requests: `direct_model_requests` is disabled in the configurations so clients cannot select a different provider/model route.
 
-## Установка как локальных Hermes profiles
+## Installing as local Hermes profiles
 
-Каждая директория в `profiles/` является Hermes profile distribution. Для разработки их можно установить в уже существующий Hermes:
+Each directory under `profiles/` is a Hermes profile distribution. For development, install them into an existing Hermes setup:
 
 ```bash
 scripts/install-profiles.sh
 ```
 
-Или одну роль:
+Or install one role:
 
 ```bash
 hermes profile install ./profiles/hermes-reviewer --alias --yes
 ```
 
-Такой режим удобен, но не даёт жёсткой OS/network isolation. Для production используйте отдельные контейнеры/Pods. Формат distributions описан в [Hermes Profile Distributions](https://hermes-agent.nousresearch.com/docs/user-guide/profile-distributions).
+This mode is convenient, but it does not provide strong OS/network isolation. Use separate containers/Pods for production. The distribution format is described in [Hermes Profile Distributions](https://hermes-agent.nousresearch.com/docs/user-guide/profile-distributions).
 
-## Почему конфиг монтируется в `/etc/hermes`
+## Why config is mounted into `/etc/hermes`
 
-Compose и Kubernetes устанавливают `HERMES_MANAGED_DIR=/etc/hermes` и монтируют role config read-only. Managed scope имеет приоритет над пользовательским `config.yaml`, поэтому агент не может включить terminal или расширить MCP allowlist через обычный `hermes config set`. Это дополнительный control plane, но не самостоятельный sandbox; окончательные запреты остаются на MCP/upstream сторонах. См. [Managed Scope](https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope).
+Compose and Kubernetes set `HERMES_MANAGED_DIR=/etc/hermes` and mount role config read-only. Managed scope takes precedence over user `config.yaml`, so an agent cannot enable terminal or expand the MCP allowlist through a normal `hermes config set`. This is an additional control plane, not a standalone sandbox; final denials must remain on the MCP/upstream side. See [Managed Scope](https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope).
 
-## Необходимый open-source control plane
+## Required open-source control plane
 
-SDLC MCP gateway должен быть вашим тонким типизированным фасадом. Его можно собрать поверх:
+The SDLC MCP gateway should be your thin typed facade. It can be built on top of:
 
-- Forgejo для repository/PR/review и branch protection;
-- OpenProject для work items/requirements;
-- Backstage Catalog для сервисов, владельцев и зависимостей;
-- Woodpecker CI, Tekton или Jenkins для CI evidence;
-- Semgrep, Gitleaks, Trivy, OSV-Scanner, OpenSSF Scorecard, SonarQube Community Build и mutation tools для quality findings;
-- Argo CD + Argo Rollouts для immutable candidate status, promote и abort;
-- Prometheus, Loki, Tempo и OpenTelemetry для bounded telemetry queries;
-- Unleash для one-way `flags_disable`;
-- AWX или Rundeck Community для approved, versioned runbooks;
-- OPA для authorisation и argument-level policy;
-- OpenBao/SOPS/External Secrets Operator для выдачи и ротации секретов.
+- GitHub, GitLab, or Forgejo for repository/change request/review and branch protection through the SDLC MCP repository adapter;
+- OpenProject for work items/requirements;
+- Backstage Catalog for services, owners, APIs, SLOs, and dependencies;
+- Woodpecker CI, Tekton, or Jenkins for CI evidence;
+- Semgrep, Gitleaks, Trivy, OSV-Scanner, OpenSSF Scorecard, SonarQube Community Build, and mutation tools for quality findings;
+- Argo CD + Argo Rollouts for immutable candidate status, promote, and abort;
+- Prometheus, Loki, Tempo, and OpenTelemetry for bounded telemetry queries;
+- Unleash for one-way `flags_disable`;
+- AWX or Rundeck Community for approved, versioned runbooks;
+- OPA for authorization and argument-level policy;
+- OpenBao/SOPS/External Secrets Operator for secret issuance and rotation.
 
-Не выдавайте Hermes прямой токен Forgejo admin, Kubernetes kubeconfig, Argo admin token, cloud credential или shell на runner. MCP gateway хранит upstream credentials у себя и выдаёт агенту только узкие операции.
+Do not give Hermes a direct GitHub/GitLab/Forgejo token, Kubernetes kubeconfig, Argo admin token, cloud credential, or runner shell. The MCP gateway stores upstream credentials and exposes only narrow operations to agents.
 
-## Перед включением автоматики
+## Before enabling automation
 
-- Проведите negative canary для каждой роли: попросите planner изменить код, builder merge-нуть main, release выполнить `kubectl`, incident включить flag, learning активировать skill. Каждый запрос должен завершиться без изменяющей операции.
-- Проверьте denial не только по ответу модели, но и по audit log MCP/upstream.
-- Убедитесь, что `hermes-builder` не может изменить файл из `policies/protected-paths.txt` без отдельного server-side CI gate и human approval.
-- Убедитесь, что tokens имеют разные `sub`, `role`, `jti`, TTL ≤ 1 час и аудит связывает tool call с Hermes run/session/work item.
-- Зафиксируйте image digest; `latest` оставлен только как удобное значение для первого локального запуска.
+- Run a negative canary for every role: ask planner to change code, builder to merge `main`, release to run `kubectl`, incident to enable a flag, and learning to activate a skill. Every request must finish without a mutating operation.
+- Verify denial through the MCP/upstream audit log, not only through the model response.
+- Ensure `hermes-builder` cannot change any path from `policies/protected-paths.txt` through `repo_apply_patch` / `repo_commit_changes` without a separate server-side CI gate and human approval.
+- Ensure tokens have distinct `sub`, `role`, and `jti`, TTL ≤ 1 hour, and audit links every tool call to a Hermes run/session/work item.
+- Pin the image digest; `latest` remains only as a convenience value for the first local run.
 
-Подробности находятся в [configuration reference](docs/CONFIGURATION_REFERENCE.md), [MCP contract](docs/MCP_CONTRACT.md), [security model](docs/SECURITY.md), [operations runbook](docs/OPERATIONS.md) и [списке официальных источников](docs/SOURCES.md).
+More details:
+
+- [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
+- [Repository API/MCP Flow — Russian](docs/REPOSITORY_API_MCP_FLOW_RU.md)
+- [Configuration reference](docs/CONFIGURATION_REFERENCE.md)
+- [MCP contract](docs/MCP_CONTRACT.md)
+- [Security model](docs/SECURITY.md)
+- [Operations runbook](docs/OPERATIONS.md)
+- [Official sources](docs/SOURCES.md)

@@ -24,7 +24,7 @@ Role config монтируется read-only в `/etc/hermes/config.yaml`, а `H
 ### 3. Process and filesystem
 
 - Один контейнер/Pod на роль, отдельный `/opt/data` volume.
-- Только builder получает `/workspace/repo` writable.
+- Builder не получает writable repository checkout; изменения проходят как bounded patch/change-set через SDLC MCP repository adapter.
 - `HERMES_WRITE_SAFE_ROOT` ограничивает Hermes file writes; помните, что это guard для file tools, не универсальный shell sandbox.
 - SOUL и managed config mounted read-only.
 - Общий superset skills монтируется read-only в основной agent container; обновление выполняется отдельным sync service/initContainer до старта агента.
@@ -35,14 +35,14 @@ Role config монтируется read-only в `/etc/hermes/config.yaml`, а `H
 - Разные inbound API keys и MCP tokens.
 - Tokens короткоживущие, audience-bound, revocable, без reuse между ролями.
 - Agent egress только к LLM и SDLC MCP gateways; для Kubernetes дополнительно открыт HTTPS egress к публичному источнику shared skills на время initContainer sync. В production предпочтителен внутренний mirror/egress proxy.
-- Upstream credentials находятся в MCP adapters. Agent не получает kubeconfig, cloud admin, Argo admin или shared Forgejo PAT.
+- Upstream credentials находятся в MCP adapters или ephemeral workspace workers. Agent не получает kubeconfig, cloud admin, Argo admin, GitHub/GitLab token или shared Forgejo PAT.
 
 Kubernetes template реализует default-deny NetworkPolicy. Docker Compose оставлен portable и сам по себе не даёт FQDN-aware egress filtering; для production на одном хосте добавьте host firewall/egress proxy либо изолированную VM network policy. Не считайте общую Compose bridge network полноценным egress boundary.
 
 ### 5. Server-side policy
 
 - Default deny по role/tool и arguments.
-- Protected paths, protected branches и quality gates проверяются за пределами PR branch.
+- Protected paths, protected branches и quality gates проверяются за пределами author/change-request branch.
 - Release/incident mutations используют immutable objects, expected versions и idempotency keys.
 - Separation of duties проверяется по provenance, а не по тексту, который прислал агент.
 
@@ -69,7 +69,7 @@ LLM key рекомендуется выдавать к internal proxy с rate/qu
 
 ## Residual risks
 
-- Builder выполняет недоверенный код проекта. Запускайте его на отдельном disposable worker без production network и credentials; для hostile repositories используйте microVM sandbox.
+- Если проверки запускаются до CI, недоверенный код проекта должен выполняться только в отдельном disposable workspace worker без production network и credentials; для hostile repositories используйте microVM sandbox.
 - LLM и MCP gateways видят рабочий контекст; применяйте data classification, redaction и tenancy isolation.
 - `approvals.deny` — guardrail, а не полноценный sandbox. Критические запреты находятся снаружи Hermes.
 - Profile distributions unsigned by default; храните их во внутреннем Git, review-те изменения и pin-ьте commit/image digest.

@@ -33,6 +33,7 @@ expected_roles = {
 }
 expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
 expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills/current"]
+broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
 
 errors = []
 if set(policy_roles) != expected_roles:
@@ -67,6 +68,8 @@ for role in sorted(expected_roles):
         errors.append(f"{role}: MCP include list differs from roles.yaml allowTools")
     if any("*" in item for item in included):
         errors.append(f"{role}: wildcard in MCP include list")
+    if any(marker in tool for tool in included for marker in broad_provider_tool_markers):
+        errors.append(f"{role}: broad provider/raw request tool exposed")
     if server.get("tools", {}).get("resources") is not False:
         errors.append(f"{role}: MCP resources must be disabled")
     if server.get("tools", {}).get("prompts") is not False:
@@ -86,10 +89,14 @@ for role in sorted(expected_roles):
     if role != "hermes-builder" and not {"terminal", "file"}.issubset(disabled):
         errors.append(f"{role}: terminal and file toolsets must be disabled")
     if role == "hermes-builder":
-        if config.get("worktree") is not True or config.get("worktree_sync") is not True:
-            errors.append("hermes-builder: worktree isolation is required")
-        if "repo_merge_pull_request" in included:
+        if config.get("worktree") is not False or config.get("worktree_sync") is not False:
+            errors.append("hermes-builder: local worktree mode must be disabled in repository API/MCP mode")
+        if "terminal" in config.get("toolsets", []):
+            errors.append("hermes-builder: terminal toolset must be disabled in repository API/MCP mode")
+        if any(tool in included for tool in ["repo_merge_pull_request", "repo_merge_change_request"]):
             errors.append("hermes-builder: merge tool exposed")
+        if any(tool in included for tool in ["repo_push_task_branch", "repo_create_pull_request"]):
+            errors.append("hermes-builder: deprecated local-checkout repository tool exposed")
     if role == "hermes-learning":
         if config.get("skills", {}).get("write_approval") is not True:
             errors.append("hermes-learning: every skill write must require approval")
@@ -128,6 +135,10 @@ for role in sorted(expected_roles):
                 for mount in mounts
             ):
                 errors.append(f"{role}: shared skills must be mounted read-only")
+            if role == "hermes-builder":
+                container_text = str(containers[0])
+                if "/workspace/repo" in container_text or "REPO_DIR" in container_text:
+                    errors.append("hermes-builder: local repository mount references must be absent")
 
 kustomization = yaml.safe_load((root / "kustomization.yaml").read_text(encoding="utf-8"))
 for resource in kustomization.get("resources", []):
@@ -147,6 +158,10 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: container_name mismatch")
     if role != "hermes-builder" and any("/workspace/repo" in str(v) for v in service.get("volumes", [])):
         errors.append(f"{role}: repository mount must be absent")
+    if role == "hermes-builder":
+        service_text = str(service)
+        if "/workspace/repo" in service_text or "REPO_DIR" in service_text:
+            errors.append("hermes-builder: compose local repository mount references must be absent")
     if "shared-skills:/opt/hermes-shared-skills:ro" not in service.get("volumes", []):
         errors.append(f"{role}: shared-skills volume must be mounted read-only")
     depends_on = service.get("depends_on", {})

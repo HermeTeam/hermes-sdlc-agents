@@ -13,12 +13,13 @@ base_authorized if {
 
 planner_mutations := {"spec_create", "spec_update", "plan_create", "plan_update"}
 builder_branch_mutations := {
-  "repo_create_task_branch", "repo_push_task_branch", "repo_create_pull_request",
+  "repo_create_task_branch", "repo_apply_patch", "repo_commit_changes",
+  "repo_create_change_request", "ci_trigger_pipeline",
 }
-builder_other_mutations := {"repo_update_pull_request_description"}
+builder_other_mutations := {"repo_update_change_request_description"}
 reviewer_mutations := {
   "repo_add_review_comment", "repo_submit_review", "repo_request_changes",
-  "repo_approve_pull_request",
+  "repo_approve_change_request",
 }
 release_mutations := {"deployment_promote", "deployment_abort"}
 incident_mutations := {"incident_update_timeline", "flags_disable", "runbooks_execute_approved"}
@@ -53,12 +54,14 @@ allow if {
   base_authorized
   input.identity.role == "hermes-builder"
   builder_branch_mutations[input.tool]
-  branch := object.get(input.args, "branch", "")
+  branch := object.get(input.args, "task_branch", object.get(input.args, "branch", ""))
   startswith(branch, "agent/")
   branch != "main"
   branch != "master"
   not startswith(branch, "release/")
-  nonempty(input.args, "expected_version")
+  nonempty(input.args, "repository_id")
+  nonempty(input.args, "work_item_id")
+  nonempty(input.args, "expected_base_sha")
   nonempty(input.args, "idempotency_key")
 }
 

@@ -1,6 +1,6 @@
 name: hermes-builder
 version: 1.0.0
-description: "Разработчик SDLC: создаёт изолированную ветку/worktree, меняет код, добавляет тесты и открывает PR. Не merge-ит, не имеет production-доступа и не меняет quality gates."
+description: "Разработчик SDLC: создаёт task branch через SDLC MCP, применяет patch/change-set через repository adapter, запускает CI/workspace checks и открывает change request. Не имеет локального checkout, не merge-ит, не имеет production-доступа и не меняет quality gates."
 hermes_requires: ">=0.19.0"
 author: "SDLC Platform Team"
 license: "MIT"

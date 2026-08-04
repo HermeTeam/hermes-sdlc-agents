@@ -28,7 +28,7 @@ Credential берётся из `OPENAI_API_KEY`. Рекомендуется LLM 
 | MCP sampling/elicitation | `false` | MCP server не инициирует LLM spend или user prompts |
 | `direct_model_requests` | `false` | внешний API caller не меняет provider/model routing |
 | `tool_loop_guardrails.hard_stop_enabled` | `true` | unattended loop прекращается, а не только предупреждается |
-| `terminal.home_mode` | `profile` | внешние CLI credentials не наследуются из общего HOME |
+| `terminal.home_mode` | `profile` там, где terminal включён | внешние CLI credentials не наследуются из общего HOME |
 | `API_SERVER_KEY` | отдельный per role | независимая inbound authentication и revoke |
 
 ## hermes-planner
@@ -45,24 +45,26 @@ Server-side обязательства: artifact type allowlist, repository/ref/
 
 ## hermes-builder
 
-Назначение: реализовать одну утверждённую задачу и передать PR на независимое review.
+Назначение: реализовать одну утверждённую задачу как SDLC MCP patch/change-set и передать change request на независимое review.
 
-- Built-ins: `file`, `skills`, `terminal`, `todo`, `clarify`.
-- CWD: `/workspace/repo`; `worktree: true`, `worktree_sync: true`.
-- File safe roots: `/opt/data:/workspace/repo`.
+Подробный workflow описан в двух отдельных документах: [Repository API/MCP Flow — English](REPOSITORY_API_MCP_FLOW_EN.md) и [Флоу доступа к репозиториям через API/MCP — Русский](REPOSITORY_API_MCP_FLOW_RU.md).
+
+- Built-ins: `file`, `skills`, `todo`, `clarify`; `terminal` отключён.
+- Репозиторий не mounted; GitHub/GitLab/Forgejo credentials отсутствуют в agent container.
+- File safe roots: `/opt/data`.
 - Checkpoints: включены, до 20 snapshots.
-- MCP writes: create task branch, push task branch, create/update PR description.
+- MCP writes: create task branch, apply patch, commit changes, create/update change request, trigger CI.
 - Нет MCP merge, deployment, flag, runbook или gate mutation tools.
 - Exit states: `PR_READY_FOR_REVIEW` или `BLOCKED`.
 
-Hard controls: task-branch prefix, protected branches, Forgejo scope без merge/admin, protected-path CI check за пределами ветки автора. `approvals.deny` не заменяет эти controls.
+Hard controls: task-branch prefix, expected revisions, protected branches, provider token без merge/admin, protected-path check до commit и в trusted CI за пределами ветки автора. `approvals.deny` не заменяет эти controls.
 
 ## hermes-reviewer
 
-Назначение: независимая оценка fixed PR revision и evidence.
+Назначение: независимая оценка fixed change request revision и evidence.
 
 - Built-ins: `skills`, `todo`, `clarify`; нет filesystem/terminal mount.
-- Read tools: PR, diff, file at revision, tests, coverage delta, mutation score, findings/gates.
+- Read tools: change request, diff, file at revision, tests, coverage delta, mutation score, findings/gates.
 - Write tools: только comments и review decision.
 - Нет branch-content write и merge tools.
 - Exit decision: `APPROVE` или `REQUEST_CHANGES`.
