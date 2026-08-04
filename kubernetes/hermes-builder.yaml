@@ -1,0 +1,136 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-builder-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-builder-workspace
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 50Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-builder
+  labels: &labels
+    app.kubernetes.io/name: hermes-builder
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: hermes-sdlc
+    hermes.sdlc/role: builder
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-builder
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      serviceAccountName: hermes-agent
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        fsGroup: 10000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: clone-repository
+          image: alpine/git:2.49.1
+          imagePullPolicy: IfNotPresent
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              if [ ! -d /workspace/repo/.git ]; then
+                git clone --no-tags "${REPO_CLONE_URL}" /workspace/repo
+                git -C /workspace/repo remote set-url origin "${REPO_REMOTE_URL}"
+              fi
+          envFrom:
+            - secretRef:
+                name: hermes-builder-repo
+          env:
+            - {name: GIT_TERMINAL_PROMPT, value: "0"}
+          securityContext:
+            runAsUser: 10000
+            runAsGroup: 10000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: workspace, mountPath: /workspace}
+      containers:
+        - name: hermes
+          image: nousresearch/hermes-agent
+          imagePullPolicy: IfNotPresent
+          args: [gateway, run]
+          envFrom:
+            - secretRef:
+                name: hermes-builder-env
+          env:
+            - {name: HERMES_MANAGED_DIR, value: /etc/hermes}
+            - {name: HERMES_DASHBOARD, value: "0"}
+            - {name: API_SERVER_ENABLED, value: "true"}
+            - {name: API_SERVER_HOST, value: 0.0.0.0}
+            - {name: API_SERVER_PORT, value: "8642"}
+            - {name: HERMES_WRITE_SAFE_ROOT, value: "/opt/data:/workspace/repo"}
+          ports:
+            - {name: api, containerPort: 8642, protocol: TCP}
+          livenessProbe:
+            httpGet: {path: /health, port: api}
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet: {path: /health, port: api}
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 9
+          resources:
+            requests: {cpu: "1", memory: 2Gi}
+            limits: {cpu: "4", memory: 8Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+          volumeMounts:
+            - {name: data, mountPath: /opt/data}
+            - {name: workspace, mountPath: /workspace}
+            - {name: profile, mountPath: /etc/hermes, readOnly: true}
+            - {name: profile, mountPath: /opt/data/SOUL.md, subPath: SOUL.md, readOnly: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hermes-builder-data
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: hermes-builder-workspace
+        - name: profile
+          configMap:
+            name: hermes-builder-profile
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-builder
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: hermes-builder
+  ports:
+    - {name: api, port: 8642, targetPort: api, protocol: TCP}

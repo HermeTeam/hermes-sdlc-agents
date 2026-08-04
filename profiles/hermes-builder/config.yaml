@@ -1,0 +1,155 @@
+model:
+  provider: custom
+  default: "${HERMES_MODEL_ID}"
+  base_url: "${HERMES_MODEL_BASE_URL}"
+
+toolsets:
+  - file
+  - terminal
+  - todo
+  - clarify
+  - mcp-sdlc
+
+agent:
+  reasoning_effort: high
+  tool_use_enforcement: true
+  disabled_toolsets:
+    - browser
+    - code_execution
+    - computer_use
+    - cronjob
+    - delegation
+    - discord
+    - discord_admin
+    - homeassistant
+    - image_gen
+    - kanban
+    - memory
+    - project
+    - search
+    - session_search
+    - skills
+    - spotify
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+    - yuanbao
+
+terminal:
+  backend: local
+  cwd: /workspace/repo
+  timeout: 900
+  home_mode: profile
+  env_passthrough: []
+
+worktree: true
+worktree_sync: true
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  write_approval: true
+
+skills:
+  guard_agent_created: true
+  write_approval: true
+
+security:
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_timeout: 5
+  allow_lazy_installs: false
+
+privacy:
+  redact_pii: true
+
+approvals:
+  mode: smart
+  timeout: 300
+  denial_breaker_threshold: 3
+  deny:
+    - "git push --force*"
+    - "git push * main*"
+    - "git push * master*"
+    - "git merge *"
+    - "gh pr merge *"
+    - "tea pr merge *"
+    - "kubectl *"
+    - "helm *"
+    - "argocd *"
+    - "flux *"
+    - "terraform apply*"
+    - "tofu apply*"
+    - "ansible-playbook *"
+    - "docker context *"
+  smart_policy: |
+    Approve ordinary repository-local build, lint and test commands. Escalate commands that
+    modify remote state, credentials, package registries, protected branches, CI settings,
+    quality thresholds, infrastructure or deployment systems. The builder may push only its
+    task branch and may never merge a pull request.
+
+checkpoints:
+  enabled: true
+  max_snapshots: 20
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  hard_stop_after:
+    exact_failure: 5
+    idempotent_no_progress: 5
+
+file_read_max_chars: 150000
+context_file_max_chars: 50000
+tool_output:
+  max_bytes: 100000
+  max_lines: 3000
+  max_line_length: 3000
+
+display:
+  language: ru
+  show_reasoning: false
+  file_mutation_verifier: true
+  runtime_footer:
+    enabled: true
+    fields: [model, context_pct, cwd]
+
+gateway:
+  platforms:
+    api_server:
+      direct_model_requests: false
+
+mcp_servers:
+  sdlc:
+    url: "${SDLC_MCP_URL}"
+    headers:
+      Authorization: "Bearer ${SDLC_MCP_TOKEN}"
+      X-Hermes-Role: "hermes-builder"
+    ssl_verify: true
+    enabled: true
+    timeout: 180
+    connect_timeout: 20
+    supports_parallel_tool_calls: false
+    tools:
+      include:
+        - work_item_get
+        - spec_get
+        - plan_get
+        - repo_get_default_branch
+        - repo_create_task_branch
+        - repo_push_task_branch
+        - repo_create_pull_request
+        - repo_update_pull_request_description
+        - ci_get_status
+        - ci_get_test_results
+        - quality_get_gates
+        - quality_get_findings
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false

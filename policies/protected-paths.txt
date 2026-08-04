@@ -1,0 +1,27 @@
+# Changes to these paths require a human/platform-team PR and cannot be authored by hermes-builder.
+.forgejo/workflows/**
+.gitea/workflows/**
+.github/workflows/**
+.gitlab-ci.yml
+.woodpecker/**
+.drone.yml
+Jenkinsfile
+CODEOWNERS
+OWNERS
+OWNERS_ALIASES
+quality-gates/**
+policy/**
+policies/**
+scripts/check-protected-paths.sh
+.semgrep.yml
+.semgrep/**
+sonar-project.properties
+mutation-testing.*
+stryker.conf.*
+pitest.*
+renovate.json
+.renovaterc*
+dependabot.yml
+kubernetes/production/**
+environments/production/**
+terraform/production/**

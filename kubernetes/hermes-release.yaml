@@ -1,0 +1,98 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-release-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-release
+  labels: &labels
+    app.kubernetes.io/name: hermes-release
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: hermes-sdlc
+    hermes.sdlc/role: release
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-release
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      serviceAccountName: hermes-agent
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        fsGroup: 10000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hermes
+          image: nousresearch/hermes-agent
+          imagePullPolicy: IfNotPresent
+          args: [gateway, run]
+          envFrom:
+            - secretRef:
+                name: hermes-release-env
+          env:
+            - {name: HERMES_MANAGED_DIR, value: /etc/hermes}
+            - {name: HERMES_DASHBOARD, value: "0"}
+            - {name: API_SERVER_ENABLED, value: "true"}
+            - {name: API_SERVER_HOST, value: 0.0.0.0}
+            - {name: API_SERVER_PORT, value: "8642"}
+            - {name: HERMES_WRITE_SAFE_ROOT, value: /opt/data}
+          ports:
+            - {name: api, containerPort: 8642, protocol: TCP}
+          livenessProbe:
+            httpGet: {path: /health, port: api}
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet: {path: /health, port: api}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+          volumeMounts:
+            - {name: data, mountPath: /opt/data}
+            - {name: profile, mountPath: /etc/hermes, readOnly: true}
+            - {name: profile, mountPath: /opt/data/SOUL.md, subPath: SOUL.md, readOnly: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hermes-release-data
+        - name: profile
+          configMap:
+            name: hermes-release-profile
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-release
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: hermes-release
+  ports:
+    - {name: api, port: 8642, targetPort: api, protocol: TCP}

@@ -1,0 +1,132 @@
+model:
+  provider: custom
+  default: "${HERMES_MODEL_ID}"
+  base_url: "${HERMES_MODEL_BASE_URL}"
+
+toolsets:
+  - todo
+  - mcp-sdlc
+
+agent:
+  reasoning_effort: high
+  tool_use_enforcement: true
+  disabled_toolsets:
+    - browser
+    - clarify
+    - code_execution
+    - computer_use
+    - cronjob
+    - delegation
+    - discord
+    - discord_admin
+    - file
+    - homeassistant
+    - image_gen
+    - kanban
+    - memory
+    - project
+    - search
+    - session_search
+    - skills
+    - spotify
+    - terminal
+    - tts
+    - video
+    - video_gen
+    - vision
+    - web
+    - x_search
+    - yuanbao
+
+terminal:
+  backend: local
+  cwd: /opt/data/workspace
+  timeout: 180
+  home_mode: profile
+  env_passthrough: []
+
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+  write_approval: true
+
+skills:
+  guard_agent_created: true
+  write_approval: true
+
+security:
+  redact_secrets: true
+  tirith_enabled: true
+  tirith_timeout: 5
+  allow_lazy_installs: false
+
+privacy:
+  redact_pii: true
+
+approvals:
+  mode: manual
+  timeout: 300
+  denial_breaker_threshold: 2
+  deny:
+    - "*"
+
+checkpoints:
+  enabled: false
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  hard_stop_after:
+    exact_failure: 3
+    idempotent_no_progress: 3
+
+file_read_max_chars: 50000
+context_file_max_chars: 25000
+tool_output:
+  max_bytes: 50000
+  max_lines: 1500
+  max_line_length: 2000
+
+display:
+  language: ru
+  show_reasoning: false
+  runtime_footer:
+    enabled: true
+    fields: [model, context_pct, cwd]
+
+gateway:
+  platforms:
+    api_server:
+      direct_model_requests: false
+
+mcp_servers:
+  sdlc:
+    url: "${SDLC_MCP_URL}"
+    headers:
+      Authorization: "Bearer ${SDLC_MCP_TOKEN}"
+      X-Hermes-Role: "hermes-release"
+    ssl_verify: true
+    enabled: true
+    timeout: 180
+    connect_timeout: 20
+    supports_parallel_tool_calls: false
+    tools:
+      include:
+        - release_get_candidate
+        - release_get_policy
+        - ci_get_status
+        - ci_get_test_results
+        - quality_get_gates
+        - observability_query_metric
+        - observability_get_slo
+        - deployment_get_status
+        - deployment_get_analysis
+        - deployment_promote
+        - deployment_abort
+        - deployment_get_audit_log
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false

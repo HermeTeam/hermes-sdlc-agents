@@ -1,0 +1,161 @@
+apiVersion: sdlc.hermes/v1alpha1
+kind: AgentRolePolicy
+metadata:
+  name: hermes-sdlc-roles
+spec:
+  authentication:
+    audience: sdlc-mcp
+    roleClaim: role
+    subjectClaim: sub
+    requiredClaims: [iss, sub, aud, role, exp, jti]
+    maximumTokenTtlSeconds: 3600
+  authorization:
+    defaultDecision: deny
+    denyUnknownTools: true
+    denyWildcardTools: true
+    requireServerSideEnforcement: true
+    auditEveryMutation: true
+  roles:
+    hermes-planner:
+      allowTools:
+        - requirements_list
+        - requirements_get
+        - requirements_search
+        - repo_search_code
+        - repo_read_file
+        - repo_list_tree
+        - catalog_list_services
+        - catalog_get_service
+        - catalog_get_dependencies
+        - spec_get
+        - spec_create
+        - spec_update
+        - plan_get
+        - plan_create
+        - plan_update
+      constraints:
+        environments: [none]
+        repositoryMode: read-only
+        writableArtifactTypes: [spec, plan]
+        denyProduction: true
+        denyDeployments: true
+
+    hermes-builder:
+      allowTools:
+        - work_item_get
+        - spec_get
+        - plan_get
+        - repo_get_default_branch
+        - repo_create_task_branch
+        - repo_push_task_branch
+        - repo_create_pull_request
+        - repo_update_pull_request_description
+        - ci_get_status
+        - ci_get_test_results
+        - quality_get_gates
+        - quality_get_findings
+      constraints:
+        branchPrefix: agent/
+        protectedBranches: [main, master, release/*]
+        allowedPushMode: fast-forward-task-branch-only
+        merge: deny
+        production: deny
+        qualityGateMutation: deny
+        protectedPathsFile: policies/protected-paths.txt
+
+    hermes-reviewer:
+      allowTools:
+        - work_item_get
+        - spec_get
+        - plan_get
+        - repo_get_pull_request
+        - repo_get_diff
+        - repo_get_file_at_revision
+        - ci_get_status
+        - ci_get_test_results
+        - quality_get_gates
+        - quality_get_findings
+        - quality_get_coverage_delta
+        - quality_get_mutation_score
+        - repo_add_review_comment
+        - repo_submit_review
+        - repo_request_changes
+        - repo_approve_pull_request
+      constraints:
+        repositoryMode: read-only
+        authorBranchMutation: deny
+        merge: deny
+        production: deny
+        prohibitSelfReview: true
+
+    hermes-release:
+      allowTools:
+        - release_get_candidate
+        - release_get_policy
+        - ci_get_status
+        - ci_get_test_results
+        - quality_get_gates
+        - observability_query_metric
+        - observability_get_slo
+        - deployment_get_status
+        - deployment_get_analysis
+        - deployment_promote
+        - deployment_abort
+        - deployment_get_audit_log
+      constraints:
+        allowedMutations: [deployment_promote, deployment_abort]
+        requireImmutableCandidate: true
+        requireExpectedRevision: true
+        requirePolicyEvaluationId: true
+        requireIdempotencyKey: true
+        arbitraryKubectl: deny
+        codeMutation: deny
+        qualityGateMutation: deny
+
+    hermes-incident:
+      allowTools:
+        - incident_get
+        - incident_update_timeline
+        - catalog_get_service
+        - catalog_get_dependencies
+        - observability_query_logs
+        - observability_query_traces
+        - observability_query_metric
+        - observability_get_alert
+        - observability_get_slo
+        - flags_get
+        - flags_disable
+        - runbooks_list_approved
+        - runbooks_get_approved
+        - runbooks_execute_approved
+        - runbooks_get_execution
+      constraints:
+        allowedMutations: [incident_update_timeline, flags_disable, runbooks_execute_approved]
+        featureFlagDirection: enabled-to-disabled-only
+        requireIncidentId: true
+        requireExpectedVersion: true
+        requireIdempotencyKey: true
+        runbookApprovalState: approved
+        arbitraryInfrastructure: deny
+        codeMutation: deny
+
+    hermes-learning:
+      allowTools:
+        - learning_get_outcomes
+        - learning_get_failure_clusters
+        - learning_get_feedback
+        - docs_search
+        - docs_read
+        - skills_catalog_list
+        - skills_catalog_read
+        - proposal_get
+        - proposal_create
+        - proposal_update
+        - proposal_attach_diff
+      constraints:
+        dataMode: aggregated-and-redacted
+        directDocumentationMutation: deny
+        skillActivation: deny
+        skillPublication: deny
+        production: deny
+        requireHumanApproval: true

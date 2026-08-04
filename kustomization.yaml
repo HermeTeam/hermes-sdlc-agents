@@ -1,0 +1,47 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hermes-sdlc
+
+resources:
+  - kubernetes/namespace.yaml
+  - kubernetes/serviceaccount.yaml
+  - kubernetes/hermes-planner.yaml
+  - kubernetes/hermes-builder.yaml
+  - kubernetes/hermes-reviewer.yaml
+  - kubernetes/hermes-release.yaml
+  - kubernetes/hermes-incident.yaml
+  - kubernetes/hermes-learning.yaml
+  - kubernetes/networkpolicies.yaml
+
+configMapGenerator:
+  - name: hermes-planner-profile
+    files:
+      - config.yaml=profiles/hermes-planner/config.yaml
+      - SOUL.md=profiles/hermes-planner/SOUL.md
+  - name: hermes-builder-profile
+    files:
+      - config.yaml=profiles/hermes-builder/config.yaml
+      - SOUL.md=profiles/hermes-builder/SOUL.md
+  - name: hermes-reviewer-profile
+    files:
+      - config.yaml=profiles/hermes-reviewer/config.yaml
+      - SOUL.md=profiles/hermes-reviewer/SOUL.md
+  - name: hermes-release-profile
+    files:
+      - config.yaml=profiles/hermes-release/config.yaml
+      - SOUL.md=profiles/hermes-release/SOUL.md
+  - name: hermes-incident-profile
+    files:
+      - config.yaml=profiles/hermes-incident/config.yaml
+      - SOUL.md=profiles/hermes-incident/SOUL.md
+  - name: hermes-learning-profile
+    files:
+      - config.yaml=profiles/hermes-learning/config.yaml
+      - SOUL.md=profiles/hermes-learning/SOUL.md
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+images:
+  - name: nousresearch/hermes-agent
+    newTag: latest

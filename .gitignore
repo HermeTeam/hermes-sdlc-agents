@@ -1,0 +1,18 @@
+.env
+secrets/*.env
+runtime/
+*.log
+*.zip
+.DS_Store
+
+# Hermes runtime state must never enter a distribution.
+auth.json
+state.db*
+memories/
+sessions/
+logs/
+mcp-tokens/
+pairing/
+pending/
+home/
+workspace/

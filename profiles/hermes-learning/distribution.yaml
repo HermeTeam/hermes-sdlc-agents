@@ -1,0 +1,26 @@
+name: hermes-learning
+version: 1.0.0
+description: "Learning agent: анализирует обезличенные результаты и предлагает изменения skills/документации. Все skill writes staged; самостоятельная активация запрещена."
+hermes_requires: ">=0.19.0"
+author: "SDLC Platform Team"
+license: "MIT"
+env_requires:
+  - name: HERMES_MODEL_ID
+    description: "Идентификатор модели в OpenAI-совместимом LLM gateway"
+    required: true
+  - name: HERMES_MODEL_BASE_URL
+    description: "URL OpenAI-совместимого LLM gateway, включая /v1"
+    required: true
+  - name: OPENAI_API_KEY
+    description: "Ролевой токен к LLM gateway"
+    required: true
+  - name: SDLC_MCP_URL
+    description: "URL Streamable HTTP endpoint типизированного SDLC MCP gateway"
+    required: true
+  - name: SDLC_MCP_TOKEN
+    description: "Короткоживущий токен с claim role=hermes-learning"
+    required: true
+distribution_owned:
+  - distribution.yaml
+  - config.yaml
+  - SOUL.md

@@ -1,0 +1,129 @@
+name: hermes-sdlc
+
+x-hermes-environment: &hermes-environment
+  HERMES_MANAGED_DIR: /etc/hermes
+  HERMES_DASHBOARD: "0"
+  API_SERVER_ENABLED: "true"
+  API_SERVER_HOST: "0.0.0.0"
+  API_SERVER_PORT: "8642"
+  HERMES_WRITE_SAFE_ROOT: /opt/data
+
+x-hermes-common: &hermes-common
+  image: "${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
+  command: gateway run
+  restart: unless-stopped
+  init: false
+  security_opt:
+    - no-new-privileges:true
+  cap_drop: [ALL]
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+  pids_limit: 512
+  stop_grace_period: 45s
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  networks:
+    - hermes-control
+  healthcheck:
+    test: [CMD, curl, -fsS, http://127.0.0.1:8642/health]
+    interval: 30s
+    timeout: 5s
+    retries: 5
+    start_period: 45s
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 4G
+
+services:
+  hermes-planner:
+    <<: *hermes-common
+    container_name: hermes-planner
+    env_file: [./secrets/hermes-planner.env]
+    environment:
+      <<: *hermes-environment
+    ports:
+      - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
+    volumes:
+      - planner-data:/opt/data
+      - ./profiles/hermes-planner:/etc/hermes:ro
+      - ./profiles/hermes-planner/SOUL.md:/opt/data/SOUL.md:ro
+
+  hermes-builder:
+    <<: *hermes-common
+    container_name: hermes-builder
+    env_file: [./secrets/hermes-builder.env]
+    environment:
+      <<: *hermes-environment
+      HERMES_WRITE_SAFE_ROOT: /opt/data:/workspace/repo
+    ports:
+      - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
+    volumes:
+      - builder-data:/opt/data
+      - "${REPO_DIR:?Set REPO_DIR in .env to an absolute writable repository path}:/workspace/repo:rw"
+      - ./profiles/hermes-builder:/etc/hermes:ro
+      - ./profiles/hermes-builder/SOUL.md:/opt/data/SOUL.md:ro
+
+  hermes-reviewer:
+    <<: *hermes-common
+    container_name: hermes-reviewer
+    env_file: [./secrets/hermes-reviewer.env]
+    environment:
+      <<: *hermes-environment
+    ports:
+      - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
+    volumes:
+      - reviewer-data:/opt/data
+      - ./profiles/hermes-reviewer:/etc/hermes:ro
+      - ./profiles/hermes-reviewer/SOUL.md:/opt/data/SOUL.md:ro
+
+  hermes-release:
+    <<: *hermes-common
+    container_name: hermes-release
+    env_file: [./secrets/hermes-release.env]
+    environment:
+      <<: *hermes-environment
+    ports:
+      - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
+    volumes:
+      - release-data:/opt/data
+      - ./profiles/hermes-release:/etc/hermes:ro
+      - ./profiles/hermes-release/SOUL.md:/opt/data/SOUL.md:ro
+
+  hermes-incident:
+    <<: *hermes-common
+    container_name: hermes-incident
+    env_file: [./secrets/hermes-incident.env]
+    environment:
+      <<: *hermes-environment
+    ports:
+      - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
+    volumes:
+      - incident-data:/opt/data
+      - ./profiles/hermes-incident:/etc/hermes:ro
+      - ./profiles/hermes-incident/SOUL.md:/opt/data/SOUL.md:ro
+
+  hermes-learning:
+    <<: *hermes-common
+    container_name: hermes-learning
+    env_file: [./secrets/hermes-learning.env]
+    environment:
+      <<: *hermes-environment
+    ports:
+      - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
+    volumes:
+      - learning-data:/opt/data
+      - ./profiles/hermes-learning:/etc/hermes:ro
+      - ./profiles/hermes-learning/SOUL.md:/opt/data/SOUL.md:ro
+
+networks:
+  hermes-control:
+    driver: bridge
+
+volumes:
+  planner-data:
+  builder-data:
+  reviewer-data:
+  release-data:
+  incident-data:
+  learning-data:
