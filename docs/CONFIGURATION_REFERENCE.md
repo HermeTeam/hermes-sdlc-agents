@@ -22,6 +22,7 @@ Credential берётся из `OPENAI_API_KEY`. Рекомендуется LLM 
 | `security.allow_lazy_installs` | `false` | никаких runtime dependency installs |
 | `memory.memory_enabled` | `false` | нет неконтролируемого cross-session drift |
 | `skills.write_approval` | `true` | skill mutations staged до human approval |
+| `skills.external_dirs` | `/etc/hermes/skills`, `/opt/hermes-shared-skills/current` | role-local и общий read-only каталог skills |
 | `mcp_servers.sdlc.tools.include` | exact list | MCP surface без wildcard |
 | MCP resources/prompts | `false` | исключена дополнительная server-controlled context surface |
 | MCP sampling/elicitation | `false` | MCP server не инициирует LLM spend или user prompts |
@@ -34,7 +35,7 @@ Credential берётся из `OPENAI_API_KEY`. Рекомендуется LLM 
 
 Назначение: превратить требования и фактическую структуру системы в traceable `spec` и `plan`.
 
-- Built-ins: `todo`, `clarify`; `file` и `terminal` отключены.
+- Built-ins: `skills`, `todo`, `clarify`; `file` и `terminal` отключены.
 - Read tools: requirements, repository read/search/tree, service catalog/dependencies, existing specs/plans.
 - Write tools: только `spec_create/update`, `plan_create/update`.
 - Runtime: repository вообще не mounted; production credentials отсутствуют.
@@ -46,7 +47,7 @@ Server-side обязательства: artifact type allowlist, repository/ref/
 
 Назначение: реализовать одну утверждённую задачу и передать PR на независимое review.
 
-- Built-ins: `file`, `terminal`, `todo`, `clarify`.
+- Built-ins: `file`, `skills`, `terminal`, `todo`, `clarify`.
 - CWD: `/workspace/repo`; `worktree: true`, `worktree_sync: true`.
 - File safe roots: `/opt/data:/workspace/repo`.
 - Checkpoints: включены, до 20 snapshots.
@@ -60,7 +61,7 @@ Hard controls: task-branch prefix, protected branches, Forgejo scope без merg
 
 Назначение: независимая оценка fixed PR revision и evidence.
 
-- Built-ins: `todo`, `clarify`; нет filesystem/terminal mount.
+- Built-ins: `skills`, `todo`, `clarify`; нет filesystem/terminal mount.
 - Read tools: PR, diff, file at revision, tests, coverage delta, mutation score, findings/gates.
 - Write tools: только comments и review decision.
 - Нет branch-content write и merge tools.
@@ -72,7 +73,7 @@ Gateway проверяет `independence_verified` по provenance: reviewer sub
 
 Назначение: принять fail-closed решение на следующем этапе progressive delivery.
 
-- Built-ins: только `todo`; `terminal`, `file`, `clarify` и delegation отключены.
+- Built-ins: `skills`, `todo`; `terminal`, `file`, `clarify` и delegation отключены.
 - Read tools: immutable candidate/policy, CI/tests/gates, bounded metrics/SLO, rollout analysis/status/audit.
 - Единственные mutations: `deployment_promote`, `deployment_abort`.
 - Нет Kubernetes service-account token, kubeconfig или исходного кода.
@@ -84,7 +85,7 @@ Gateway проверяет `independence_verified` по provenance: reviewer sub
 
 Назначение: диагностировать incident и применить только заранее утверждённую, обратимую mitigation.
 
-- Built-ins: только `todo`; нет shell/filesystem/delegation.
+- Built-ins: `skills`, `todo`; нет shell/filesystem/delegation.
 - Read tools: incident, catalog/dependencies, bounded logs/traces/metrics/alerts/SLO, flags и approved runbooks.
 - Mutations: incident timeline, `flags_disable`, `runbooks_execute_approved`.
 - `flags_disable` поддерживает только `enabled -> disabled` с expected version.
@@ -105,6 +106,12 @@ Gateway проверяет `independence_verified` по provenance: reviewer sub
 - Exit state: `PROPOSED_FOR_HUMAN_REVIEW`.
 
 Human approver и activation pipeline являются отдельными identities. Learning agent не может одобрить собственный pending change.
+
+## Shared skills superset
+
+Все роли подключают общий каталог `/opt/hermes-shared-skills/current` через `skills.external_dirs`. Источник по умолчанию: `https://github.com/stanta/skills_superset.git`, ветка/refs `main`, подкаталог `skills/`.
+
+Docker Compose обновляет каталог сервисом `skills-superset-sync` до запуска агентов. Kubernetes обновляет каталог initContainer-ом `sync-shared-skills` в каждом Pod. Основные agent containers монтируют результат read-only; изменения skills не должны писаться в общий каталог.
 
 ## Environment files
 

@@ -37,6 +37,30 @@ spec:
         fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: sync-shared-skills
+          image: alpine/git:2.49.1
+          imagePullPolicy: IfNotPresent
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              tmp_dir="$(mktemp -d)"
+              trap 'rm -rf "${tmp_dir}"' EXIT
+              git clone --depth=1 --filter=blob:none --sparse "${SKILLS_SUPERSET_REPO_URL}" "${tmp_dir}/repo"
+              git -C "${tmp_dir}/repo" checkout "${SKILLS_SUPERSET_REF}"
+              git -C "${tmp_dir}/repo" sparse-checkout set skills
+              cp -a "${tmp_dir}/repo/skills/." /shared-skills/
+          env:
+            - {name: SKILLS_SUPERSET_REPO_URL, value: "https://github.com/stanta/skills_superset.git"}
+            - {name: SKILLS_SUPERSET_REF, value: main}
+          securityContext:
+            runAsUser: 10000
+            runAsGroup: 10000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: shared-skills, mountPath: /shared-skills}
       containers:
         - name: hermes
           image: nousresearch/hermes-agent
@@ -76,12 +100,15 @@ spec:
               add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
           volumeMounts:
             - {name: data, mountPath: /opt/data}
+            - {name: shared-skills, mountPath: /opt/hermes-shared-skills/current, readOnly: true}
             - {name: profile, mountPath: /etc/hermes, readOnly: true}
             - {name: profile, mountPath: /opt/data/SOUL.md, subPath: SOUL.md, readOnly: true}
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: hermes-learning-data
+        - name: shared-skills
+          emptyDir: {}
         - name: profile
           configMap:
             name: hermes-learning-profile

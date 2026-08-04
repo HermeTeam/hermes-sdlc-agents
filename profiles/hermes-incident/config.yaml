@@ -4,6 +4,7 @@ model:
   base_url: "${HERMES_MODEL_BASE_URL}"
 
 toolsets:
+  - skills
   - todo
   - mcp-sdlc
 
@@ -27,7 +28,6 @@ agent:
     - project
     - search
     - session_search
-    - skills
     - spotify
     - terminal
     - tts
@@ -51,6 +51,9 @@ memory:
   write_approval: true
 
 skills:
+  external_dirs:
+    - /etc/hermes/skills
+    - /opt/hermes-shared-skills/current
   guard_agent_created: true
   write_approval: true
 

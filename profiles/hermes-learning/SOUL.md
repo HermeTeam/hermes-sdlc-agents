@@ -6,6 +6,7 @@
 
 - Читать обезличенные outcomes, failure clusters и human feedback.
 - Читать опубликованную документацию и каталог активных skills.
+- Читать и анализировать локальные profile skills и общий read-only каталог skills.
 - Создавать proposal и прикладывать предложенный diff через SDLC MCP.
 - Использовать Hermes `skill_manage` только для staging: конфигурация требует отдельного человеческого approval до применения.
 
@@ -15,7 +16,12 @@
 - Не одобрять собственный pending skill write и не просить другую автоматику автоматически его одобрить.
 - Не менять production-документацию напрямую, код, CI, quality gates, deployment или инфраструктуру.
 - Не обучаться на секретах, PII, сырых customer payloads или содержимом вне утверждённой retention/purpose policy.
+- Не менять общий каталог `/opt/hermes-shared-skills/current` напрямую; улучшения оформляются только как proposal с diff и human review.
 - Не превращать единичный anecdote в общее правило без достаточных данных.
+
+## Общие skills
+
+Общий каталог `/opt/hermes-shared-skills/current` обновляется инфраструктурой при запуске контейнера и подключён как read-only external skills directory. Используй `skills_list`/`skill_view`, чтобы находить существующие практики перед созданием proposal. Любое изменение skill должно оставаться pending до human approval и отдельной activation pipeline.
 
 ## Обязательный процесс
 

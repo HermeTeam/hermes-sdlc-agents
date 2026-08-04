@@ -32,6 +32,7 @@ expected_roles = {
     "hermes-release", "hermes-incident", "hermes-learning",
 }
 expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
+expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills/current"]
 
 errors = []
 if set(policy_roles) != expected_roles:
@@ -51,6 +52,13 @@ for role in sorted(expected_roles):
     skill_path = profile_dir / expected_skill
     if not skill_path.is_file():
         errors.append(f"{role}: {expected_skill} missing")
+    if "skills" not in config.get("toolsets", []):
+        errors.append(f"{role}: skills toolset must be enabled for shared skill discovery")
+    if "skills" in set(config.get("agent", {}).get("disabled_toolsets", [])):
+        errors.append(f"{role}: skills toolset must not be disabled")
+    external_dirs = config.get("skills", {}).get("external_dirs", [])
+    if external_dirs != expected_external_skill_dirs:
+        errors.append(f"{role}: skills.external_dirs must be {expected_external_skill_dirs}")
 
     server = config.get("mcp_servers", {}).get("sdlc", {})
     included = server.get("tools", {}).get("include", [])
@@ -99,6 +107,12 @@ for role in sorted(expected_roles):
         if pod_spec.get("automountServiceAccountToken") is not False:
             errors.append(f"{role}: Kubernetes service-account token must not be mounted")
         containers = pod_spec.get("containers", [])
+        init_containers = pod_spec.get("initContainers", [])
+        if not any(container.get("name") == "sync-shared-skills" for container in init_containers):
+            errors.append(f"{role}: shared skills sync initContainer missing")
+        volumes = pod_spec.get("volumes", [])
+        if not any(volume.get("name") == "shared-skills" for volume in volumes):
+            errors.append(f"{role}: shared-skills volume missing")
         if len(containers) != 1:
             errors.append(f"{role}: exactly one main Hermes container is required")
         else:
@@ -106,6 +120,14 @@ for role in sorted(expected_roles):
             expected_secret = f"{role}-env"
             if not any(item.get("secretRef", {}).get("name") == expected_secret for item in refs):
                 errors.append(f"{role}: expected Secret ref {expected_secret}")
+            mounts = containers[0].get("volumeMounts", [])
+            if not any(
+                mount.get("name") == "shared-skills"
+                and mount.get("mountPath") == "/opt/hermes-shared-skills/current"
+                and mount.get("readOnly") is True
+                for mount in mounts
+            ):
+                errors.append(f"{role}: shared skills must be mounted read-only")
 
 kustomization = yaml.safe_load((root / "kustomization.yaml").read_text(encoding="utf-8"))
 for resource in kustomization.get("resources", []):
@@ -113,14 +135,23 @@ for resource in kustomization.get("resources", []):
         errors.append(f"kustomization references missing resource: {resource}")
 
 compose = yaml.safe_load((root / "compose.yaml").read_text(encoding="utf-8"))
-expected_services = expected_roles
+expected_services = expected_roles | {"skills-superset-sync"}
 if set(compose.get("services", {})) != expected_services:
-    errors.append("compose.yaml does not define exactly the six expected services")
+    errors.append("compose.yaml does not define exactly the expected services")
 for role, service in compose.get("services", {}).items():
+    if role == "skills-superset-sync":
+        if "shared-skills:/shared" not in service.get("volumes", []):
+            errors.append("skills-superset-sync: shared-skills volume must be writable at /shared")
+        continue
     if service.get("container_name") != role:
         errors.append(f"{role}: container_name mismatch")
     if role != "hermes-builder" and any("/workspace/repo" in str(v) for v in service.get("volumes", [])):
         errors.append(f"{role}: repository mount must be absent")
+    if "shared-skills:/opt/hermes-shared-skills:ro" not in service.get("volumes", []):
+        errors.append(f"{role}: shared-skills volume must be mounted read-only")
+    depends_on = service.get("depends_on", {})
+    if depends_on.get("skills-superset-sync", {}).get("condition") != "service_completed_successfully":
+        errors.append(f"{role}: must wait for skills-superset-sync")
 
 if errors:
     print("Validation failed:")

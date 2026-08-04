@@ -13,7 +13,7 @@
 - MCP использует exact `tools.include`; resources/prompts, sampling и elicitation выключены.
 - Unattended loop hard stops включены.
 - Memory выключена, чтобы решения и чувствительные данные не дрейфовали между сессиями.
-- Skill writes везде требуют approval; learning не получает activation tool.
+- Skill reads доступны всем ролям через локальный и общий read-only каталог; skill writes везде требуют approval, learning не получает activation tool.
 
 Hermes поддерживает per-server MCP allowlists и `sampling.enabled: false`; см. [MCP config reference](https://hermes-agent.nousresearch.com/docs/reference/mcp-config-reference/) и [MCP guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/mcp).
 
@@ -27,13 +27,14 @@ Role config монтируется read-only в `/etc/hermes/config.yaml`, а `H
 - Только builder получает `/workspace/repo` writable.
 - `HERMES_WRITE_SAFE_ROOT` ограничивает Hermes file writes; помните, что это guard для file tools, не универсальный shell sandbox.
 - SOUL и managed config mounted read-only.
+- Общий superset skills монтируется read-only в основной agent container; обновление выполняется отдельным sync service/initContainer до старта агента.
 - Image pin по digest, read-only core `/opt/hermes`, no host Docker socket.
 
 ### 4. Network and credentials
 
 - Разные inbound API keys и MCP tokens.
 - Tokens короткоживущие, audience-bound, revocable, без reuse между ролями.
-- Agent egress только к LLM и SDLC MCP gateways; DNS и telemetry exporters по необходимости.
+- Agent egress только к LLM и SDLC MCP gateways; для Kubernetes дополнительно открыт HTTPS egress к публичному источнику shared skills на время initContainer sync. В production предпочтителен внутренний mirror/egress proxy.
 - Upstream credentials находятся в MCP adapters. Agent не получает kubeconfig, cloud admin, Argo admin или shared Forgejo PAT.
 
 Kubernetes template реализует default-deny NetworkPolicy. Docker Compose оставлен portable и сам по себе не даёт FQDN-aware egress filtering; для production на одном хосте добавьте host firewall/egress proxy либо изолированную VM network policy. Не считайте общую Compose bridge network полноценным egress boundary.

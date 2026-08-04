@@ -5,6 +5,7 @@ model:
 
 toolsets:
   - file
+  - skills
   - terminal
   - todo
   - clarify
@@ -28,7 +29,6 @@ agent:
     - project
     - search
     - session_search
-    - skills
     - spotify
     - tts
     - video
@@ -54,6 +54,9 @@ memory:
   write_approval: true
 
 skills:
+  external_dirs:
+    - /etc/hermes/skills
+    - /opt/hermes-shared-skills/current
   guard_agent_created: true
   write_approval: true
 

@@ -51,6 +51,9 @@ memory:
   write_approval: true
 
 skills:
+  external_dirs:
+    - /etc/hermes/skills
+    - /opt/hermes-shared-skills/current
   guard_agent_created: true
   write_approval: true
 

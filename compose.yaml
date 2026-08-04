@@ -11,6 +11,9 @@ x-hermes-environment: &hermes-environment
 x-hermes-common: &hermes-common
   image: "${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
   command: gateway run
+  depends_on:
+    skills-superset-sync:
+      condition: service_completed_successfully
   restart: unless-stopped
   init: false
   security_opt:
@@ -36,6 +39,31 @@ x-hermes-common: &hermes-common
         memory: 4G
 
 services:
+  skills-superset-sync:
+    image: alpine/git:2.49.1
+    container_name: hermes-skills-superset-sync
+    restart: "no"
+    environment:
+      SKILLS_SUPERSET_REPO_URL: "${SKILLS_SUPERSET_REPO_URL:-https://github.com/stanta/skills_superset.git}"
+      SKILLS_SUPERSET_REF: "${SKILLS_SUPERSET_REF:-main}"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        tmp_dir="$(mktemp -d)"
+        trap 'rm -rf "${tmp_dir}"' EXIT
+        git clone --depth=1 --filter=blob:none --sparse "${SKILLS_SUPERSET_REPO_URL}" "${tmp_dir}/repo"
+        git -C "${tmp_dir}/repo" checkout "${SKILLS_SUPERSET_REF}"
+        git -C "${tmp_dir}/repo" sparse-checkout set skills
+        rm -rf /shared/.next /shared/current
+        mkdir -p /shared/.next
+        cp -a "${tmp_dir}/repo/skills/." /shared/.next/
+        mv /shared/.next /shared/current
+    networks:
+      - hermes-control
+    volumes:
+      - shared-skills:/shared
+
   hermes-planner:
     <<: *hermes-common
     container_name: hermes-planner
@@ -46,6 +74,7 @@ services:
       - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
     volumes:
       - planner-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
       - ./profiles/hermes-planner:/etc/hermes:ro
       - ./profiles/hermes-planner/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -60,6 +89,7 @@ services:
       - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
     volumes:
       - builder-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
       - "${REPO_DIR:?Set REPO_DIR in .env to an absolute writable repository path}:/workspace/repo:rw"
       - ./profiles/hermes-builder:/etc/hermes:ro
       - ./profiles/hermes-builder/SOUL.md:/opt/data/SOUL.md:ro
@@ -74,6 +104,7 @@ services:
       - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
     volumes:
       - reviewer-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
       - ./profiles/hermes-reviewer:/etc/hermes:ro
       - ./profiles/hermes-reviewer/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -87,6 +118,7 @@ services:
       - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
     volumes:
       - release-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
       - ./profiles/hermes-release:/etc/hermes:ro
       - ./profiles/hermes-release/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -100,6 +132,7 @@ services:
       - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
     volumes:
       - incident-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
       - ./profiles/hermes-incident:/etc/hermes:ro
       - ./profiles/hermes-incident/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -113,6 +146,7 @@ services:
       - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
     volumes:
       - learning-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
       - ./profiles/hermes-learning:/etc/hermes:ro
       - ./profiles/hermes-learning/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -121,6 +155,7 @@ networks:
     driver: bridge
 
 volumes:
+  shared-skills:
   planner-data:
   builder-data:
   reviewer-data:

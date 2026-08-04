@@ -1,6 +1,6 @@
 # Hermes SDLC Agents
 
-Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, server-side policy для MCP gateway, bootstrap, structural validation и smoke tests.
+Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MCP gateway, bootstrap, structural validation и smoke tests.
 
 ## Главное архитектурное решение
 
@@ -14,6 +14,7 @@
 6. Отдельные upstream service accounts у MCP gateway.
 7. Server-side branch protection, protected paths, approvals и immutable release candidates.
 8. Отсутствие Kubernetes service-account token у самих агентов.
+9. Общий каталог skills монтируется read-only и используется через `skills.external_dirs`; skill writes остаются gated human approval.
 
 Официальная документация Hermes прямо разделяет profile и sandbox: profile изолирует состояние, но сам по себе не ограничивает файловую систему. Отдельные контейнеры рекомендованы, когда нужны разные credentials, network segmentation и меньший blast radius. См. [Profiles](https://hermes-agent.nousresearch.com/docs/user-guide/profiles/) и [Docker](https://hermes-agent.nousresearch.com/docs/user-guide/docker/).
 
@@ -21,11 +22,11 @@
 
 | Роль | Разрешено | Жёстко исключено |
 |---|---|---|
-| `hermes-planner` | requirements/code/catalog read; `spec` и `plan` create/update | code write, branch/PR, deployment, production |
-| `hermes-builder` | task worktree, code/tests, local checks, task-branch push, PR | merge, protected branch, production, quality-gate mutation |
-| `hermes-reviewer` | PR/diff/tests/findings read; comments, approve/request changes | author-branch mutation, merge, production |
-| `hermes-release` | CI/quality/SLO read; promote или abort существующего candidate | arbitrary `kubectl`, code/config changes, direct traffic editing |
-| `hermes-incident` | telemetry read; flag disable; approved runbook execute | flag enable/retarget, arbitrary infrastructure operations, code |
+| `hermes-planner` | requirements/code/catalog/skills read; `spec` и `plan` create/update | code write, branch/PR, deployment, production, skill mutation |
+| `hermes-builder` | skills read, task worktree, code/tests, local checks, task-branch push, PR | merge, protected branch, production, quality-gate mutation, skill mutation |
+| `hermes-reviewer` | skills/PR/diff/tests/findings read; comments, approve/request changes | author-branch mutation, merge, production, skill mutation |
+| `hermes-release` | skills/CI/quality/SLO read; promote или abort существующего candidate | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation |
+| `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation |
 | `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write | independent activation/publication, direct docs/code/production write |
 
 Точные разрешённые имена инструментов находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если списки разойдутся.
@@ -55,6 +56,17 @@ hermes-sdlc-agents/
 ├── kubernetes/
 └── scripts/
 ```
+
+## Общий superset skills
+
+Каждая роль имеет включённый Hermes toolset `skills` и два external skill directories:
+
+- `/etc/hermes/skills` — skills, поставляемые вместе с конкретным role profile;
+- `/opt/hermes-shared-skills/current` — общий read-only superset из `https://github.com/stanta/skills_superset/tree/main/skills`.
+
+В Docker Compose сервис `skills-superset-sync` перед запуском агентов обновляет named volume `shared-skills` из `SKILLS_SUPERSET_REPO_URL`/`SKILLS_SUPERSET_REF`; агенты ждут его успешного завершения и монтируют volume read-only. В Kubernetes каждый Pod использует initContainer `sync-shared-skills`, который клонирует тот же репозиторий в `emptyDir`, после чего основной контейнер видит каталог read-only.
+
+Это даёт агентам динамический выбор релевантных skills через `skills_list`/`skill_view`, но не расширяет SDLC MCP allowlist. Мутации skills по-прежнему требуют `skills.write_approval: true`; роли, кроме `hermes-learning`, должны оформлять улучшения skills как handoff/proposal, а не менять их напрямую.
 
 ## Быстрый запуск через Docker Compose
 
