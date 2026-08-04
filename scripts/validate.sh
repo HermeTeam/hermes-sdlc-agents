@@ -9,6 +9,7 @@ done
 
 python3 - "${bundle_root}" <<'PY'
 from pathlib import Path
+import hashlib
 import sys
 
 try:
@@ -30,6 +31,7 @@ expected_roles = {
     "hermes-planner", "hermes-builder", "hermes-reviewer",
     "hermes-release", "hermes-incident", "hermes-learning",
 }
+expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
 
 errors = []
 if set(policy_roles) != expected_roles:
@@ -43,6 +45,12 @@ for role in sorted(expected_roles):
         errors.append(f"{role}: distribution name mismatch")
     if not (profile_dir / "SOUL.md").is_file():
         errors.append(f"{role}: SOUL.md missing")
+    owned = manifest.get("distribution_owned", [])
+    if "skills/" not in owned:
+        errors.append(f"{role}: skills/ must be distribution-owned")
+    skill_path = profile_dir / expected_skill
+    if not skill_path.is_file():
+        errors.append(f"{role}: {expected_skill} missing")
 
     server = config.get("mcp_servers", {}).get("sdlc", {})
     included = server.get("tools", {}).get("include", [])
@@ -118,6 +126,16 @@ if errors:
     print("Validation failed:")
     for error in errors:
         print(f"- {error}")
+    raise SystemExit(1)
+
+skill_hashes = {
+    role: hashlib.sha256((root / "profiles" / role / expected_skill).read_bytes()).hexdigest()
+    for role in sorted(expected_roles)
+}
+if len(set(skill_hashes.values())) != 1:
+    print("Validation failed:")
+    for role, digest in skill_hashes.items():
+        print(f"- {role}: self-evolution skill hash {digest}")
     raise SystemExit(1)
 
 print("Hermes profiles and role policy are structurally consistent.")

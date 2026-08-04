@@ -41,7 +41,8 @@ hermes-sdlc-agents/
 │       ├── .gitignore            # исключает credentials и runtime state
 │       ├── distribution.yaml     # Hermes profile distribution manifest
 │       ├── config.yaml           # managed role config
-│       └── SOUL.md               # identity, process, stop conditions
+│       ├── SOUL.md               # identity, process, stop conditions
+│       └── skills/               # role-safe shared skills, including self-evolution
 ├── policies/
 │   ├── roles.yaml                # каноническая role/tool/constraint matrix
 │   ├── mcp-policy.rego           # пример server-side OPA decision
