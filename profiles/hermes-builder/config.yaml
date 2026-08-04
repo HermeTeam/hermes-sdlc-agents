@@ -9,6 +9,18 @@ toolsets:
   - todo
   - clarify
   - mcp-sdlc
+  - mcp-ddg-search
+  - mcp-context7
+  - mcp-playwright
+  - mcp-sequentialthinking
+  - mcp-MongoDB
+  - mcp-filesystem
+  - mcp-puppeteer
+  - mcp-postgresql
+  - mcp-brave-search
+  - mcp-docs-langchain
+  - mcp-mcp-mermaid
+  - mcp-chrome-devtools
 
 agent:
   reasoning_effort: high
@@ -148,6 +160,223 @@ mcp_servers:
         - ci_get_test_results
         - quality_get_gates
         - quality_get_findings
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  ddg-search:
+    command: uvx
+    args:
+      - duckduckgo-mcp-server
+    enabled: false
+    tools:
+      include:
+        - fetch_content
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  context7:
+    command: npx
+    args:
+      - -y
+      - "@upstash/context7-mcp"
+    env:
+      DEFAULT_MINIMUM_TOKENS: "${CONTEXT7_DEFAULT_MINIMUM_TOKENS}"
+    enabled: true
+    tools:
+      include:
+        - resolve-library-id
+        - query-docs
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  playwright:
+    command: npx
+    args:
+      - -y
+      - "@playwright/mcp@0.0.38"
+    enabled: false
+    tools:
+      include:
+        - browser_take_screenshot
+        - browser_click
+        - browser_wait_for
+        - browser_evaluate
+        - browser_fill_form
+        - browser_network_requests
+        - browser_close
+        - browser_snapshot
+        - browser_resize
+        - browser_console_messages
+        - browser_type
+        - browser_navigate
+        - browser_file_upload
+        - browser_handle_dialog
+        - browser_select_option
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  sequentialthinking:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-sequential-thinking"
+    enabled: true
+    tools:
+      include:
+        - sequentialthinking
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  MongoDB:
+    command: npx
+    args:
+      - -y
+      - mongodb-mcp-server@latest
+      - --readOnly
+    env:
+      MDB_MCP_CONNECTION_STRING: "${MDB_MCP_CONNECTION_STRING}"
+    enabled: false
+    tools:
+      include:
+        - list-databases
+        - list-collections
+        - count
+        - collection-schema
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  filesystem:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-filesystem"
+      - "~"
+      - "."
+    enabled: true
+    tools:
+      include:
+        - list_allowed_directories
+        - write_file
+        - search_files
+        - read_text_file
+        - list_directory
+        - create_directory
+        - read_file
+        - get_file_info
+        - read_multiple_files
+        - read_media_file
+        - directory_tree
+      exclude:
+        - edit_file
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  puppeteer:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-puppeteer"
+    enabled: false
+    tools:
+      include: []
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  postgresql:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-postgres"
+      - "${POSTGRES_MCP_CONNECTION_STRING}"
+    enabled: true
+    tools:
+      include:
+        - query
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  brave-search:
+    command: npx
+    args:
+      - -y
+      - "@modelcontextprotocol/server-brave-search"
+    env:
+      BRAVE_API_KEY: "${BRAVE_API_KEY}"
+    enabled: true
+    tools:
+      include:
+        - brave_web_search
+        - brave_local_search
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  docs-langchain:
+    url: https://docs.langchain.com/mcp
+    enabled: false
+    tools:
+      include: []
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  mcp-mermaid:
+    command: npx
+    args:
+      - -y
+      - mcp-mermaid
+    enabled: false
+    tools:
+      include: []
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
+    elicitation:
+      enabled: false
+  chrome-devtools:
+    command: npx
+    args:
+      - -y
+      - chrome-devtools-mcp@latest
+    enabled: true
+    tools:
+      include:
+        - new_page
+        - navigate_page
+        - take_snapshot
+        - take_screenshot
       resources: false
       prompts: false
     sampling:
