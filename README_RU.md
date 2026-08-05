@@ -22,14 +22,14 @@ English version: [README.md](README.md).
 
 ## Роли
 
-| Роль | Разрешено | Жёстко исключено |
-|---|---|---|
-| `hermes-planner` | requirements/code/catalog/skills read; `spec` и `plan` create/update | code write, branch/change request, deployment, production, skill mutation |
-| `hermes-builder` | skills read, repository read, task branch, patch/change-set, CI/workspace evidence, change request | local checkout, GitHub/GitLab credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
-| `hermes-reviewer` | skills/change request/diff/tests/findings read; comments, approve/request changes | author-branch mutation, merge, production, skill mutation |
-| `hermes-release` | skills/CI/quality/SLO read; promote или abort существующего candidate | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation |
-| `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation |
-| `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write | independent activation/publication, direct docs/code/production write |
+| Роль              | Разрешено                                                                                          | Жёстко исключено                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `hermes-planner`  | requirements/code/catalog/skills read; `spec` и `plan` create/update                               | code write, branch/change request, deployment, production, skill mutation                                             |
+| `hermes-builder`  | skills read, repository read, task branch, patch/change-set, CI/workspace evidence, change request | local checkout, GitHub/GitLab credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
+| `hermes-reviewer` | skills/change request/diff/tests/findings read; comments, approve/request changes                  | author-branch mutation, merge, production, skill mutation                                                             |
+| `hermes-release`  | skills/CI/quality/SLO read; promote или abort существующего candidate                              | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation                                      |
+| `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute                                      | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation                                       |
+| `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write                                  | independent activation/publication, direct docs/code/production write                                                 |
 
 Точные разрешённые имена инструментов находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если списки разойдутся.
 
@@ -104,15 +104,16 @@ scripts/bootstrap.sh
 Затем:
 
 1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
-2. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`.
-3. Выпустите шесть разных MCP tokens; один token нельзя использовать для двух ролей.
-4. Проверьте конфигурацию:
+2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и замените `GITHUB_PROVIDER_TOKEN` в реальном `.env` на token, который используется только SDLC MCP repository adapter.
+3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`.
+4. Выпустите шесть разных MCP tokens; один token нельзя использовать для двух ролей.
+5. Проверьте конфигурацию:
 
 ```bash
 scripts/validate.sh
 ```
 
-5. Запустите:
+6. Запустите:
 
 ```bash
 docker compose up -d
@@ -121,12 +122,12 @@ scripts/smoke-test.sh
 
 API по умолчанию доступен только на loopback хоста:
 
-| Роль | URL |
-|---|---|
-| planner | `http://127.0.0.1:18642/v1` |
-| builder | `http://127.0.0.1:18643/v1` |
+| Роль     | URL                         |
+| -------- | --------------------------- |
+| planner  | `http://127.0.0.1:18642/v1` |
+| builder  | `http://127.0.0.1:18643/v1` |
 | reviewer | `http://127.0.0.1:18644/v1` |
-| release | `http://127.0.0.1:18645/v1` |
+| release  | `http://127.0.0.1:18645/v1` |
 | incident | `http://127.0.0.1:18646/v1` |
 | learning | `http://127.0.0.1:18647/v1` |
 

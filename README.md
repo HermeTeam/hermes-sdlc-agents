@@ -22,14 +22,14 @@ Hermes documentation separates profile isolation from sandboxing: a profile isol
 
 ## Roles
 
-| Role | Allowed | Strictly excluded |
-|---|---|---|
-| `hermes-planner` | requirements/code/catalog/skills read; `spec` and `plan` create/update | code write, branch/change request, deployment, production, skill mutation |
-| `hermes-builder` | skills read, repository read, task branch, patch/change-set, CI/workspace evidence, change request | local checkout, GitHub/GitLab credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
-| `hermes-reviewer` | skills/change request/diff/tests/findings read; comments, approve/request changes | author-branch mutation, merge, production, skill mutation |
-| `hermes-release` | skills/CI/quality/SLO read; promote or abort an existing candidate | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation |
-| `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation |
-| `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write | independent activation/publication, direct docs/code/production write |
+| Role              | Allowed                                                                                            | Strictly excluded                                                                                                     |
+| ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `hermes-planner`  | requirements/code/catalog/skills read; `spec` and `plan` create/update                             | code write, branch/change request, deployment, production, skill mutation                                             |
+| `hermes-builder`  | skills read, repository read, task branch, patch/change-set, CI/workspace evidence, change request | local checkout, GitHub/GitLab credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
+| `hermes-reviewer` | skills/change request/diff/tests/findings read; comments, approve/request changes                  | author-branch mutation, merge, production, skill mutation                                                             |
+| `hermes-release`  | skills/CI/quality/SLO read; promote or abort an existing candidate                                 | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation                                      |
+| `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute                                      | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation                                       |
+| `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write                                  | independent activation/publication, direct docs/code/production write                                                 |
 
 Exact allowed tool names are stored in both `profiles/*/config.yaml` and `policies/roles.yaml`. `scripts/validate.sh` fails if the lists drift.
 
@@ -104,15 +104,16 @@ scripts/bootstrap.sh
 Then:
 
 1. Pin `HERMES_IMAGE` to an immutable digest in `.env`.
-2. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file.
-3. Issue six different MCP tokens; one token must not be reused across roles.
-4. Validate the configuration:
+2. Keep the `test-project/test-project` GitHub repository target in `.env.example` and replace `GITHUB_PROVIDER_TOKEN` in the real `.env` with a token used only by the SDLC MCP repository adapter.
+3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file.
+4. Issue six different MCP tokens; one token must not be reused across roles.
+5. Validate the configuration:
 
 ```bash
 scripts/validate.sh
 ```
 
-5. Start the stack:
+6. Start the stack:
 
 ```bash
 docker compose up -d
@@ -121,12 +122,12 @@ scripts/smoke-test.sh
 
 By default, APIs are bound only to the host loopback interface:
 
-| Role | URL |
-|---|---|
-| planner | `http://127.0.0.1:18642/v1` |
-| builder | `http://127.0.0.1:18643/v1` |
+| Role     | URL                         |
+| -------- | --------------------------- |
+| planner  | `http://127.0.0.1:18642/v1` |
+| builder  | `http://127.0.0.1:18643/v1` |
 | reviewer | `http://127.0.0.1:18644/v1` |
-| release | `http://127.0.0.1:18645/v1` |
+| release  | `http://127.0.0.1:18645/v1` |
 | incident | `http://127.0.0.1:18646/v1` |
 | learning | `http://127.0.0.1:18647/v1` |
 

@@ -34,10 +34,53 @@ expected_roles = {
 expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
 expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills/current"]
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
+required_dotenv_keys = {
+    "SDLC_MCP_URL",
+    "SDLC_REPOSITORY_ID",
+    "SDLC_REPOSITORY_PROVIDER",
+    "SDLC_REPOSITORY_ACCESS_MODE",
+    "SDLC_REPOSITORY_DEFAULT_BRANCH",
+    "SDLC_REPOSITORY_CLONE_ALLOWED",
+    "GITHUB_API_BASE_URL",
+    "GITHUB_WEB_BASE_URL",
+    "GITHUB_OWNER",
+    "GITHUB_REPOSITORY",
+    "GITHUB_REPOSITORY_FULL_NAME",
+    "GITHUB_REPOSITORY_HTML_URL",
+    "GITHUB_REPOSITORY_API_URL",
+    "GITHUB_PROVIDER_TOKEN",
+}
 
 errors = []
 if set(policy_roles) != expected_roles:
     errors.append("roles.yaml does not define exactly the six expected roles")
+
+dotenv_example = root / ".env.example"
+def parse_dotenv(path):
+    result = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            key, value = line.split("=", 1)
+            result[key] = value
+    return result
+
+dotenv_values = parse_dotenv(dotenv_example)
+dotenv_keys = set(dotenv_values)
+missing_dotenv_keys = sorted(required_dotenv_keys - dotenv_keys)
+if missing_dotenv_keys:
+    errors.append(f".env.example missing required repository keys: {', '.join(missing_dotenv_keys)}")
+if dotenv_values.get("SDLC_REPOSITORY_CLONE_ALLOWED") != "false":
+    errors.append(".env.example: SDLC_REPOSITORY_CLONE_ALLOWED must be false")
+if dotenv_values.get("GITHUB_REPOSITORY_FULL_NAME") != "test-project/test-project":
+    errors.append(".env.example: GITHUB_REPOSITORY_FULL_NAME must be test-project/test-project")
+if (root / ".env").is_file():
+    runtime_dotenv_values = parse_dotenv(root / ".env")
+    missing_runtime_dotenv_keys = sorted(required_dotenv_keys - set(runtime_dotenv_values))
+    if missing_runtime_dotenv_keys:
+        errors.append(f".env missing required repository keys: {', '.join(missing_runtime_dotenv_keys)}")
+    if runtime_dotenv_values.get("SDLC_REPOSITORY_CLONE_ALLOWED") != "false":
+        errors.append(".env: SDLC_REPOSITORY_CLONE_ALLOWED must be false")
 
 for role in sorted(expected_roles):
     profile_dir = root / "profiles" / role
@@ -156,6 +199,9 @@ for role, service in compose.get("services", {}).items():
         continue
     if service.get("container_name") != role:
         errors.append(f"{role}: container_name mismatch")
+    service_environment = service.get("environment", {})
+    if "GITHUB_PROVIDER_TOKEN" in service_environment:
+        errors.append(f"{role}: GitHub provider token must not be passed to Hermes agents")
     if role != "hermes-builder" and any("/workspace/repo" in str(v) for v in service.get("volumes", [])):
         errors.append(f"{role}: repository mount must be absent")
     if role == "hermes-builder":

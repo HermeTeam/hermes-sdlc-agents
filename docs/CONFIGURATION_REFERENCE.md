@@ -15,21 +15,21 @@ Credential берётся из `OPENAI_API_KEY`. Рекомендуется LLM 
 
 Общие safety settings:
 
-| Настройка | Значение | Зачем |
-|---|---|---|
-| `HERMES_MANAGED_DIR` | `/etc/hermes` | role config read-only и выше profile overrides |
-| `security.redact_secrets` | `true` | redaction известных key/token patterns в output/logs |
-| `security.allow_lazy_installs` | `false` | никаких runtime dependency installs |
-| `memory.memory_enabled` | `false` | нет неконтролируемого cross-session drift |
-| `skills.write_approval` | `true` | skill mutations staged до human approval |
-| `skills.external_dirs` | `/etc/hermes/skills`, `/opt/hermes-shared-skills/current` | role-local и общий read-only каталог skills |
-| `mcp_servers.sdlc.tools.include` | exact list | MCP surface без wildcard |
-| MCP resources/prompts | `false` | исключена дополнительная server-controlled context surface |
-| MCP sampling/elicitation | `false` | MCP server не инициирует LLM spend или user prompts |
-| `direct_model_requests` | `false` | внешний API caller не меняет provider/model routing |
-| `tool_loop_guardrails.hard_stop_enabled` | `true` | unattended loop прекращается, а не только предупреждается |
-| `terminal.home_mode` | `profile` там, где terminal включён | внешние CLI credentials не наследуются из общего HOME |
-| `API_SERVER_KEY` | отдельный per role | независимая inbound authentication и revoke |
+| Настройка                                | Значение                                                  | Зачем                                                      |
+| ---------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------- |
+| `HERMES_MANAGED_DIR`                     | `/etc/hermes`                                             | role config read-only и выше profile overrides             |
+| `security.redact_secrets`                | `true`                                                    | redaction известных key/token patterns в output/logs       |
+| `security.allow_lazy_installs`           | `false`                                                   | никаких runtime dependency installs                        |
+| `memory.memory_enabled`                  | `false`                                                   | нет неконтролируемого cross-session drift                  |
+| `skills.write_approval`                  | `true`                                                    | skill mutations staged до human approval                   |
+| `skills.external_dirs`                   | `/etc/hermes/skills`, `/opt/hermes-shared-skills/current` | role-local и общий read-only каталог skills                |
+| `mcp_servers.sdlc.tools.include`         | exact list                                                | MCP surface без wildcard                                   |
+| MCP resources/prompts                    | `false`                                                   | исключена дополнительная server-controlled context surface |
+| MCP sampling/elicitation                 | `false`                                                   | MCP server не инициирует LLM spend или user prompts        |
+| `direct_model_requests`                  | `false`                                                   | внешний API caller не меняет provider/model routing        |
+| `tool_loop_guardrails.hard_stop_enabled` | `true`                                                    | unattended loop прекращается, а не только предупреждается  |
+| `terminal.home_mode`                     | `profile` там, где terminal включён                       | внешние CLI credentials не наследуются из общего HOME      |
+| `API_SERVER_KEY`                         | отдельный per role                                        | независимая inbound authentication и revoke                |
 
 ## hermes-planner
 
@@ -117,16 +117,34 @@ Docker Compose обновляет каталог сервисом `skills-supers
 
 ## Environment files
 
-Каждый `secrets/hermes-<role>.env` содержит:
+`.env` содержит общие runtime-параметры и repository target:
 
-| Variable | Назначение |
-|---|---|
-| `HERMES_MODEL_ID` | model ID в разрешённом gateway catalog |
-| `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint |
-| `OPENAI_API_KEY` | role-scoped LLM token |
-| `SDLC_MCP_URL` | Streamable HTTP MCP endpoint |
-| `SDLC_MCP_TOKEN` | short-lived role identity |
-| `API_SERVER_KEY` | inbound Hermes API bearer key, минимум 8 символов |
-| `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models` |
+| Variable                         | Назначение                                                     |
+| -------------------------------- | -------------------------------------------------------------- |
+| `SDLC_MCP_URL`                   | Streamable HTTP MCP endpoint                                   |
+| `SDLC_REPOSITORY_ID`             | стабильный repository ID для SDLC MCP calls                    |
+| `SDLC_REPOSITORY_PROVIDER`       | provider, сейчас `github`                                      |
+| `SDLC_REPOSITORY_ACCESS_MODE`    | режим доступа, сейчас `github-api-mcp`                         |
+| `SDLC_REPOSITORY_DEFAULT_BRANCH` | default branch, используемый gateway как expected base         |
+| `SDLC_REPOSITORY_CLONE_ALLOWED`  | должно быть `false`; Hermes не клонирует repo                  |
+| `GITHUB_API_BASE_URL`            | GitHub API base URL                                            |
+| `GITHUB_WEB_BASE_URL`            | GitHub web base URL                                            |
+| `GITHUB_OWNER`                   | GitHub owner/org, сейчас `test-project`                        |
+| `GITHUB_REPOSITORY`              | GitHub repository name, сейчас `test-project`                  |
+| `GITHUB_REPOSITORY_FULL_NAME`    | `owner/repo`, сейчас `test-project/test-project`               |
+| `GITHUB_REPOSITORY_HTML_URL`     | web URL репозитория                                            |
+| `GITHUB_REPOSITORY_API_URL`      | API URL репозитория                                            |
+| `GITHUB_PROVIDER_TOKEN`          | token только для SDLC MCP adapter; не передаётся Hermes agents |
 
-Не добавляйте `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens или admin PAT. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Каждый `secrets/hermes-<role>.env` содержит role-scoped secrets:
+
+| Variable                | Назначение                                        |
+| ----------------------- | ------------------------------------------------- |
+| `HERMES_MODEL_ID`       | model ID в разрешённом gateway catalog            |
+| `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
+| `OPENAI_API_KEY`        | role-scoped LLM token                             |
+| `SDLC_MCP_TOKEN`        | short-lived role identity                         |
+| `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
+| `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
+
+Не добавляйте `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens или admin PAT в role env-файлы. `GITHUB_PROVIDER_TOKEN` допускается только в `.env` для SDLC MCP repository adapter и не должен попадать в `compose.yaml` service environment. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

@@ -1,0 +1,24 @@
+apiVersion: sdlc.hermes/v1alpha1
+kind: RepositoryRegistry
+metadata:
+  name: hermes-sdlc-repositories
+spec:
+  repositories:
+    - id: "${SDLC_REPOSITORY_ID}"
+      provider: "${SDLC_REPOSITORY_PROVIDER}"
+      accessMode: "${SDLC_REPOSITORY_ACCESS_MODE}"
+      defaultBranch: "${SDLC_REPOSITORY_DEFAULT_BRANCH}"
+      cloneAllowed: "${SDLC_REPOSITORY_CLONE_ALLOWED}"
+      github:
+        apiBaseUrl: "${GITHUB_API_BASE_URL}"
+        webBaseUrl: "${GITHUB_WEB_BASE_URL}"
+        owner: "${GITHUB_OWNER}"
+        repository: "${GITHUB_REPOSITORY}"
+        fullName: "${GITHUB_REPOSITORY_FULL_NAME}"
+        htmlUrl: "${GITHUB_REPOSITORY_HTML_URL}"
+        apiUrl: "${GITHUB_REPOSITORY_API_URL}"
+        tokenEnv: GITHUB_PROVIDER_TOKEN
+      policy:
+        branchPrefix: agent/
+        protectedPathsFile: policies/protected-paths.txt
+        exposeProviderToolsToHermes: false
