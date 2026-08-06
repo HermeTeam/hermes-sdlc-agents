@@ -31,41 +31,51 @@ Credential берётся из общего `OPENAI_API_KEY` в `.env` и про
 | `terminal.home_mode`                     | `profile` там, где terminal включён                       | внешние CLI credentials не наследуются из общего HOME      |
 | `API_SERVER_KEY`                         | отдельный per role                                        | независимая inbound authentication и revoke                |
 
+## GitHub MCP MVP Scope
+
+`GIT_PROVIDER_MCP_URL` is the official GitHub MCP endpoint for the MVP:
+
+```env
+GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/
+```
+
+The active `mcp_servers.repository.tools.include` lists contain native GitHub MCP tools. They must be confirmed against runtime `tools/list`; GitLab requires a separate future mapping. The old abstract `repo_*`, `ci_*`, `quality_*`, `work_item_*`, `spec_*`, and `plan_*` facade tools are not active runtime tools.
+
 ## hermes-planner
 
 Назначение: превратить требования и фактическую структуру системы в traceable `spec` и `plan`.
 
 - Built-ins: `skills`, `todo`, `clarify`; `file` и `terminal` отключены.
-- Read tools: requirements, repository read/search/tree, service catalog/dependencies, existing specs/plans.
-- Write tools: только `spec_create/update`, `plan_create/update`.
+- Read tools: GitHub file contents, repository tree, code search, issues.
+- Write tools: none through the repository MCP in the GitHub MVP.
 - Runtime: repository вообще не mounted; production credentials отсутствуют.
 - Exit states: `READY_FOR_BUILD` или `BLOCKED`.
 
-Server-side обязательства: artifact type allowlist, repository/ref/work-item scope, idempotency и audit. Даже с украденным token нельзя вызвать repository write или deployment tool.
+Server-side обязательства: repository/ref scope, GitHub token scopes, deny repository write/deployment tools, and audit.
 
 ## hermes-builder
 
-Назначение: реализовать одну утверждённую задачу как GitHub/GitLab API/MCP patch/change-set и передать change request на независимое review.
+Назначение: реализовать одну утверждённую задачу через native GitHub MCP branch/file/PR tools и передать Pull Request на независимое review.
 
 Подробный workflow описан в двух отдельных документах: [Repository API/MCP Flow — English](REPOSITORY_API_MCP_FLOW_EN.md) и [Флоу доступа к репозиториям через API/MCP — Русский](REPOSITORY_API_MCP_FLOW_RU.md).
 
 - Built-ins: `file`, `skills`, `todo`, `clarify`; `terminal` отключён.
-- Репозиторий не mounted; broad GitHub/GitLab credentials отсутствуют в agent container, используется только role-scoped provider MCP token.
+- Репозиторий не mounted; broad GitHub credentials отсутствуют в agent container, используется только role-specific GitHub MCP token.
 - File safe roots: `/opt/data`.
 - Checkpoints: включены, до 20 snapshots.
-- MCP writes: create task branch, apply patch, commit changes, create/update change request, trigger CI.
+- MCP writes: `create_branch`, `push_files`, `create_pull_request`, `actions_run_trigger`.
 - Нет MCP merge, deployment, flag, runbook или gate mutation tools.
 - Exit states: `PR_READY_FOR_REVIEW` или `BLOCKED`.
 
-Hard controls: task-branch prefix, expected revisions, protected branches, provider token без merge/admin, protected-path check до commit и в trusted CI за пределами ветки автора. `approvals.deny` не заменяет эти controls.
+Hard controls: `agent/*` branch prefix, protected branches, provider token без merge/admin, protected-path check for `push_files` and in trusted CI outside the author branch. `approvals.deny` не заменяет эти controls.
 
 ## hermes-reviewer
 
 Назначение: независимая оценка fixed change request revision и evidence.
 
 - Built-ins: `skills`, `todo`, `clarify`; нет filesystem/terminal mount.
-- Read tools: change request, diff, file at revision, tests, coverage delta, mutation score, findings/gates.
-- Write tools: только comments и review decision.
+- Read tools: Pull Request metadata, file contents, Actions evidence and job logs.
+- Write tools: `add_issue_comment` only in the GitHub MVP.
 - Нет branch-content write и merge tools.
 - Exit decision: `APPROVE` или `REQUEST_CHANGES`.
 
@@ -76,23 +86,22 @@ Provider policy или внешний orchestrator проверяет `independe
 Назначение: принять fail-closed решение на следующем этапе progressive delivery.
 
 - Built-ins: `skills`, `todo`; `terminal`, `file`, `clarify` и delegation отключены.
-- Read tools: immutable candidate/policy, CI/tests/gates, bounded metrics/SLO, rollout analysis/status/audit.
-- Единственные mutations: `deployment_promote`, `deployment_abort`.
+- Read tools: GitHub Actions evidence only in the GitHub MVP.
+- Mutations: none until native release/deployment tools are discovered and scoped.
 - Нет Kubernetes service-account token, kubeconfig или исходного кода.
-- Exit states: `PROMOTED`, `ABORTED`, `BLOCKED_NO_ACTION`.
+- Exit states: `BLOCKED_NO_ACTION` for deployment changes in the GitHub MVP.
 
-Каждый action требует candidate ID, expected revision, policy evaluation ID и idempotency key. Release integration владеет узким Argo Rollouts credential и не публикует arbitrary traffic weight/manifests.
+Deployment promotion/abort requires a separate policy-enforced integration outside the current GitHub-only MCP allowlist.
 
 ## hermes-incident
 
 Назначение: диагностировать incident и применить только заранее утверждённую, обратимую mitigation.
 
 - Built-ins: `skills`, `todo`; нет shell/filesystem/delegation.
-- Read tools: incident, catalog/dependencies, bounded logs/traces/metrics/alerts/SLO, flags и approved runbooks.
-- Mutations: incident timeline, `flags_disable`, `runbooks_execute_approved`.
-- `flags_disable` поддерживает только `enabled -> disabled` с expected version.
-- Runbook immutable, approved, versioned и schema-constrained.
-- Exit states: `MITIGATED`, `MONITORING`, `ESCALATED`, `NO_ACTION`.
+- Read tools: GitHub issues.
+- Mutations: GitHub issue comments only in the GitHub MVP.
+- Feature flags and runbooks require separate policy-enforced integrations outside the current GitHub-only MCP allowlist.
+- Exit states: `MONITORING`, `ESCALATED`, `NO_ACTION`.
 
 Никакой generic infrastructure operation не публикуется. Если mitigation отсутствует в allowlist, правильный результат — human escalation.
 
@@ -102,8 +111,8 @@ Provider policy или внешний orchestrator проверяет `independe
 
 - Built-ins: `skills`, `todo`, `clarify`; file/terminal/delegation отключены.
 - Native `skill_manage` остаётся gated: `guard_agent_created: true`, `write_approval: true`.
-- Read tools: aggregated/redacted outcomes, docs и skills catalog.
-- Write tools: proposal queue и attached diff.
+- Read tools: GitHub issues.
+- Write tools: GitHub issue comment/create for human-reviewed proposals.
 - Нет `skills_activate/install/publish` и прямого docs write.
 - Exit state: `PROPOSED_FOR_HUMAN_REVIEW`.
 
@@ -122,7 +131,7 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | Variable                         | Назначение                                                     |
 | -------------------------------- | -------------------------------------------------------------- |
 | `OPENAI_API_KEY`                 | общий LLM/OpenRouter token, передаётся всем Hermes containers  |
-| `GIT_PROVIDER_MCP_URL`           | Streamable HTTP GitHub/GitLab API/MCP endpoint                 |
+| `GIT_PROVIDER_MCP_URL`           | official GitHub MCP endpoint, `https://api.githubcopilot.com/mcp/` |
 | `REPOSITORY_ID`                  | стабильный repository ID для provider API/MCP calls            |
 | `REPOSITORY_PROVIDER`            | provider, сейчас `github`                                      |
 | `REPOSITORY_ACCESS_MODE`         | режим доступа, сейчас `github-direct-api-mcp`                  |
@@ -142,8 +151,8 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | ----------------------- | ------------------------------------------------- |
 | `HERMES_MODEL_ID`       | model ID в разрешённом gateway catalog            |
 | `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
-| `GIT_PROVIDER_MCP_TOKEN` | short-lived role identity для provider API/MCP     |
+| `GIT_PROVIDER_MCP_TOKEN` | role-specific GitHub credential accepted by official GitHub MCP |
 | `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
 | `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
 
-Не добавляйте `OPENAI_API_KEY`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub/GitLab PAT в role env-файлы. `OPENAI_API_KEY` берётся из `.env` и передаётся контейнерам через общий Compose environment. `GIT_PROVIDER_MCP_TOKEN` допускается в role env-файлах только как короткоживущий token с минимальными provider scopes конкретной роли. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Не добавляйте `OPENAI_API_KEY`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в role env-файлы. `OPENAI_API_KEY` берётся из `.env` и передаётся контейнерам через общий Compose environment. `GIT_PROVIDER_MCP_TOKEN` допускается в role env-файлах только как GitHub credential с минимальными scopes конкретной роли. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

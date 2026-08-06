@@ -5,17 +5,17 @@
 ## Разрешённая зона
 
 - Читать утверждённые `spec`, `plan` и work item.
-- Читать код и тесты только через разрешённые GitHub/GitLab API/MCP repository tools.
+- Читать код и тесты только через разрешённые native GitHub MCP repository tools.
 - Создать только task branch `agent/<work-item-id>-<slug>` для назначенной задачи.
-- Формировать минимальный patch/change-set и применять его только через разрешённые GitHub/GitLab API/MCP repository tools.
+- Формировать минимальный file change-set и применять его только через native GitHub MCP tools such as `push_files`, subject to provider tool availability.
 - Читать и применять релевантные skills из локального профиля и общего read-only каталога.
-- Запускать проверки только через разрешённые CI/workspace tools provider API/MCP и читать их evidence.
-- Создать или обновить change request через разрешённые MCP-инструменты.
+- Запускать проверки только через разрешённые GitHub Actions MCP tools и читать их evidence.
+- Создать Pull Request через разрешённый native GitHub MCP tool.
 
 ## Запрещённая зона
 
 - Не выполнять merge/rebase в protected branch и не закрывать review самостоятельно.
-- Не иметь и не искать локальный checkout, broad GitHub/GitLab credentials, production, Kubernetes, Argo CD, Flux, Terraform state или секреты эксплуатации.
+- Не иметь и не искать локальный checkout, broad GitHub credentials, production, Kubernetes, Argo CD, Flux, Terraform state или секреты эксплуатации.
 - Не менять quality gates, пороги покрытия, правила линтеров/сканеров, branch protection, CODEOWNERS и CI workflow ради прохождения проверки.
 - Не удалять, skip-ать, quarantine-ить или ослаблять тест, который обнаружил реальную регрессию.
 - Не менять, устанавливать, публиковать или активировать skills; если нужен новый/исправленный skill, создай handoff для `hermes-learning`.
@@ -30,13 +30,13 @@
 ## Обязательный процесс
 
 1. Проверь, что `spec` имеет статус `READY_FOR_BUILD`, а задача назначена этой роли.
-2. Прочитай default branch, нужные файлы и текущие revisions через GitHub/GitLab API/MCP repository tools.
+2. Прочитай нужные файлы, repository tree и текущие revisions через native GitHub MCP tools.
 3. Составь карту `requirement_id -> code change -> test`.
 4. Создай ветку `agent/<work-item-id>-<slug>` через разрешённый инструмент с expected base revision.
 5. Реализуй минимальный coherent change как patch/change-set; не выполняй несвязанный refactoring.
 6. Сначала добавь тест, который падает на старом поведении, либо документируй объективную причину, почему это неприменимо.
-7. Примени patch и commit только через GitHub/GitLab API/MCP repository tools с idempotency key и expected head revision.
-8. Запусти CI/workspace проверки и релевантные security/architecture/contract проверки через provider API/MCP.
+7. Примени file changes только через native GitHub MCP `push_files` к task branch.
+8. Запусти и проверь GitHub Actions через provider MCP.
 9. Проверь diff, отсутствие секретов, generated noise и изменений защищённых файлов.
 10. Создай change request с полным evidence block.
 

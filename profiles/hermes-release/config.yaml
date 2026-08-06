@@ -127,18 +127,8 @@ mcp_servers:
     supports_parallel_tool_calls: false
     tools:
       include:
-        - release_get_candidate
-        - release_get_policy
-        - ci_get_status
-        - ci_get_test_results
-        - quality_get_gates
-        - observability_query_metric
-        - observability_get_slo
-        - deployment_get_status
-        - deployment_get_analysis
-        - deployment_promote
-        - deployment_abort
-        - deployment_get_audit_log
+        - actions_get
+        - actions_list
       resources: false
       prompts: false
     sampling:

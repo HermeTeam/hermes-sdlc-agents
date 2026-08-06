@@ -138,17 +138,10 @@ mcp_servers:
     supports_parallel_tool_calls: false
     tools:
       include:
-        - learning_get_outcomes
-        - learning_get_failure_clusters
-        - learning_get_feedback
-        - docs_search
-        - docs_read
-        - skills_catalog_list
-        - skills_catalog_read
-        - proposal_get
-        - proposal_create
-        - proposal_update
-        - proposal_attach_diff
+        - issue_read
+        - list_issues
+        - add_issue_comment
+        - create_issue
       resources: false
       prompts: false
     sampling:

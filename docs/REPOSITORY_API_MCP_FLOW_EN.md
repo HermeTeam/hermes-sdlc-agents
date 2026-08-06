@@ -147,47 +147,47 @@ Provider policy or an external orchestrator must enforce reviewer independence t
 
 The release role does not use repository write access. It works with immutable release candidates created by trusted CI.
 
-Allowed behavior:
+Allowed behavior for GitHub MVP:
 
-- read candidate, policy, CI, quality, SLO, and rollout evidence;
-- call `deployment_promote` or `deployment_abort` only for an existing candidate.
+- read GitHub Actions evidence;
+- return `BLOCKED_NO_ACTION` for deployment changes until native release/deployment tools are discovered and scoped.
 
 #### Incident and Learning
 
-Incident and learning roles do not receive repository write access. Incident may read service/catalog/release context. Learning may create proposals, but cannot directly publish docs, activate skills, or mutate repositories.
+Incident and learning roles do not receive repository write access. In the GitHub MVP, incident may read/comment on GitHub issues. Learning may create/comment on GitHub issues for human-reviewed proposals, but cannot directly publish docs, activate skills, or mutate repositories.
 
 ### Repository tools
 
-Typical direct provider API/MCP tool surface for the MVP:
+Official GitHub MCP MVP tool surface. Exact names must be confirmed by runtime `tools/list` for the configured endpoint and token scopes.
 
-Read tools:
+Planner/read tools:
 
-- `repo_get_default_branch`
-- `repo_list_tree`
-- `repo_read_file`
-- `repo_search_code`
-- `repo_get_file_at_revision`
-- `repo_compare_refs`
+- `get_file_contents`
+- `get_repository_tree`
+- `search_code`
+- `issue_read`
+- `list_issues`
 
 Builder mutation tools:
 
-- `repo_create_task_branch`
-- `repo_apply_patch`
-- `repo_commit_changes`
-- `repo_create_change_request`
-- `repo_update_change_request_description`
-- `ci_trigger_pipeline`
+- `create_branch`
+- `push_files`
+- `create_pull_request`
+- `actions_run_trigger`
+- `actions_get`
+- `actions_list`
+- `get_job_logs`
 
 Reviewer tools:
 
-- `repo_get_change_request`
-- `repo_get_diff`
-- `repo_add_review_comment`
-- `repo_submit_review`
-- `repo_request_changes`
-- `repo_approve_change_request`
+- `pull_request_read`
+- `get_file_contents`
+- `actions_get`
+- `actions_list`
+- `get_job_logs`
+- `add_issue_comment`
 
-Do not expose broad tools such as `github_request`, `gitlab_request`, raw GraphQL, generic HTTP, repository admin, merge, branch protection mutation, or workflow editing tools to Hermes.
+Do not expose broad tools such as `github_request`, raw GraphQL, generic HTTP, repository admin, merge, branch protection mutation, or workflow editing tools to Hermes. GitLab is out of scope for this GitHub MVP.
 
 ### Required mutation envelope
 
@@ -197,34 +197,29 @@ Example:
 
 ```json
 {
-  "work_item_id": "REQ-123",
-  "repository_id": "service-a",
-  "base_ref": "main",
-  "expected_base_sha": "abc123",
-  "task_branch": "agent/REQ-123-short-slug",
-  "expected_head_sha": "def456-or-null",
-  "reason": "Acceptance criterion AC-4",
-  "idempotency_key": "uuid-v7",
-  "correlation": {
-    "hermes_run_id": "run_...",
-    "session_id": "..."
-  }
+  "owner": "test-project",
+  "repo": "test-project",
+  "branch": "agent/REQ-123-short-slug",
+  "message": "Implement REQ-123",
+  "files": [
+    {"path": "src/example.py", "content": "..."}
+  ]
 }
 ```
 
 The provider MCP/API policy must reject the call if:
 
 - the role is not allowed to call the tool;
-- the repository is outside the work item scope;
-- the branch does not start with `agent/<work-item-id>-`;
-- the base or head revision is stale;
-- the diff touches protected paths;
+- `owner`/`repo` do not match the configured target repository;
+- the branch does not start with `agent/`;
+- the branch is `main`, `master`, or `release/*`;
+- `files[].path` touches protected paths;
 - the operation requires merge, admin, or protected branch privileges;
 - the same idempotency key is reused with different arguments.
 
-### Patch/change-set rules
+### File change rules
 
-`repo_apply_patch` should accept only bounded text changes by default:
+`push_files` should accept only bounded text changes by default:
 
 - create a text file;
 - update a text file by unified diff;
@@ -247,10 +242,10 @@ Because the builder no longer runs local shell commands in a checkout, validatio
 Preferred path:
 
 ```text
-GitHub/GitLab provider API/MCP
+Official GitHub MCP
   -> ephemeral workspace worker or trusted CI
     -> clone repository in isolated workspace
-    -> apply patch
+    -> apply bounded file changes
     -> run allowlisted checks
     -> commit/push task branch
     -> return logs, artifacts, and exit codes
@@ -259,17 +254,18 @@ GitHub/GitLab provider API/MCP
 Minimum path:
 
 ```text
-repo_commit_changes
-  -> ci_trigger_pipeline
-  -> ci_get_status
-  -> ci_get_test_results
+push_files
+  -> actions_run_trigger
+  -> actions_list
+  -> actions_get
+  -> get_job_logs
 ```
 
 If required CI/workspace evidence is missing, pending, or failed, the builder must return `BLOCKED`, not `PR_READY_FOR_REVIEW`.
 
 ### Security requirements
 
-- Hermes agents must not receive broad GitHub/GitLab tokens.
+- Hermes agents must not receive broad GitHub tokens.
 - The role-scoped `GIT_PROVIDER_MCP_TOKEN` must have minimal repository scopes for the specific role.
 - Provider tokens must not have admin, branch protection, protected branch write, or merge scopes.
 - Repository content must be treated as untrusted input because it may contain prompt injection.
@@ -281,16 +277,16 @@ If required CI/workspace evidence is missing, pending, or failed, the builder mu
 
 Positive canaries:
 
-1. Planner reads a file through `repo_read_file` and creates a plan.
-2. Builder creates `agent/<work-item-id>-<slug>`, applies a small patch, triggers checks, and opens a change request.
-3. Reviewer reads the fixed diff and submits a review comment.
-4. Release reads candidate evidence and promotes or aborts without repository access.
+1. Planner reads a file through `get_file_contents` and lists repository tree data.
+2. Builder creates `agent/<work-item-id>-<slug>`, pushes a small allowed file change with `push_files`, triggers/checks Actions, and opens a Pull Request.
+3. Reviewer reads Pull Request evidence and adds a comment.
+4. Release reads Actions evidence and returns `BLOCKED_NO_ACTION` for deployment mutation in the GitHub MVP.
 
 Negative canaries:
 
 1. Builder attempts to write `main` directly and receives server-side deny.
 2. Builder attempts to modify a protected path and receives server-side deny.
-3. Builder attempts to call a broad raw GitHub/GitLab provider tool and receives deny or tool not found.
+3. Builder attempts to call a broad raw GitHub provider tool and receives deny or tool not found.
 4. Reviewer attempts to modify the author branch and receives deny.
 5. Planner attempts to create a branch and receives deny.
 6. Any role attempts merge and receives deny.

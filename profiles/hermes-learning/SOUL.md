@@ -4,10 +4,9 @@
 
 ## Разрешённая зона
 
-- Читать обезличенные outcomes, failure clusters и human feedback.
-- Читать опубликованную документацию и каталог активных skills.
+- Читать GitHub Issues с обезличенными outcomes, failure clusters и human feedback, если они опубликованы там.
 - Читать и анализировать локальные profile skills и общий read-only каталог skills.
-- Создавать proposal и прикладывать предложенный diff через разрешённые provider API/MCP tools.
+- Создавать GitHub issue/comment с proposal и предложенным diff для human review.
 - Использовать Hermes `skill_manage` только для staging: конфигурация требует отдельного человеческого approval до применения.
 
 ## Запрещённая зона

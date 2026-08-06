@@ -34,6 +34,8 @@ expected_roles = {
 expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
 expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills/current"]
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
+legacy_facade_tool_prefixes = ("repo_", "ci_", "quality_", "work_item_", "spec_", "plan_")
+github_mcp_url = "https://api.githubcopilot.com/mcp/"
 required_dotenv_keys = {
     "OPENAI_API_KEY",
     "GIT_PROVIDER_MCP_URL",
@@ -72,6 +74,8 @@ if missing_dotenv_keys:
     errors.append(f".env.example missing required repository keys: {', '.join(missing_dotenv_keys)}")
 if dotenv_values.get("REPOSITORY_CLONE_ALLOWED") != "false":
     errors.append(".env.example: REPOSITORY_CLONE_ALLOWED must be false")
+if dotenv_values.get("REPOSITORY_PROVIDER") == "github" and dotenv_values.get("GIT_PROVIDER_MCP_URL") != github_mcp_url:
+    errors.append(f".env.example: GIT_PROVIDER_MCP_URL must be {github_mcp_url} for GitHub MVP")
 if dotenv_values.get("GITHUB_REPOSITORY_FULL_NAME") != "test-project/test-project":
     errors.append(".env.example: GITHUB_REPOSITORY_FULL_NAME must be test-project/test-project")
 if (root / ".env").is_file():
@@ -81,6 +85,8 @@ if (root / ".env").is_file():
         errors.append(f".env missing required repository keys: {', '.join(missing_runtime_dotenv_keys)}")
     if runtime_dotenv_values.get("REPOSITORY_CLONE_ALLOWED") != "false":
         errors.append(".env: REPOSITORY_CLONE_ALLOWED must be false")
+    if runtime_dotenv_values.get("REPOSITORY_PROVIDER") == "github" and runtime_dotenv_values.get("GIT_PROVIDER_MCP_URL") != github_mcp_url:
+        errors.append(f".env: GIT_PROVIDER_MCP_URL must be {github_mcp_url} for GitHub MVP")
 
 for role in sorted(expected_roles):
     profile_dir = root / "profiles" / role
@@ -118,6 +124,8 @@ for role in sorted(expected_roles):
         errors.append(f"{role}: wildcard in MCP include list")
     if any(marker in tool for tool in included for marker in broad_provider_tool_markers):
         errors.append(f"{role}: broad provider/raw request tool exposed")
+    if any(tool.startswith(legacy_facade_tool_prefixes) for tool in included):
+        errors.append(f"{role}: legacy abstract repository facade tool exposed")
     if server.get("tools", {}).get("resources") is not False:
         errors.append(f"{role}: MCP resources must be disabled")
     if server.get("tools", {}).get("prompts") is not False:
@@ -141,10 +149,10 @@ for role in sorted(expected_roles):
             errors.append("hermes-builder: local worktree mode must be disabled in direct repository API/MCP mode")
         if "terminal" in config.get("toolsets", []):
             errors.append("hermes-builder: terminal toolset must be disabled in direct repository API/MCP mode")
-        if any(tool in included for tool in ["repo_merge_pull_request", "repo_merge_change_request"]):
+        if any(tool in included for tool in ["merge_pull_request", "repo_merge_pull_request", "repo_merge_change_request"]):
             errors.append("hermes-builder: merge tool exposed")
-        if any(tool in included for tool in ["repo_push_task_branch", "repo_create_pull_request"]):
-            errors.append("hermes-builder: deprecated local-checkout repository tool exposed")
+        if any(tool in included for tool in ["repo_push_task_branch", "repo_create_pull_request", "repo_apply_patch", "repo_commit_changes"]):
+            errors.append("hermes-builder: deprecated abstract repository facade tool exposed")
     if role == "hermes-learning":
         if config.get("skills", {}).get("write_approval") is not True:
             errors.append("hermes-learning: every skill write must require approval")

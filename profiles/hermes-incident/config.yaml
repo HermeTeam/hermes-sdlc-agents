@@ -127,21 +127,9 @@ mcp_servers:
     supports_parallel_tool_calls: false
     tools:
       include:
-        - incident_get
-        - incident_update_timeline
-        - catalog_get_service
-        - catalog_get_dependencies
-        - observability_query_logs
-        - observability_query_traces
-        - observability_query_metric
-        - observability_get_alert
-        - observability_get_slo
-        - flags_get
-        - flags_disable
-        - runbooks_list_approved
-        - runbooks_get_approved
-        - runbooks_execute_approved
-        - runbooks_get_execution
+        - issue_read
+        - list_issues
+        - add_issue_comment
       resources: false
       prompts: false
     sampling:

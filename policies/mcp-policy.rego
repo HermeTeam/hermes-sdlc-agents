@@ -4,73 +4,131 @@ import rego.v1
 
 default allow := false
 
+protected_branches := {"main", "master"}
+builder_branch_mutations := {"create_branch", "push_files", "create_pull_request", "actions_run_trigger"}
+reviewer_mutations := {"add_issue_comment"}
+incident_mutations := {"add_issue_comment"}
+learning_mutations := {"add_issue_comment", "create_issue"}
+denied_admin_tools := {
+  "merge_pull_request", "repo_merge_pull_request", "repo_merge_change_request",
+  "update_branch_protection", "delete_branch", "delete_repository", "create_repository",
+}
+
 base_authorized if {
   input.identity.active == true
   input.identity.aud == "git-provider-mcp"
   time.now_ns() < input.identity.exp * 1000000000
   input.tool in data.spec.roles[input.identity.role].allowTools
+  not denied_admin_tools[input.tool]
+  github_repository_scoped(input.args)
 }
-
-planner_mutations := {"spec_create", "spec_update", "plan_create", "plan_update"}
-builder_branch_mutations := {
-  "repo_create_task_branch", "repo_apply_patch", "repo_commit_changes",
-  "repo_create_change_request", "ci_trigger_pipeline",
-}
-builder_other_mutations := {"repo_update_change_request_description"}
-reviewer_mutations := {
-  "repo_add_review_comment", "repo_submit_review", "repo_request_changes",
-  "repo_approve_change_request",
-}
-release_mutations := {"deployment_promote", "deployment_abort"}
-incident_mutations := {"incident_update_timeline", "flags_disable", "runbooks_execute_approved"}
-learning_mutations := {"proposal_create", "proposal_update", "proposal_attach_diff"}
 
 nonempty(args, key) if {
   object.get(args, key, "") != ""
 }
 
-allow if {
-  base_authorized
-  input.identity.role == "hermes-planner"
-  not planner_mutations[input.tool]
+expected_owner := object.get(input.repository, "owner", "")
+expected_repo := object.get(input.repository, "repo", object.get(input.repository, "name", ""))
+
+github_repository_scoped(args) if {
+  expected_owner != ""
+  expected_repo != ""
+  object.get(args, "owner", "") == expected_owner
+  object.get(args, "repo", "") == expected_repo
 }
 
-allow if {
-  base_authorized
-  input.identity.role == "hermes-planner"
-  planner_mutations[input.tool]
-  nonempty(input.args, "expected_version")
-  nonempty(input.args, "idempotency_key")
+target_branch(args) := branch if {
+  branch := object.get(args, "branch", object.get(args, "ref", object.get(args, "head", "")))
 }
 
-allow if {
-  base_authorized
-  input.identity.role == "hermes-builder"
-  not builder_branch_mutations[input.tool]
-  not builder_other_mutations[input.tool]
+base_branch(args) := branch if {
+  branch := object.get(args, "base", object.get(input.repository, "default_branch", "main"))
 }
 
-allow if {
-  base_authorized
-  input.identity.role == "hermes-builder"
-  builder_branch_mutations[input.tool]
-  branch := object.get(input.args, "task_branch", object.get(input.args, "branch", ""))
+branch_allowed(branch) if {
   startswith(branch, "agent/")
-  branch != "main"
-  branch != "master"
-  not startswith(branch, "release/")
-  nonempty(input.args, "repository_id")
-  nonempty(input.args, "work_item_id")
-  nonempty(input.args, "expected_base_sha")
-  nonempty(input.args, "idempotency_key")
+  not protected_branch(branch)
+}
+
+protected_branch(branch) if {
+  protected_branches[branch]
+}
+
+protected_branch(branch) if {
+  startswith(branch, "release/")
+}
+
+protected_base_allowed(branch) if {
+  protected_branch(branch)
+}
+
+protected_file_path(path) if {
+  prefix := input.protected_paths[_]
+  startswith(path, prefix)
+}
+
+file_path(file) := path if {
+  path := object.get(file, "path", object.get(file, "file_path", ""))
+}
+
+push_file_paths_allowed(files) if {
+  every file in files {
+    path := file_path(file)
+    path != ""
+    not protected_file_path(path)
+  }
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-planner"
 }
 
 allow if {
   base_authorized
   input.identity.role == "hermes-builder"
-  builder_other_mutations[input.tool]
-  nonempty(input.args, "expected_version")
-  nonempty(input.args, "idempotency_key")
+  input.tool in {"get_file_contents", "get_repository_tree", "search_code", "actions_get", "actions_list", "get_job_logs"}
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-builder"
+  input.tool == "create_branch"
+  branch := target_branch(input.args)
+  branch_allowed(branch)
+  nonempty(input.args, "sha")
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-builder"
+  input.tool == "push_files"
+  branch := target_branch(input.args)
+  branch_allowed(branch)
+  files := object.get(input.args, "files", [])
+  count(files) > 0
+  push_file_paths_allowed(files)
+  nonempty(input.args, "message")
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-builder"
+  input.tool == "create_pull_request"
+  head := target_branch(input.args)
+  branch_allowed(head)
+  base := base_branch(input.args)
+  protected_base_allowed(base)
+  nonempty(input.args, "title")
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-builder"
+  input.tool == "actions_run_trigger"
+  branch := target_branch(input.args)
+  branch_allowed(branch)
+  nonempty(input.args, "workflow_id")
 }
 
 allow if {
@@ -84,25 +142,13 @@ allow if {
   input.identity.role == "hermes-reviewer"
   reviewer_mutations[input.tool]
   input.args.independence_verified == true
-  nonempty(input.args, "expected_version")
-  nonempty(input.args, "idempotency_key")
+  nonempty(input.args, "issue_number")
+  nonempty(input.args, "body")
 }
 
 allow if {
   base_authorized
   input.identity.role == "hermes-release"
-  not release_mutations[input.tool]
-}
-
-allow if {
-  base_authorized
-  input.identity.role == "hermes-release"
-  release_mutations[input.tool]
-  nonempty(input.args, "candidate_id")
-  nonempty(input.args, "expected_revision")
-  nonempty(input.args, "stage")
-  nonempty(input.args, "policy_evaluation_id")
-  nonempty(input.args, "idempotency_key")
 }
 
 allow if {
@@ -114,30 +160,9 @@ allow if {
 allow if {
   base_authorized
   input.identity.role == "hermes-incident"
-  input.tool == "incident_update_timeline"
-  nonempty(input.args, "incident_id")
-  nonempty(input.args, "expected_version")
-  nonempty(input.args, "idempotency_key")
-}
-
-allow if {
-  base_authorized
-  input.identity.role == "hermes-incident"
-  input.tool == "flags_disable"
-  nonempty(input.args, "incident_id")
-  nonempty(input.args, "expected_version")
-  nonempty(input.args, "idempotency_key")
-  input.args.target_state == "disabled"
-}
-
-allow if {
-  base_authorized
-  input.identity.role == "hermes-incident"
-  input.tool == "runbooks_execute_approved"
-  nonempty(input.args, "incident_id")
-  nonempty(input.args, "runbook_version")
-  input.args.approval_state == "approved"
-  nonempty(input.args, "idempotency_key")
+  incident_mutations[input.tool]
+  nonempty(input.args, "issue_number")
+  nonempty(input.args, "body")
 }
 
 allow if {
@@ -149,10 +174,17 @@ allow if {
 allow if {
   base_authorized
   input.identity.role == "hermes-learning"
-  learning_mutations[input.tool]
-  input.args.destination == "human-review-queue"
-  nonempty(input.args, "expected_version")
-  nonempty(input.args, "idempotency_key")
+  input.tool == "add_issue_comment"
+  nonempty(input.args, "issue_number")
+  nonempty(input.args, "body")
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-learning"
+  input.tool == "create_issue"
+  nonempty(input.args, "title")
+  nonempty(input.args, "body")
 }
 
 decision := {

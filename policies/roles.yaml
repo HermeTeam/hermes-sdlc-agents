@@ -18,21 +18,11 @@ spec:
   roles:
     hermes-planner:
       allowTools:
-        - requirements_list
-        - requirements_get
-        - requirements_search
-        - repo_search_code
-        - repo_read_file
-        - repo_list_tree
-        - catalog_list_services
-        - catalog_get_service
-        - catalog_get_dependencies
-        - spec_get
-        - spec_create
-        - spec_update
-        - plan_get
-        - plan_create
-        - plan_update
+        - get_file_contents
+        - get_repository_tree
+        - search_code
+        - issue_read
+        - list_issues
       constraints:
         environments: [none]
         repositoryMode: read-only
@@ -42,22 +32,16 @@ spec:
 
     hermes-builder:
       allowTools:
-        - work_item_get
-        - spec_get
-        - plan_get
-        - repo_get_default_branch
-        - repo_read_file
-        - repo_list_tree
-        - repo_create_task_branch
-        - repo_apply_patch
-        - repo_commit_changes
-        - repo_create_change_request
-        - repo_update_change_request_description
-        - ci_trigger_pipeline
-        - ci_get_status
-        - ci_get_test_results
-        - quality_get_gates
-        - quality_get_findings
+        - get_file_contents
+        - get_repository_tree
+        - search_code
+        - create_branch
+        - push_files
+        - create_pull_request
+        - actions_run_trigger
+        - actions_get
+        - actions_list
+        - get_job_logs
       constraints:
         branchPrefix: agent/
         protectedBranches: [main, master, release/*]
@@ -69,22 +53,12 @@ spec:
 
     hermes-reviewer:
       allowTools:
-        - work_item_get
-        - spec_get
-        - plan_get
-        - repo_get_change_request
-        - repo_get_diff
-        - repo_get_file_at_revision
-        - ci_get_status
-        - ci_get_test_results
-        - quality_get_gates
-        - quality_get_findings
-        - quality_get_coverage_delta
-        - quality_get_mutation_score
-        - repo_add_review_comment
-        - repo_submit_review
-        - repo_request_changes
-        - repo_approve_change_request
+        - pull_request_read
+        - get_file_contents
+        - actions_get
+        - actions_list
+        - get_job_logs
+        - add_issue_comment
       constraints:
         repositoryMode: read-only
         authorBranchMutation: deny
@@ -94,20 +68,10 @@ spec:
 
     hermes-release:
       allowTools:
-        - release_get_candidate
-        - release_get_policy
-        - ci_get_status
-        - ci_get_test_results
-        - quality_get_gates
-        - observability_query_metric
-        - observability_get_slo
-        - deployment_get_status
-        - deployment_get_analysis
-        - deployment_promote
-        - deployment_abort
-        - deployment_get_audit_log
+        - actions_get
+        - actions_list
       constraints:
-        allowedMutations: [deployment_promote, deployment_abort]
+        allowedMutations: []
         requireImmutableCandidate: true
         requireExpectedRevision: true
         requirePolicyEvaluationId: true
@@ -118,23 +82,11 @@ spec:
 
     hermes-incident:
       allowTools:
-        - incident_get
-        - incident_update_timeline
-        - catalog_get_service
-        - catalog_get_dependencies
-        - observability_query_logs
-        - observability_query_traces
-        - observability_query_metric
-        - observability_get_alert
-        - observability_get_slo
-        - flags_get
-        - flags_disable
-        - runbooks_list_approved
-        - runbooks_get_approved
-        - runbooks_execute_approved
-        - runbooks_get_execution
+        - issue_read
+        - list_issues
+        - add_issue_comment
       constraints:
-        allowedMutations: [incident_update_timeline, flags_disable, runbooks_execute_approved]
+        allowedMutations: [add_issue_comment]
         featureFlagDirection: enabled-to-disabled-only
         requireIncidentId: true
         requireExpectedVersion: true
@@ -145,19 +97,13 @@ spec:
 
     hermes-learning:
       allowTools:
-        - learning_get_outcomes
-        - learning_get_failure_clusters
-        - learning_get_feedback
-        - docs_search
-        - docs_read
-        - skills_catalog_list
-        - skills_catalog_read
-        - proposal_get
-        - proposal_create
-        - proposal_update
-        - proposal_attach_diff
+        - issue_read
+        - list_issues
+        - add_issue_comment
+        - create_issue
       constraints:
         dataMode: aggregated-and-redacted
+        allowedMutations: [add_issue_comment, create_issue]
         directDocumentationMutation: deny
         skillActivation: deny
         skillPublication: deny

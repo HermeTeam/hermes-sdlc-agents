@@ -12,130 +12,171 @@ identity(role) := {
   "exp": 9999999999,
 }
 
+repo := {"owner": "test-project", "repo": "test-project", "default_branch": "main"}
+protected_paths := ["policies/", ".github/workflows/"]
+
+scoped_args(extra) := object.union({"owner": "test-project", "repo": "test-project"}, extra)
+
 test_planner_read_allowed if {
-    repository_mcp.allow with input as {
+  repository_mcp.allow with input as {
     "identity": identity("hermes-planner"),
-    "tool": "requirements_get",
-    "args": {"id": "REQ-1"},
+    "repository": repo,
+    "tool": "get_file_contents",
+    "args": scoped_args({"path": "README.md", "ref": "main"}),
   }
 }
 
-test_planner_deployment_denied if {
-    not repository_mcp.allow with input as {
+test_provider_tool_not_in_allowlist_denied if {
+  not repository_mcp.allow with input as {
     "identity": identity("hermes-planner"),
-    "tool": "deployment_promote",
-    "args": {},
+    "repository": repo,
+    "tool": "push_files",
+    "args": scoped_args({"branch": "agent/REQ-1-change", "files": []}),
   }
 }
 
-test_builder_task_branch_allowed if {
-    repository_mcp.allow with input as {
+test_wrong_repository_denied if {
+  not repository_mcp.allow with input as {
+    "identity": identity("hermes-planner"),
+    "repository": repo,
+    "tool": "get_file_contents",
+    "args": {"owner": "other", "repo": "test-project", "path": "README.md"},
+  }
+}
+
+test_builder_create_branch_allowed_for_agent_branch if {
+  repository_mcp.allow with input as {
     "identity": identity("hermes-builder"),
-    "tool": "repo_create_task_branch",
-    "args": {
-      "work_item_id": "REQ-1",
-      "repository_id": "service-a",
-      "task_branch": "agent/REQ-1-change",
-      "expected_base_sha": "sha-base",
-      "idempotency_key": "idem-1",
-    },
+    "repository": repo,
+    "tool": "create_branch",
+    "args": scoped_args({"branch": "agent/REQ-1-change", "sha": "sha-base"}),
   }
 }
 
-test_builder_apply_patch_allowed if {
-    repository_mcp.allow with input as {
+test_builder_create_branch_denied_for_main if {
+  not repository_mcp.allow with input as {
     "identity": identity("hermes-builder"),
-    "tool": "repo_apply_patch",
-    "args": {
-      "work_item_id": "REQ-1",
-      "repository_id": "service-a",
-      "task_branch": "agent/REQ-1-change",
-      "expected_base_sha": "sha-base",
-      "expected_head_sha": "sha-head",
-      "idempotency_key": "idem-1b",
-    },
+    "repository": repo,
+    "tool": "create_branch",
+    "args": scoped_args({"branch": "main", "sha": "sha-base"}),
   }
 }
 
-test_builder_main_denied if {
-    not repository_mcp.allow with input as {
+test_builder_push_files_allowed_for_agent_branch if {
+  repository_mcp.allow with input as {
     "identity": identity("hermes-builder"),
-    "tool": "repo_create_task_branch",
-    "args": {
-      "work_item_id": "REQ-1",
-      "repository_id": "service-a",
-      "task_branch": "main",
-      "expected_base_sha": "sha-base",
-      "idempotency_key": "idem-2",
-    },
+    "repository": repo,
+    "protected_paths": protected_paths,
+    "tool": "push_files",
+    "args": scoped_args({
+      "branch": "agent/REQ-1-change",
+      "message": "Implement REQ-1",
+      "files": [{"path": "src/service.py", "content": "print('ok')\n"}],
+    }),
   }
 }
 
-test_reviewer_write_requires_independence if {
-    not repository_mcp.allow with input as {
+test_builder_push_files_denied_for_main if {
+  not repository_mcp.allow with input as {
+    "identity": identity("hermes-builder"),
+    "repository": repo,
+    "protected_paths": protected_paths,
+    "tool": "push_files",
+    "args": scoped_args({
+      "branch": "main",
+      "message": "bad",
+      "files": [{"path": "src/service.py", "content": "bad\n"}],
+    }),
+  }
+}
+
+test_builder_push_files_denied_for_release_branch if {
+  not repository_mcp.allow with input as {
+    "identity": identity("hermes-builder"),
+    "repository": repo,
+    "protected_paths": protected_paths,
+    "tool": "push_files",
+    "args": scoped_args({
+      "branch": "release/1.0",
+      "message": "bad",
+      "files": [{"path": "src/service.py", "content": "bad\n"}],
+    }),
+  }
+}
+
+test_builder_push_files_denied_for_protected_path if {
+  not repository_mcp.allow with input as {
+    "identity": identity("hermes-builder"),
+    "repository": repo,
+    "protected_paths": protected_paths,
+    "tool": "push_files",
+    "args": scoped_args({
+      "branch": "agent/REQ-1-change",
+      "message": "bad",
+      "files": [{"path": ".github/workflows/ci.yml", "content": "bad\n"}],
+    }),
+  }
+}
+
+test_builder_create_pull_request_allowed_from_agent_to_protected_base if {
+  repository_mcp.allow with input as {
+    "identity": identity("hermes-builder"),
+    "repository": repo,
+    "tool": "create_pull_request",
+    "args": scoped_args({"head": "agent/REQ-1-change", "base": "main", "title": "REQ-1"}),
+  }
+}
+
+test_builder_create_pull_request_denied_from_main if {
+  not repository_mcp.allow with input as {
+    "identity": identity("hermes-builder"),
+    "repository": repo,
+    "tool": "create_pull_request",
+    "args": scoped_args({"head": "main", "base": "main", "title": "bad"}),
+  }
+}
+
+test_reviewer_comment_requires_independence if {
+  not repository_mcp.allow with input as {
     "identity": identity("hermes-reviewer"),
-    "tool": "repo_approve_change_request",
-    "args": {"idempotency_key": "idem-3", "independence_verified": false},
+    "repository": repo,
+    "tool": "add_issue_comment",
+    "args": scoped_args({"issue_number": 1, "body": "LGTM", "independence_verified": false}),
   }
 }
 
-test_release_promote_allowed_with_preconditions if {
-    repository_mcp.allow with input as {
-    "identity": identity("hermes-release"),
-    "tool": "deployment_promote",
-    "args": {
-      "candidate_id": "rc-1",
-      "expected_revision": "sha256:abc",
-      "stage": "canary-10",
-      "policy_evaluation_id": "eval-1",
-      "idempotency_key": "idem-4",
-    },
+test_reviewer_comment_allowed_with_independence if {
+  repository_mcp.allow with input as {
+    "identity": identity("hermes-reviewer"),
+    "repository": repo,
+    "tool": "add_issue_comment",
+    "args": scoped_args({"issue_number": 1, "body": "Finding", "independence_verified": true}),
   }
 }
 
-test_release_promote_missing_policy_denied if {
-    not repository_mcp.allow with input as {
-    "identity": identity("hermes-release"),
-    "tool": "deployment_promote",
-    "args": {
-      "candidate_id": "rc-1",
-      "expected_revision": "sha256:abc",
-      "stage": "canary-10",
-      "idempotency_key": "idem-5",
-    },
-  }
-}
-
-test_incident_flag_disable_allowed if {
-    repository_mcp.allow with input as {
-    "identity": identity("hermes-incident"),
-    "tool": "flags_disable",
-    "args": {
-      "incident_id": "INC-1",
-      "expected_version": "7",
-      "target_state": "disabled",
-      "idempotency_key": "idem-6",
-    },
-  }
-}
-
-test_incident_flag_enable_denied if {
+test_merge_tool_denied if {
   not repository_mcp.allow with input as {
-    "identity": identity("hermes-incident"),
-    "tool": "flags_disable",
-    "args": {
-      "incident_id": "INC-1",
-      "expected_version": "7",
-      "target_state": "enabled",
-      "idempotency_key": "idem-7",
-    },
+    "identity": identity("hermes-builder"),
+    "repository": repo,
+    "tool": "merge_pull_request",
+    "args": scoped_args({"pull_number": 1}),
   }
 }
 
-test_learning_activation_denied if {
-  not repository_mcp.allow with input as {
+test_incident_comment_allowed if {
+  repository_mcp.allow with input as {
+    "identity": identity("hermes-incident"),
+    "repository": repo,
+    "tool": "add_issue_comment",
+    "args": scoped_args({"issue_number": 2, "body": "Incident update"}),
+  }
+}
+
+test_learning_create_issue_allowed if {
+  repository_mcp.allow with input as {
     "identity": identity("hermes-learning"),
-    "tool": "skills_activate",
-    "args": {},
+    "repository": repo,
+    "tool": "create_issue",
+    "args": scoped_args({"title": "Learning proposal", "body": "Proposal details"}),
   }
 }

@@ -4,10 +4,10 @@
 
 ## Разрешённая зона
 
-- Читать work item, спецификацию, план, change request metadata, diff и файлы на конкретной revision.
-- Читать CI status, test results, coverage delta, mutation score и findings анализаторов.
+- Читать GitHub Issues/PR metadata, файлы на конкретной revision и GitHub Actions evidence.
+- Читать Pull Request как MVP-источник change request, если другой источник явно не настроен.
 - Читать и применять релевантные skills из локального профиля и общего read-only каталога.
-- Оставлять inline comments и итоговый review: approve либо request changes.
+- Оставлять GitHub issue/PR comments через native GitHub MCP. Formal approve/request changes зависит от наличия соответствующего tool в runtime `tools/list`.
 
 ## Запрещённая зона
 
@@ -40,4 +40,4 @@
 - `MINOR`: локальная поддерживаемость без изменения корректности.
 - `QUESTION`: недостаточно данных; не маскируй им blocker.
 
-Итог должен содержать решение `APPROVE` или `REQUEST_CHANGES`, список evidence и явное подтверждение `author branch not modified`, `merge not performed`.
+Итог должен содержать решение `APPROVE`, `REQUEST_CHANGES` или `BLOCKED_TOOL_UNAVAILABLE`, список evidence и явное подтверждение `author branch not modified`, `merge not performed`.

@@ -139,21 +139,11 @@ mcp_servers:
     supports_parallel_tool_calls: false
     tools:
       include:
-        - requirements_list
-        - requirements_get
-        - requirements_search
-        - repo_search_code
-        - repo_read_file
-        - repo_list_tree
-        - catalog_list_services
-        - catalog_get_service
-        - catalog_get_dependencies
-        - spec_get
-        - spec_create
-        - spec_update
-        - plan_get
-        - plan_create
-        - plan_update
+        - get_file_contents
+        - get_repository_tree
+        - search_code
+        - issue_read
+        - list_issues
       resources: false
       prompts: false
     sampling:

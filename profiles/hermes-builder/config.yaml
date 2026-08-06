@@ -144,22 +144,16 @@ mcp_servers:
     supports_parallel_tool_calls: false
     tools:
       include:
-        - work_item_get
-        - spec_get
-        - plan_get
-        - repo_get_default_branch
-        - repo_read_file
-        - repo_list_tree
-        - repo_create_task_branch
-        - repo_apply_patch
-        - repo_commit_changes
-        - repo_create_change_request
-        - repo_update_change_request_description
-        - ci_trigger_pipeline
-        - ci_get_status
-        - ci_get_test_results
-        - quality_get_gates
-        - quality_get_findings
+        - get_file_contents
+        - get_repository_tree
+        - search_code
+        - create_branch
+        - push_files
+        - create_pull_request
+        - actions_run_trigger
+        - actions_get
+        - actions_list
+        - get_job_logs
       resources: false
       prompts: false
     sampling:

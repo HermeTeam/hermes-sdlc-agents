@@ -1,19 +1,19 @@
 # Hermes SDLC Agents
 
-Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для прямой GitHub/GitLab API/MCP интеграции, bootstrap, structural validation и smoke tests.
+Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MVP на официальном GitHub MCP Server, bootstrap, structural validation и smoke tests.
 
 English version: [README.md](README.md).
 
 ## Главное архитектурное решение
 
-`SOUL.md` управляет поведением модели, но не является границей безопасности. `tools.include` уменьшает видимую поверхность provider MCP, однако окончательное решение обязаны повторно принимать GitHub/GitLab API permissions, provider MCP policy layer, branch protection и CI rules. Поэтому полномочия фиксируются сразу в нескольких независимых слоях:
+`SOUL.md` управляет поведением модели, но не является границей безопасности. `tools.include` уменьшает видимую поверхность official GitHub MCP, однако окончательное решение обязаны повторно принимать GitHub token scopes, branch protection, GitHub rulesets, CI rules и provider-side OPA layer. Поэтому полномочия фиксируются сразу в нескольких независимых слоях:
 
 1. Отдельный Hermes profile/state для каждой роли.
 2. Отдельный контейнер или Pod и отдельный входной API key.
-3. Отдельный короткоживущий Git provider MCP token для каждой роли.
-4. Exact allowlist GitHub/GitLab API/MCP tools в `config.yaml`.
+3. Отдельный GitHub credential, принимаемый official GitHub MCP Server, для каждой роли.
+4. Exact allowlist native GitHub MCP tools в `config.yaml`.
 5. Та же allowlist и argument constraints на сервере через OPA/эквивалент.
-6. Отдельные upstream provider identities/scopes для ролей.
+6. Отдельные upstream GitHub identities/scopes для ролей.
 7. Server-side branch protection, protected paths, approvals и immutable release candidates.
 8. Отсутствие Kubernetes service-account token у самих агентов.
 9. Общий каталог skills монтируется read-only и используется через `skills.external_dirs`; skill writes остаются gated human approval.
@@ -24,12 +24,12 @@ English version: [README.md](README.md).
 
 | Роль              | Разрешено                                                                                          | Жёстко исключено                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `hermes-planner`  | requirements/code/catalog/skills read; `spec` и `plan` create/update                               | code write, branch/change request, deployment, production, skill mutation                                             |
-| `hermes-builder`  | skills read, repository read, task branch, patch/change-set, CI/workspace evidence, change request | local checkout, broad GitHub/GitLab credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
-| `hermes-reviewer` | skills/change request/diff/tests/findings read; comments, approve/request changes                  | author-branch mutation, merge, production, skill mutation                                                             |
-| `hermes-release`  | skills/CI/quality/SLO read; promote или abort существующего candidate                              | arbitrary `kubectl`, code/config changes, direct traffic editing, skill mutation                                      |
-| `hermes-incident` | skills/telemetry read; flag disable; approved runbook execute                                      | flag enable/retarget, arbitrary infrastructure operations, code, skill mutation                                       |
-| `hermes-learning` | aggregated outcomes/docs/skills read; proposal/staged skill write                                  | independent activation/publication, direct docs/code/production write                                                 |
+| `hermes-planner`  | GitHub repository/file/tree/search и issue reads                                                    | code write, branch/PR creation, deployment, production, skill mutation                                                |
+| `hermes-builder`  | GitHub repository read, создание `agent/*` branch, `push_files`, PR creation, Actions evidence      | local checkout, broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation  |
+| `hermes-reviewer` | PR/file/Actions reads и issue/PR comments                                                           | author-branch mutation, merge, production, skill mutation                                                             |
+| `hermes-release`  | GitHub Actions read-only evidence для MVP                                                           | deployment mutation, пока native release/deployment tools не обнаружены и не ограничены                              |
+| `hermes-incident` | GitHub issue read/comment для MVP                                                                   | flags, runbooks, infrastructure operations, code, skill mutation                                                      |
+| `hermes-learning` | GitHub issue read/comment/create для human-reviewed improvement proposals                            | independent activation/publication, direct docs/code/production write                                                 |
 
 Точные разрешённые имена инструментов находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если списки разойдутся.
 
@@ -74,15 +74,15 @@ hermes-sdlc-agents/
 
 ## Repository API/MCP flow
 
-Репозитории не монтируются в agent containers. В MVP Hermes agents напрямую подключаются к role-scoped GitHub/GitLab API/MCP endpoint `GIT_PROVIDER_MCP_URL`. Hermes видит только узкие allowlisted repository tools: read/tree/search, task branch, patch/commit, change request, review comments и CI evidence.
+Репозитории не монтируются в agent containers. В GitHub MVP Hermes agents напрямую подключаются к official GitHub MCP endpoint `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/`. Hermes видит только узкие allowlisted native GitHub MCP tools, подтверждённые runtime `tools/list`.
 
 Для builder это означает:
 
 - нет `REPO_DIR` и `/workspace/repo`;
-- нет broad GitHub/GitLab token в контейнере агента; используется только короткоживущий role-scoped provider MCP token;
-- изменения передаются как bounded patch/change-set через `repo_apply_patch`/`repo_commit_changes`;
+- нет broad GitHub token в контейнере агента; используется только role-specific `GIT_PROVIDER_MCP_TOKEN`, принимаемый official GitHub MCP Server;
+- изменения передаются через native GitHub MCP tools, например `create_branch`, `push_files` и `create_pull_request`;
 - task branch всегда имеет prefix `agent/<work-item-id>-`;
-- Pull Request и GitLab Merge Request представлены в workflow как `change_request`;
+- GitHub Pull Requests являются MVP-механизмом change request;
 - `PR_READY_FOR_REVIEW` допустим только после CI/workspace evidence.
 
 Если для проекта нужны локальные проверки до открытия change request, запускайте их в отдельном ephemeral workspace worker или trusted CI с теми же repository scopes. Worker может клонировать репозиторий, применить patch, выполнить allowlisted checks и push-нуть task branch через role-scoped credentials, но Hermes получает только typed status/evidence.
@@ -94,7 +94,7 @@ hermes-sdlc-agents/
 
 ## Быстрый запуск через Docker Compose
 
-Требования: Docker Engine с Compose v2, OpenAI-совместимый LLM gateway и Streamable HTTP GitHub/GitLab API/MCP endpoint по контракту из `docs/GIT_PROVIDER_INTEGRATION.md`. Compose предназначен для локального/single-host запуска; production egress ограничьте firewall/egress proxy или используйте Kubernetes NetworkPolicy из bundle.
+Требования: Docker Engine с Compose v2, OpenAI-совместимый LLM gateway и GitHub credentials, принимаемые official GitHub MCP Server. Compose предназначен для локального/single-host запуска; production egress ограничьте firewall/egress proxy или используйте Kubernetes NetworkPolicy из bundle.
 
 ```bash
 cd hermes-sdlc-agents
@@ -104,9 +104,9 @@ scripts/bootstrap.sh
 Затем:
 
 1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
-2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и задайте `GIT_PROVIDER_MCP_URL` для прямого GitHub/GitLab API/MCP endpoint.
+2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` для GitHub MVP.
 3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`.
-4. Выпустите шесть разных `GIT_PROVIDER_MCP_TOKEN`; один token нельзя использовать для двух ролей.
+4. Выпустите шесть разных GitHub `GIT_PROVIDER_MCP_TOKEN`; один token нельзя использовать для двух ролей.
 5. Проверьте конфигурацию:
 
 ```bash
@@ -169,27 +169,27 @@ Compose и Kubernetes устанавливают `HERMES_MANAGED_DIR=/etc/hermes
 
 ## Необходимый open-source control plane
 
-В MVP отдельный repository gateway не используется. Hermes roles подключаются напрямую к GitHub/GitLab API/MCP, а остальной control plane остаётся отдельными narrow integrations:
+В GitHub MVP отдельный repository gateway не используется. Hermes roles подключаются напрямую к official GitHub MCP Server. GitLab support является future work и требует отдельного tool mapping. Возможности вне GitHub repository, issue, PR и Actions tools остаются отдельными integrations или blocked для MVP:
 
-- GitHub или GitLab для repository/change request/review и branch protection через прямой provider API/MCP endpoint;
+- GitHub для repository/Pull Request/review и branch protection через official GitHub MCP endpoint;
 - OpenProject для work items/requirements;
 - Backstage Catalog для сервисов, владельцев и зависимостей;
 - Woodpecker CI, Tekton или Jenkins для CI evidence;
 - Semgrep, Gitleaks, Trivy, OSV-Scanner, OpenSSF Scorecard, SonarQube Community Build и mutation tools для quality findings;
 - Argo CD + Argo Rollouts для immutable candidate status, promote и abort;
 - Prometheus, Loki, Tempo и OpenTelemetry для bounded telemetry queries;
-- Unleash для one-way `flags_disable`;
-- AWX или Rundeck Community для approved, versioned runbooks;
+- Unleash для feature flags через отдельную future integration, не через GitHub MCP allowlist;
+- AWX или Rundeck Community для approved, versioned runbooks через отдельную future integration;
 - OPA для authorisation и argument-level policy;
 - OpenBao/SOPS/External Secrets Operator для выдачи и ротации секретов.
 
-Не выдавайте Hermes broad GitHub/GitLab token, Kubernetes kubeconfig, Argo admin token, cloud credential или shell на runner. В MVP допустим только короткоживущий role-scoped provider token, ограниченный allowlisted repository operations.
+Не выдавайте Hermes broad GitHub token, Kubernetes kubeconfig, Argo admin token, cloud credential или shell на runner. В MVP допустим только role-specific GitHub credential, ограниченный allowlisted repository operations.
 
 ## Перед включением автоматики
 
 - Проведите negative canary для каждой роли: попросите planner изменить код, builder merge-нуть main, release выполнить `kubectl`, incident включить flag, learning активировать skill. Каждый запрос должен завершиться без изменяющей операции.
 - Проверьте denial не только по ответу модели, но и по audit log provider MCP/upstream.
-- Убедитесь, что `hermes-builder` не может изменить файл из `policies/protected-paths.txt` через `repo_apply_patch`/`repo_commit_changes` без отдельного server-side CI gate и human approval.
+- Убедитесь, что `hermes-builder` не может изменить файл из `policies/protected-paths.txt` через `push_files` без отдельного server-side CI gate и human approval.
 - Убедитесь, что tokens имеют разные `sub`, `role`, `jti`, TTL ≤ 1 час и аудит связывает tool call с Hermes run/session/work item.
 - Зафиксируйте image digest; `latest` оставлен только как удобное значение для первого локального запуска.
 
