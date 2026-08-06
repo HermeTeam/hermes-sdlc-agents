@@ -132,6 +132,12 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | -------------------------------- | -------------------------------------------------------------- |
 | `OPENAI_API_KEY`                 | общий LLM/OpenRouter token, передаётся всем Hermes containers  |
 | `GIT_PROVIDER_MCP_URL`           | official GitHub MCP endpoint, `https://api.githubcopilot.com/mcp/` |
+| `PLANNER_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-planner`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `BUILDER_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-builder`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `REVIEWER_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-reviewer`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `RELEASE_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-release`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `INCIDENT_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-incident`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `LEARNING_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-learning`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `REPOSITORY_ID`                  | стабильный repository ID для provider API/MCP calls            |
 | `REPOSITORY_PROVIDER`            | provider, сейчас `github`                                      |
 | `REPOSITORY_ACCESS_MODE`         | режим доступа, сейчас `github-direct-api-mcp`                  |
@@ -151,8 +157,7 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | ----------------------- | ------------------------------------------------- |
 | `HERMES_MODEL_ID`       | model ID в разрешённом gateway catalog            |
 | `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
-| `GIT_PROVIDER_MCP_TOKEN` | role-specific GitHub credential accepted by official GitHub MCP |
 | `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
 | `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
 
-Не добавляйте `OPENAI_API_KEY`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в role env-файлы. `OPENAI_API_KEY` берётся из `.env` и передаётся контейнерам через общий Compose environment. `GIT_PROVIDER_MCP_TOKEN` допускается в role env-файлах только как GitHub credential с минимальными scopes конкретной роли. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Не добавляйте `OPENAI_API_KEY`, `GIT_PROVIDER_MCP_TOKEN`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в role env-файлы. `OPENAI_API_KEY` и role-specific `*_GITHUB_MCP_TOKEN` берутся из `.env` и передаются контейнерам через Compose environment. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

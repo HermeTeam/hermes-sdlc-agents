@@ -36,6 +36,14 @@ expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
 legacy_facade_tool_prefixes = ("repo_", "ci_", "quality_", "work_item_", "spec_", "plan_")
 github_mcp_url = "https://api.githubcopilot.com/mcp/"
+role_github_token_vars = {
+    "hermes-planner": "PLANNER_GITHUB_MCP_TOKEN",
+    "hermes-builder": "BUILDER_GITHUB_MCP_TOKEN",
+    "hermes-reviewer": "REVIEWER_GITHUB_MCP_TOKEN",
+    "hermes-release": "RELEASE_GITHUB_MCP_TOKEN",
+    "hermes-incident": "INCIDENT_GITHUB_MCP_TOKEN",
+    "hermes-learning": "LEARNING_GITHUB_MCP_TOKEN",
+}
 required_dotenv_keys = {
     "OPENAI_API_KEY",
     "GIT_PROVIDER_MCP_URL",
@@ -51,7 +59,7 @@ required_dotenv_keys = {
     "GITHUB_REPOSITORY_FULL_NAME",
     "GITHUB_REPOSITORY_HTML_URL",
     "GITHUB_REPOSITORY_API_URL",
-}
+} | set(role_github_token_vars.values())
 
 errors = []
 if set(policy_roles) != expected_roles:
@@ -78,6 +86,8 @@ if dotenv_values.get("REPOSITORY_PROVIDER") == "github" and dotenv_values.get("G
     errors.append(f".env.example: GIT_PROVIDER_MCP_URL must be {github_mcp_url} for GitHub MVP")
 if dotenv_values.get("GITHUB_REPOSITORY_FULL_NAME") != "test-project/test-project":
     errors.append(".env.example: GITHUB_REPOSITORY_FULL_NAME must be test-project/test-project")
+if "GIT_PROVIDER_MCP_TOKEN" in dotenv_values:
+    errors.append(".env.example: use role-specific *_GITHUB_MCP_TOKEN keys, not generic GIT_PROVIDER_MCP_TOKEN")
 if (root / ".env").is_file():
     runtime_dotenv_values = parse_dotenv(root / ".env")
     missing_runtime_dotenv_keys = sorted(required_dotenv_keys - set(runtime_dotenv_values))
@@ -87,6 +97,8 @@ if (root / ".env").is_file():
         errors.append(".env: REPOSITORY_CLONE_ALLOWED must be false")
     if runtime_dotenv_values.get("REPOSITORY_PROVIDER") == "github" and runtime_dotenv_values.get("GIT_PROVIDER_MCP_URL") != github_mcp_url:
         errors.append(f".env: GIT_PROVIDER_MCP_URL must be {github_mcp_url} for GitHub MVP")
+    if "GIT_PROVIDER_MCP_TOKEN" in runtime_dotenv_values:
+        errors.append(".env: use role-specific *_GITHUB_MCP_TOKEN keys, not generic GIT_PROVIDER_MCP_TOKEN")
 
 for role in sorted(expected_roles):
     profile_dir = root / "profiles" / role
@@ -160,8 +172,12 @@ for role in sorted(expected_roles):
             errors.append("hermes-learning: activation/publication tool exposed")
 
     for secret_template in [root / "secrets" / f"{role}.env.example", root / "secrets" / f"{role}.env"]:
-        if secret_template.is_file() and "OPENAI_API_KEY" in secret_template.read_text(encoding="utf-8"):
-            errors.append(f"{secret_template.relative_to(root)}: OPENAI_API_KEY must be supplied from .env, not role secrets")
+        if secret_template.is_file():
+            secret_text = secret_template.read_text(encoding="utf-8")
+            if "OPENAI_API_KEY" in secret_text:
+                errors.append(f"{secret_template.relative_to(root)}: OPENAI_API_KEY must be supplied from .env, not role secrets")
+            if "GIT_PROVIDER_MCP_TOKEN" in secret_text:
+                errors.append(f"{secret_template.relative_to(root)}: GIT_PROVIDER_MCP_TOKEN must be supplied from role-specific .env token, not role secrets")
 
     workload_path = root / "kubernetes" / f"{role}.yaml"
     workload_docs = [doc for doc in yaml.safe_load_all(workload_path.read_text(encoding="utf-8")) if doc]
@@ -219,6 +235,9 @@ for role, service in compose.get("services", {}).items():
     service_environment = service.get("environment", {})
     if "GITHUB_PROVIDER_TOKEN" in service_environment:
         errors.append(f"{role}: legacy GitHub adapter token must not be passed to Hermes agents")
+    expected_token_expr = f"${{{role_github_token_vars[role]}:?Set {role_github_token_vars[role]} in .env}}"
+    if service_environment.get("GIT_PROVIDER_MCP_TOKEN") != expected_token_expr:
+        errors.append(f"{role}: GIT_PROVIDER_MCP_TOKEN must be mapped from {role_github_token_vars[role]}")
     if role != "hermes-builder" and any("/workspace/repo" in str(v) for v in service.get("volumes", [])):
         errors.append(f"{role}: repository mount must be absent")
     if role == "hermes-builder":

@@ -79,7 +79,7 @@ hermes-sdlc-agents/
 Для builder это означает:
 
 - нет `REPO_DIR` и `/workspace/repo`;
-- нет broad GitHub token в контейнере агента; используется только role-specific `GIT_PROVIDER_MCP_TOKEN`, принимаемый official GitHub MCP Server;
+- нет broad GitHub token в контейнере агента; Compose маппит role-specific token из `.env`, например `BUILDER_GITHUB_MCP_TOKEN`, во внутренний `GIT_PROVIDER_MCP_TOKEN` контейнера;
 - изменения передаются через native GitHub MCP tools, например `create_branch`, `push_files` и `create_pull_request`;
 - task branch всегда имеет prefix `agent/<work-item-id>-`;
 - GitHub Pull Requests являются MVP-механизмом change request;
@@ -106,7 +106,7 @@ scripts/bootstrap.sh
 1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
 2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` для GitHub MVP.
 3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`.
-4. Выпустите шесть разных GitHub `GIT_PROVIDER_MCP_TOKEN`; один token нельзя использовать для двух ролей.
+4. Задайте шесть разных GitHub MCP tokens в основном `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
 5. Проверьте конфигурацию:
 
 ```bash

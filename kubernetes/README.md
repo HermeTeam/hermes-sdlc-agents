@@ -4,7 +4,7 @@
 
 ## 1. Подготовьте namespace и secrets
 
-Создайте реальные env-файлы через `scripts/bootstrap.sh`, затем замените все `CHANGE_ME`. Repository clone Secret для builder больше не нужен: Hermes Pod использует только короткоживущий role-scoped `GIT_PROVIDER_MCP_TOKEN` для прямого GitHub/GitLab API/MCP endpoint.
+Создайте реальные env-файлы через `scripts/bootstrap.sh`, затем замените все `CHANGE_ME`. Repository clone Secret для builder больше не нужен. В Docker Compose role-specific tokens находятся в основном `.env` как `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN` и т.д.; для Kubernetes перенесите соответствующее значение в secret key `GIT_PROVIDER_MCP_TOKEN` каждого `hermes-<role>-env` или подключите External Secrets с таким mapping.
 
 Создайте Secrets:
 

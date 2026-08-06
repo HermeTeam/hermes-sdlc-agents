@@ -12,7 +12,7 @@ GitLab support is out of scope for this MVP and requires a separate tool mapping
 
 ## Identity And Tokens
 
-`GIT_PROVIDER_MCP_TOKEN` must be a GitHub credential accepted by the official GitHub MCP Server, such as a fine-grained PAT or GitHub App installation token scoped to the target repository. An arbitrary internal workload JWT will not work unless an intermediate proxy translates it into a GitHub credential.
+Each role token in the main `.env` must be a GitHub credential accepted by the official GitHub MCP Server, such as a fine-grained PAT or GitHub App installation token scoped to the target repository. Compose maps `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN` into container-local `GIT_PROVIDER_MCP_TOKEN` for the matching agent. An arbitrary internal workload JWT will not work unless an intermediate proxy translates it into a GitHub credential.
 
 Recommended minimum fine-grained GitHub permissions:
 

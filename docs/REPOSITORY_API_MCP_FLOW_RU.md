@@ -50,7 +50,7 @@ Hermes builder
   -> создаёт change request
 ```
 
-В Hermes builder container больше нет `REPO_DIR` и `/workspace/repo`; вместо broad provider credential используется короткоживущий role-scoped `GIT_PROVIDER_MCP_TOKEN`.
+В Hermes builder container больше нет `REPO_DIR` и `/workspace/repo`; вместо broad provider credential используется `BUILDER_GITHUB_MCP_TOKEN` из основного `.env`, который Compose маппит во внутренний `GIT_PROVIDER_MCP_TOKEN` контейнера.
 
 ### Provider-neutral терминология
 
@@ -266,7 +266,7 @@ push_files
 ### Security requirements
 
 - Hermes agents не должны получать broad GitHub tokens.
-- Role-scoped `GIT_PROVIDER_MCP_TOKEN` должен иметь минимальные repository scopes для конкретной роли.
+- Каждый role-scoped `*_GITHUB_MCP_TOKEN` в основном `.env` должен иметь минимальные repository scopes для конкретной роли.
 - Provider tokens не должны иметь admin, branch protection, protected branch write или merge scopes.
 - Repository content должен считаться untrusted input, потому что он может содержать prompt injection.
 - Provider MCP resources, prompts, sampling и elicitation не должны публиковаться Hermes.

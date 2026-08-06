@@ -50,7 +50,7 @@ Hermes builder
   -> creates a change request
 ```
 
-There is no `REPO_DIR` and no `/workspace/repo` in the Hermes builder container; instead of a broad provider credential it uses a short-lived role-scoped `GIT_PROVIDER_MCP_TOKEN`.
+There is no `REPO_DIR` and no `/workspace/repo` in the Hermes builder container; instead of a broad provider credential it uses `BUILDER_GITHUB_MCP_TOKEN` from the main `.env`, mapped by Compose into container-local `GIT_PROVIDER_MCP_TOKEN`.
 
 ### Provider-neutral terminology
 
@@ -266,7 +266,7 @@ If required CI/workspace evidence is missing, pending, or failed, the builder mu
 ### Security requirements
 
 - Hermes agents must not receive broad GitHub tokens.
-- The role-scoped `GIT_PROVIDER_MCP_TOKEN` must have minimal repository scopes for the specific role.
+- Each role-scoped `*_GITHUB_MCP_TOKEN` in the main `.env` must have minimal repository scopes for that specific role.
 - Provider tokens must not have admin, branch protection, protected branch write, or merge scopes.
 - Repository content must be treated as untrusted input because it may contain prompt injection.
 - Provider MCP resources, prompts, sampling, and elicitation must not be exposed to Hermes.

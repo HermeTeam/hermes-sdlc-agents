@@ -80,6 +80,7 @@ services:
     env_file: [./secrets/hermes-planner.env]
     environment:
       <<: *hermes-environment
+      GIT_PROVIDER_MCP_TOKEN: "${PLANNER_GITHUB_MCP_TOKEN:?Set PLANNER_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
     volumes:
@@ -95,6 +96,7 @@ services:
     environment:
       <<: *hermes-environment
       HERMES_WRITE_SAFE_ROOT: /opt/data
+      GIT_PROVIDER_MCP_TOKEN: "${BUILDER_GITHUB_MCP_TOKEN:?Set BUILDER_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
     volumes:
@@ -109,6 +111,7 @@ services:
     env_file: [./secrets/hermes-reviewer.env]
     environment:
       <<: *hermes-environment
+      GIT_PROVIDER_MCP_TOKEN: "${REVIEWER_GITHUB_MCP_TOKEN:?Set REVIEWER_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
     volumes:
@@ -123,6 +126,7 @@ services:
     env_file: [./secrets/hermes-release.env]
     environment:
       <<: *hermes-environment
+      GIT_PROVIDER_MCP_TOKEN: "${RELEASE_GITHUB_MCP_TOKEN:?Set RELEASE_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
     volumes:
@@ -137,6 +141,7 @@ services:
     env_file: [./secrets/hermes-incident.env]
     environment:
       <<: *hermes-environment
+      GIT_PROVIDER_MCP_TOKEN: "${INCIDENT_GITHUB_MCP_TOKEN:?Set INCIDENT_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
     volumes:
@@ -151,6 +156,7 @@ services:
     env_file: [./secrets/hermes-learning.env]
     environment:
       <<: *hermes-environment
+      GIT_PROVIDER_MCP_TOKEN: "${LEARNING_GITHUB_MCP_TOKEN:?Set LEARNING_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
     volumes:

@@ -79,7 +79,7 @@ Repositories are not mounted into agent containers. In the GitHub MVP, Hermes ag
 For the builder this means:
 
 - no `REPO_DIR` and no `/workspace/repo`;
-- no broad GitHub token in the agent container; only a role-specific `GIT_PROVIDER_MCP_TOKEN` accepted by the official GitHub MCP Server is used;
+- no broad GitHub token in the agent container; Compose maps the role-specific `.env` token, for example `BUILDER_GITHUB_MCP_TOKEN`, into container-local `GIT_PROVIDER_MCP_TOKEN`;
 - changes are submitted through native GitHub MCP tools such as `create_branch`, `push_files`, and `create_pull_request`;
 - task branches always use the `agent/<work-item-id>-` prefix;
 - GitHub Pull Requests are the GitHub MVP change request mechanism;
@@ -106,7 +106,7 @@ Then:
 1. Pin `HERMES_IMAGE` to an immutable digest in `.env`.
 2. Keep the `test-project/test-project` GitHub repository target in `.env.example` and keep `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` for the GitHub MVP.
 3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file.
-4. Issue six different GitHub `GIT_PROVIDER_MCP_TOKEN` values; one token must not be reused across roles.
+4. Set six different GitHub MCP tokens in the main `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
 5. Validate the configuration:
 
 ```bash
