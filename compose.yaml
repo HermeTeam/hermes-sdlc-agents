@@ -34,6 +34,8 @@ x-hermes-common: &hermes-common
   cap_drop: [ALL]
   cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
   pids_limit: 512
+  cpus: "2.0"
+  mem_limit: 4g
   stop_grace_period: 45s
   extra_hosts:
     - host.docker.internal:host-gateway
@@ -45,12 +47,6 @@ x-hermes-common: &hermes-common
     timeout: 5s
     retries: 5
     start_period: 45s
-  deploy:
-    resources:
-      limits:
-        cpus: "2.0"
-        memory: 4G
-
 services:
   skills-superset-sync:
     image: alpine/git:2.49.1
@@ -64,13 +60,13 @@ services:
       - -ec
       - |
         tmp_dir="$(mktemp -d)"
-        trap 'rm -rf "${tmp_dir}"' EXIT
-        git clone --depth=1 --filter=blob:none --sparse "${SKILLS_SUPERSET_REPO_URL}" "${tmp_dir}/repo"
-        git -C "${tmp_dir}/repo" checkout "${SKILLS_SUPERSET_REF}"
-        git -C "${tmp_dir}/repo" sparse-checkout set skills
+        trap 'rm -rf "$${tmp_dir}"' EXIT
+        git clone --depth=1 --filter=blob:none --sparse "$${SKILLS_SUPERSET_REPO_URL}" "$${tmp_dir}/repo"
+        git -C "$${tmp_dir}/repo" checkout "$${SKILLS_SUPERSET_REF}"
+        git -C "$${tmp_dir}/repo" sparse-checkout set skills
         rm -rf /shared/.next /shared/current
         mkdir -p /shared/.next
-        cp -a "${tmp_dir}/repo/skills/." /shared/.next/
+        cp -a "$${tmp_dir}/repo/skills/." /shared/.next/
         mv /shared/.next /shared/current
     networks:
       - hermes-control
