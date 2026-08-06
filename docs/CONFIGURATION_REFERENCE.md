@@ -11,7 +11,7 @@ model:
   base_url: "${HERMES_MODEL_BASE_URL}"
 ```
 
-Credential берётся из `OPENAI_API_KEY`. Рекомендуется LLM proxy token с model allowlist, quota и отдельным subject для каждой роли.
+Credential берётся из общего `OPENAI_API_KEY` в `.env` и прокидывается в контейнеры через `compose.yaml`. Рекомендуется LLM proxy/OpenRouter token с model allowlist и quota. Если нужны отдельные ключи per role, это должно быть сделано отдельным orchestration profile, а не дублированием в `secrets/hermes-*.env`.
 
 Общие safety settings:
 
@@ -121,6 +121,7 @@ Docker Compose обновляет каталог сервисом `skills-supers
 
 | Variable                         | Назначение                                                     |
 | -------------------------------- | -------------------------------------------------------------- |
+| `OPENAI_API_KEY`                 | общий LLM/OpenRouter token, передаётся всем Hermes containers  |
 | `SDLC_MCP_URL`                   | Streamable HTTP MCP endpoint                                   |
 | `SDLC_REPOSITORY_ID`             | стабильный repository ID для SDLC MCP calls                    |
 | `SDLC_REPOSITORY_PROVIDER`       | provider, сейчас `github`                                      |
@@ -142,9 +143,8 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | ----------------------- | ------------------------------------------------- |
 | `HERMES_MODEL_ID`       | model ID в разрешённом gateway catalog            |
 | `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
-| `OPENAI_API_KEY`        | role-scoped LLM token                             |
 | `SDLC_MCP_TOKEN`        | short-lived role identity                         |
 | `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
 | `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
 
-Не добавляйте `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens или admin PAT в role env-файлы. `GITHUB_PROVIDER_TOKEN` допускается только в `.env` для SDLC MCP repository adapter и не должен попадать в `compose.yaml` service environment. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Не добавляйте `OPENAI_API_KEY`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens или admin PAT в role env-файлы. `OPENAI_API_KEY` берётся из `.env` и передаётся контейнерам через общий Compose environment. `GITHUB_PROVIDER_TOKEN` допускается только в `.env` для SDLC MCP repository adapter и не должен попадать в `compose.yaml` service environment. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

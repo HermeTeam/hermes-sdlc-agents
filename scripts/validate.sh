@@ -35,6 +35,7 @@ expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
 expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills/current"]
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
 required_dotenv_keys = {
+    "OPENAI_API_KEY",
     "SDLC_MCP_URL",
     "SDLC_REPOSITORY_ID",
     "SDLC_REPOSITORY_PROVIDER",
@@ -145,6 +146,10 @@ for role in sorted(expected_roles):
             errors.append("hermes-learning: every skill write must require approval")
         if any("activate" in tool or "publish" in tool or "install" in tool for tool in included):
             errors.append("hermes-learning: activation/publication tool exposed")
+
+    for secret_template in [root / "secrets" / f"{role}.env.example", root / "secrets" / f"{role}.env"]:
+        if secret_template.is_file() and "OPENAI_API_KEY" in secret_template.read_text(encoding="utf-8"):
+            errors.append(f"{secret_template.relative_to(root)}: OPENAI_API_KEY must be supplied from .env, not role secrets")
 
     workload_path = root / "kubernetes" / f"{role}.yaml"
     workload_docs = [doc for doc in yaml.safe_load_all(workload_path.read_text(encoding="utf-8")) if doc]
