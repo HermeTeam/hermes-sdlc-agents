@@ -75,7 +75,7 @@ spec:
               kubernetes.io/metadata.name: platform
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: sdlc-mcp
+              app.kubernetes.io/name: git-provider-mcp
       ports:
         - protocol: TCP
           port: 8080

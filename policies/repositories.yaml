@@ -4,11 +4,11 @@ metadata:
   name: hermes-sdlc-repositories
 spec:
   repositories:
-    - id: "${SDLC_REPOSITORY_ID}"
-      provider: "${SDLC_REPOSITORY_PROVIDER}"
-      accessMode: "${SDLC_REPOSITORY_ACCESS_MODE}"
-      defaultBranch: "${SDLC_REPOSITORY_DEFAULT_BRANCH}"
-      cloneAllowed: "${SDLC_REPOSITORY_CLONE_ALLOWED}"
+    - id: "${REPOSITORY_ID}"
+      provider: "${REPOSITORY_PROVIDER}"
+      accessMode: "${REPOSITORY_ACCESS_MODE}"
+      defaultBranch: "${REPOSITORY_DEFAULT_BRANCH}"
+      cloneAllowed: "${REPOSITORY_CLONE_ALLOWED}"
       github:
         apiBaseUrl: "${GITHUB_API_BASE_URL}"
         webBaseUrl: "${GITHUB_WEB_BASE_URL}"
@@ -17,8 +17,8 @@ spec:
         fullName: "${GITHUB_REPOSITORY_FULL_NAME}"
         htmlUrl: "${GITHUB_REPOSITORY_HTML_URL}"
         apiUrl: "${GITHUB_REPOSITORY_API_URL}"
-        tokenEnv: GITHUB_PROVIDER_TOKEN
+        tokenEnv: GIT_PROVIDER_MCP_TOKEN
       policy:
         branchPrefix: agent/
         protectedPathsFile: policies/protected-paths.txt
-        exposeProviderToolsToHermes: false
+        exposeProviderToolsToHermes: true

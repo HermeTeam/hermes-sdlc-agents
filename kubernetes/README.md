@@ -4,7 +4,7 @@
 
 ## 1. Подготовьте namespace и secrets
 
-Создайте реальные env-файлы через `scripts/bootstrap.sh`, затем замените все `CHANGE_ME`. Repository clone Secret для builder больше не нужен: GitHub/GitLab/Forgejo credentials должны находиться только у SDLC MCP repository adapter или ephemeral workspace worker, а не у Hermes Pod.
+Создайте реальные env-файлы через `scripts/bootstrap.sh`, затем замените все `CHANGE_ME`. Repository clone Secret для builder больше не нужен: Hermes Pod использует только короткоживущий role-scoped `GIT_PROVIDER_MCP_TOKEN` для прямого GitHub/GitLab API/MCP endpoint.
 
 Создайте Secrets:
 
@@ -28,9 +28,9 @@ done
 По умолчанию egress разрешён только DNS и Pods в namespace `platform` с labels:
 
 - `app.kubernetes.io/name=llm-gateway` на TCP 4000/443;
-- `app.kubernetes.io/name=sdlc-mcp` на TCP 8080/443.
+- `app.kubernetes.io/name=git-provider-mcp` на TCP 8080/443.
 
-Hermes Pods не требуют прямой egress к GitHub/GitLab/Forgejo. Такой egress должен быть только у SDLC MCP repository adapter или workspace worker. Прямой доступ к публичным package registries по умолчанию закрыт.
+Hermes Pods в MVP требуют egress к GitHub/GitLab provider API/MCP endpoint. Прямой доступ к публичным package registries по умолчанию закрыт.
 
 Ingress к Hermes API разрешён только из namespace с label `hermes-sdlc-client=true`. Адаптируйте policy до deploy, если gateways внешние или используют другие ports/labels.
 
@@ -46,7 +46,7 @@ kubectl apply --server-side -f /tmp/hermes-sdlc.rendered.yaml
 kubectl -n hermes-sdlc rollout status deployment --all --timeout=10m
 ```
 
-Каждый Deployment использует `strategy: Recreate`, отдельный PVC и `automountServiceAccountToken: false`. У самих Hermes Pods нет Kubernetes RBAC. Release/incident mutations выполняются только MCP adapters, которые разворачиваются отдельно со своими узкими service accounts.
+Каждый Deployment использует `strategy: Recreate`, отдельный PVC и `automountServiceAccountToken: false`. У самих Hermes Pods нет Kubernetes RBAC. Release/incident mutations выполняются только отдельными узкими integrations со своими service accounts.
 
 ## 5. Verify
 
@@ -56,4 +56,4 @@ kubectl -n hermes-sdlc port-forward svc/hermes-planner 18642:8642
 curl --fail http://127.0.0.1:18642/health
 ```
 
-После liveness проведите authenticated positive/negative canaries из основного README и проверьте MCP/upstream audit.
+После liveness проведите authenticated positive/negative canaries из основного README и проверьте provider MCP/upstream audit.

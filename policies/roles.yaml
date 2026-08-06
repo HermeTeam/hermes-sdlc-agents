@@ -4,7 +4,7 @@ metadata:
   name: hermes-sdlc-roles
 spec:
   authentication:
-    audience: sdlc-mcp
+    audience: git-provider-mcp
     roleClaim: role
     subjectClaim: sub
     requiredClaims: [iss, sub, aud, role, exp, jti]

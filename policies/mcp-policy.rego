@@ -1,4 +1,4 @@
-package hermes.sdlc.mcp
+package hermes.sdlc.repository_mcp
 
 import rego.v1
 
@@ -6,7 +6,7 @@ default allow := false
 
 base_authorized if {
   input.identity.active == true
-  input.identity.aud == "sdlc-mcp"
+  input.identity.aud == "git-provider-mcp"
   time.now_ns() < input.identity.exp * 1000000000
   input.tool in data.spec.roles[input.identity.role].allowTools
 }

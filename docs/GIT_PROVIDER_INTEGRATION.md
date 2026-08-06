@@ -1,19 +1,19 @@
-# Контракт SDLC MCP gateway
+# Контракт прямой GitHub/GitLab API/MCP интеграции
 
-Hermes подключается к одному Streamable HTTP MCP endpoint `SDLC_MCP_URL`, но получает разные bearer tokens. Gateway обязан авторизовать каждый tool call по token claims и аргументам. Клиентский `tools.include` — дополнительный фильтр, а не источник истины.
+Hermes в MVP подключается напрямую к role-scoped GitHub/GitLab API/MCP endpoint `GIT_PROVIDER_MCP_URL`. Клиентский `tools.include` остаётся дополнительным фильтром, но итоговый запрет должен выполняться на стороне provider MCP/API policy layer, GitHub/GitLab permissions, branch protection и CI rules.
 
 ## Требования к identity
 
-JWT или эквивалентный signed workload token содержит:
+Role token `GIT_PROVIDER_MCP_TOKEN` должен быть короткоживущим и минимальным по scope. JWT или эквивалентный workload token содержит:
 
 - `iss`: доверенный workload issuer;
-- `sub`: уникальный экземпляр агента, например `prod/hermes-release-7c9d`;
-- `aud`: строго `sdlc-mcp`;
+- `sub`: уникальный экземпляр агента, например `prod/hermes-builder-7c9d`;
+- `aud`: строго `git-provider-mcp`;
 - `role`: одно значение из `policies/roles.yaml`;
 - `exp`, `iat`: TTL не более 3600 секунд;
 - `jti`: уникальный ID для revoke/audit.
 
-Header `X-Hermes-Role` используется только для diagnostics. Gateway не должен доверять ему без совпадения с подписанным claim `role`.
+Header `X-Hermes-Role` используется только для diagnostics. Provider MCP/API layer не должен доверять ему без совпадения с подписанным claim `role`.
 
 ## Общий request envelope
 
@@ -34,7 +34,7 @@ Header `X-Hermes-Role` используется только для diagnostics.
 
 Для incident actions вместо или дополнительно обязателен `incident_id`; для release actions — `candidate_id`, `expected_revision`, `stage` и `policy_evaluation_id`.
 
-Gateway выполняет schema validation, authorisation, optimistic-concurrency check, idempotency lookup и audit append до upstream mutation. Повтор с тем же ключом и теми же аргументами возвращает тот же result; повтор с иными аргументами получает conflict.
+Provider MCP/API layer выполняет schema validation, authorisation, optimistic-concurrency check, idempotency lookup и audit append до upstream mutation. Повтор с тем же ключом и теми же аргументами возвращает тот же result; повтор с иными аргументами получает conflict.
 
 ## Общий response envelope
 
@@ -53,16 +53,16 @@ Gateway выполняет schema validation, authorisation, optimistic-concurre
 
 `ok=true` означает завершённую upstream operation, а не только принятие сообщения. Для асинхронной операции response содержит `status=accepted`, execution ID и отдельный read tool для reconciliation.
 
-## Repository provider facade
+## Repository provider access
 
-Repository access is provider-neutral. Hermes must call only normalized `repo_*` tools on this SDLC MCP gateway. GitHub, GitLab, Forgejo, or provider MCP servers are upstream implementation details of the gateway adapter and must not be exposed directly to Hermes.
+Repository access в MVP идёт напрямую через GitHub/GitLab API/MCP. Если provider MCP поддерживает native provider tools, публикуйте Hermes только exact allowlist из `policies/roles.yaml`; широкие generic tools и admin tools не должны попадать в role endpoint.
 
-Repository-scoped tools receive a stable `repository_id`; provider URL, project ID, owner/group and credentials stay in the gateway repository registry:
+Repository-scoped tools получают стабильный `repository_id`; provider URL, project ID, owner/group и базовые параметры описаны в `policies/repositories.yaml`:
 
 ```json
 {
   "repository_id": "service-a",
-  "provider": "github|gitlab|forgejo",
+  "provider": "github|gitlab",
   "default_branch": "main"
 }
 ```
@@ -76,7 +76,7 @@ Provider mapping examples:
 | approval | PR review approval | MR approval |
 | status evidence | Checks/Actions | Pipelines/jobs |
 
-Do not expose broad provider tools such as `github_request`, `gitlab_request`, `create_or_update_file`, raw GraphQL, repository admin, merge, workflow edit, or branch protection mutation. If a provider MCP server is used, wrap it behind this facade and publish only the exact allowlisted SDLC tools.
+Не публикуйте broad provider tools вроде `github_request`, `gitlab_request`, `create_or_update_file`, raw GraphQL, repository admin, merge, workflow edit или branch protection mutation. Если прямой provider MCP содержит такие tools, выключите их через provider-side policy и Hermes `tools.include`.
 
 ## Repository mutation envelope
 
@@ -99,9 +99,9 @@ Every repository mutation requires:
 }
 ```
 
-Gateway rejects mutations when repository/work item scope does not match, branch prefix is not `agent/<work-item-id>-`, expected revisions are stale, protected paths are touched, or the upstream operation would require merge/admin/protected-branch privileges.
+Provider MCP/API layer rejects mutations when repository/work item scope does not match, branch prefix is not `agent/<work-item-id>-`, expected revisions are stale, protected paths are touched, or the upstream operation would require merge/admin/protected-branch privileges.
 
-`repo_apply_patch` accepts only bounded text changes: create text file, update text file by unified diff, delete explicitly scoped files, or rename files when both paths are allowed. Binary changes, LFS/submodule changes, protected paths and generated lockfile changes require a trusted workspace worker or human/platform approval.
+`repo_apply_patch` accepts only bounded text changes: create text file, update text file by unified diff, delete explicitly scoped files, or rename files when both paths are allowed. Binary changes, LFS/submodule changes, protected paths and generated lockfile changes require trusted CI/workspace evidence or human/platform approval.
 
 ## Запрещённые универсальные инструменты
 
@@ -115,15 +115,13 @@ Gateway rejects mutations when repository/work item scope does not match, branch
 - `runbook_execute` без approved ID/version/parameter schema;
 - `skills_install`, `skills_activate`, `skills_publish`.
 
-Если интеграция предоставляет широкий upstream MCP, спрячьте его за отдельным adapter; не проксируйте весь каталог tools с blacklist.
-
 ## Role-specific semantics
 
 ### planner
 
-- `repo_*` использует read-only Forgejo identity и разрешённые repositories/refs.
+- Repository read tools используют read-only GitHub/GitLab identity и разрешённые repositories/refs.
 - `spec_create/update` и `plan_create/update` пишут только специальные artifact types и сохраняют source requirement IDs.
-- Gateway отклоняет path, ref или repository вне назначенного work item.
+- Provider policy отклоняет path, ref или repository вне назначенного work item.
 
 ### builder
 
@@ -131,14 +129,14 @@ Gateway rejects mutations when repository/work item scope does not match, branch
 - `repo_apply_patch` и `repo_commit_changes` принимают только bounded text change-set для созданной task branch, expected-base и expected-head protected update.
 - `repo_create_change_request` всегда target-ит protected base, но не merge-ит.
 - `ci_trigger_pipeline` запускает или запрашивает trusted validation; `PR_READY_FOR_REVIEW` запрещён без `ci_get_status`/`ci_get_test_results` или workspace evidence.
-- Upstream GitHub/GitLab/Forgejo token находится только у gateway adapter или workspace worker и не имеет merge/admin/branch-protection scopes.
+- Provider token не имеет merge/admin/branch-protection scopes.
 - Отдельный CI gate сравнивает diff с `policies/protected-paths.txt`; пример проверки — `scripts/check-protected-paths.sh`. В production CI запускайте скрипт и policy из trusted base revision, а не из change request checkout, иначе автор change request сможет изменить сам gate.
 
 ### reviewer
 
 - Read tools фиксируются на change request head/base revisions, чтобы diff не менялся между анализом и review.
 - Review write tools меняют только comment/review state.
-- Gateway отклоняет self-review по provenance: author subject, implementation run IDs и reviewer subject должны быть независимы.
+- Provider policy отклоняет self-review по provenance: author subject, implementation run IDs и reviewer subject должны быть независимы.
 - Token не имеет content-write и merge scopes.
 
 ### release
@@ -146,8 +144,8 @@ Gateway rejects mutations when repository/work item scope does not match, branch
 - Candidate создан доверенным CI и содержит immutable image digest, config digest, SBOM/provenance и policy bundle version.
 - `deployment_promote` меняет только переход на следующий заранее описанный этап. Агент не задаёт arbitrary traffic weight или manifest.
 - `deployment_abort` прекращает candidate и вызывает заранее настроенную rollback strategy.
-- Gateway повторно проверяет CI/approvals/policy и current revision; LLM decision не заменяет policy engine.
-- Kubernetes/Argo credentials находятся только у release adapter. Hermes Pod не получает service-account token.
+- Provider/API policy повторно проверяет CI/approvals/policy и current revision; LLM decision не заменяет policy engine.
+- Kubernetes/Argo credentials не выдаются Hermes Pod.
 
 ### incident
 

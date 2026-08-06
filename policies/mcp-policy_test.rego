@@ -1,11 +1,11 @@
-package hermes.sdlc.mcp_test
+package hermes.sdlc.repository_mcp_test
 
 import rego.v1
-import data.hermes.sdlc.mcp
+import data.hermes.sdlc.repository_mcp
 
 identity(role) := {
   "active": true,
-  "aud": "sdlc-mcp",
+  "aud": "git-provider-mcp",
   "role": role,
   "sub": sprintf("test/%s", [role]),
   "jti": sprintf("jti-%s", [role]),
@@ -13,7 +13,7 @@ identity(role) := {
 }
 
 test_planner_read_allowed if {
-  mcp.allow with input as {
+    repository_mcp.allow with input as {
     "identity": identity("hermes-planner"),
     "tool": "requirements_get",
     "args": {"id": "REQ-1"},
@@ -21,7 +21,7 @@ test_planner_read_allowed if {
 }
 
 test_planner_deployment_denied if {
-  not mcp.allow with input as {
+    not repository_mcp.allow with input as {
     "identity": identity("hermes-planner"),
     "tool": "deployment_promote",
     "args": {},
@@ -29,7 +29,7 @@ test_planner_deployment_denied if {
 }
 
 test_builder_task_branch_allowed if {
-  mcp.allow with input as {
+    repository_mcp.allow with input as {
     "identity": identity("hermes-builder"),
     "tool": "repo_create_task_branch",
     "args": {
@@ -43,7 +43,7 @@ test_builder_task_branch_allowed if {
 }
 
 test_builder_apply_patch_allowed if {
-  mcp.allow with input as {
+    repository_mcp.allow with input as {
     "identity": identity("hermes-builder"),
     "tool": "repo_apply_patch",
     "args": {
@@ -58,7 +58,7 @@ test_builder_apply_patch_allowed if {
 }
 
 test_builder_main_denied if {
-  not mcp.allow with input as {
+    not repository_mcp.allow with input as {
     "identity": identity("hermes-builder"),
     "tool": "repo_create_task_branch",
     "args": {
@@ -72,7 +72,7 @@ test_builder_main_denied if {
 }
 
 test_reviewer_write_requires_independence if {
-  not mcp.allow with input as {
+    not repository_mcp.allow with input as {
     "identity": identity("hermes-reviewer"),
     "tool": "repo_approve_change_request",
     "args": {"idempotency_key": "idem-3", "independence_verified": false},
@@ -80,7 +80,7 @@ test_reviewer_write_requires_independence if {
 }
 
 test_release_promote_allowed_with_preconditions if {
-  mcp.allow with input as {
+    repository_mcp.allow with input as {
     "identity": identity("hermes-release"),
     "tool": "deployment_promote",
     "args": {
@@ -94,7 +94,7 @@ test_release_promote_allowed_with_preconditions if {
 }
 
 test_release_promote_missing_policy_denied if {
-  not mcp.allow with input as {
+    not repository_mcp.allow with input as {
     "identity": identity("hermes-release"),
     "tool": "deployment_promote",
     "args": {
@@ -107,7 +107,7 @@ test_release_promote_missing_policy_denied if {
 }
 
 test_incident_flag_disable_allowed if {
-  mcp.allow with input as {
+    repository_mcp.allow with input as {
     "identity": identity("hermes-incident"),
     "tool": "flags_disable",
     "args": {
@@ -120,7 +120,7 @@ test_incident_flag_disable_allowed if {
 }
 
 test_incident_flag_enable_denied if {
-  not mcp.allow with input as {
+  not repository_mcp.allow with input as {
     "identity": identity("hermes-incident"),
     "tool": "flags_disable",
     "args": {
@@ -133,7 +133,7 @@ test_incident_flag_enable_denied if {
 }
 
 test_learning_activation_denied if {
-  not mcp.allow with input as {
+  not repository_mcp.allow with input as {
     "identity": identity("hermes-learning"),
     "tool": "skills_activate",
     "args": {},

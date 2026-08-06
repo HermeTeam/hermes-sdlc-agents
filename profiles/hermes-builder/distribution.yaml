@@ -1,6 +1,6 @@
 name: hermes-builder
 version: 1.0.0
-description: "Разработчик SDLC: создаёт task branch через SDLC MCP, применяет patch/change-set через repository adapter, запускает CI/workspace checks и открывает change request. Не имеет локального checkout, не merge-ит, не имеет production-доступа и не меняет quality gates."
+description: "Разработчик SDLC: создаёт task branch через GitHub/GitLab API/MCP, применяет patch/change-set, запускает CI/workspace checks и открывает change request. Не имеет локального checkout, не merge-ит, не имеет production-доступа и не меняет quality gates."
 hermes_requires: ">=0.19.0"
 author: "SDLC Platform Team"
 license: "MIT"
@@ -14,11 +14,11 @@ env_requires:
   - name: OPENAI_API_KEY
     description: "Ролевой токен к LLM gateway"
     required: true
-  - name: SDLC_MCP_URL
-    description: "URL Streamable HTTP endpoint типизированного SDLC MCP gateway"
+  - name: GIT_PROVIDER_MCP_URL
+    description: "URL Streamable HTTP endpoint GitHub/GitLab provider API/MCP"
     required: true
-  - name: SDLC_MCP_TOKEN
-    description: "Короткоживущий токен с claim role=hermes-builder"
+  - name: GIT_PROVIDER_MCP_TOKEN
+    description: "Короткоживущий provider token с минимальными правами роли hermes-builder"
     required: true
 distribution_owned:
   - distribution.yaml

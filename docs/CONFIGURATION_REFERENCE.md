@@ -23,7 +23,7 @@ Credential берётся из общего `OPENAI_API_KEY` в `.env` и про
 | `memory.memory_enabled`                  | `false`                                                   | нет неконтролируемого cross-session drift                  |
 | `skills.write_approval`                  | `true`                                                    | skill mutations staged до human approval                   |
 | `skills.external_dirs`                   | `/etc/hermes/skills`, `/opt/hermes-shared-skills/current` | role-local и общий read-only каталог skills                |
-| `mcp_servers.sdlc.tools.include`         | exact list                                                | MCP surface без wildcard                                   |
+| `mcp_servers.repository.tools.include`   | exact list                                                | provider API/MCP surface без wildcard                      |
 | MCP resources/prompts                    | `false`                                                   | исключена дополнительная server-controlled context surface |
 | MCP sampling/elicitation                 | `false`                                                   | MCP server не инициирует LLM spend или user prompts        |
 | `direct_model_requests`                  | `false`                                                   | внешний API caller не меняет provider/model routing        |
@@ -45,12 +45,12 @@ Server-side обязательства: artifact type allowlist, repository/ref/
 
 ## hermes-builder
 
-Назначение: реализовать одну утверждённую задачу как SDLC MCP patch/change-set и передать change request на независимое review.
+Назначение: реализовать одну утверждённую задачу как GitHub/GitLab API/MCP patch/change-set и передать change request на независимое review.
 
 Подробный workflow описан в двух отдельных документах: [Repository API/MCP Flow — English](REPOSITORY_API_MCP_FLOW_EN.md) и [Флоу доступа к репозиториям через API/MCP — Русский](REPOSITORY_API_MCP_FLOW_RU.md).
 
 - Built-ins: `file`, `skills`, `todo`, `clarify`; `terminal` отключён.
-- Репозиторий не mounted; GitHub/GitLab/Forgejo credentials отсутствуют в agent container.
+- Репозиторий не mounted; broad GitHub/GitLab credentials отсутствуют в agent container, используется только role-scoped provider MCP token.
 - File safe roots: `/opt/data`.
 - Checkpoints: включены, до 20 snapshots.
 - MCP writes: create task branch, apply patch, commit changes, create/update change request, trigger CI.
@@ -69,7 +69,7 @@ Hard controls: task-branch prefix, expected revisions, protected branches, provi
 - Нет branch-content write и merge tools.
 - Exit decision: `APPROVE` или `REQUEST_CHANGES`.
 
-Gateway проверяет `independence_verified` по provenance: reviewer subject не должен совпадать с author/implementation subject.
+Provider policy или внешний orchestrator проверяет `independence_verified` по provenance: reviewer subject не должен совпадать с author/implementation subject.
 
 ## hermes-release
 
@@ -81,7 +81,7 @@ Gateway проверяет `independence_verified` по provenance: reviewer sub
 - Нет Kubernetes service-account token, kubeconfig или исходного кода.
 - Exit states: `PROMOTED`, `ABORTED`, `BLOCKED_NO_ACTION`.
 
-Каждый action требует candidate ID, expected revision, policy evaluation ID и idempotency key. MCP adapter владеет узким Argo Rollouts credential и не публикует arbitrary traffic weight/manifests.
+Каждый action требует candidate ID, expected revision, policy evaluation ID и idempotency key. Release integration владеет узким Argo Rollouts credential и не публикует arbitrary traffic weight/manifests.
 
 ## hermes-incident
 
@@ -122,12 +122,12 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | Variable                         | Назначение                                                     |
 | -------------------------------- | -------------------------------------------------------------- |
 | `OPENAI_API_KEY`                 | общий LLM/OpenRouter token, передаётся всем Hermes containers  |
-| `SDLC_MCP_URL`                   | Streamable HTTP MCP endpoint                                   |
-| `SDLC_REPOSITORY_ID`             | стабильный repository ID для SDLC MCP calls                    |
-| `SDLC_REPOSITORY_PROVIDER`       | provider, сейчас `github`                                      |
-| `SDLC_REPOSITORY_ACCESS_MODE`    | режим доступа, сейчас `github-api-mcp`                         |
-| `SDLC_REPOSITORY_DEFAULT_BRANCH` | default branch, используемый gateway как expected base         |
-| `SDLC_REPOSITORY_CLONE_ALLOWED`  | должно быть `false`; Hermes не клонирует repo                  |
+| `GIT_PROVIDER_MCP_URL`           | Streamable HTTP GitHub/GitLab API/MCP endpoint                 |
+| `REPOSITORY_ID`                  | стабильный repository ID для provider API/MCP calls            |
+| `REPOSITORY_PROVIDER`            | provider, сейчас `github`                                      |
+| `REPOSITORY_ACCESS_MODE`         | режим доступа, сейчас `github-direct-api-mcp`                  |
+| `REPOSITORY_DEFAULT_BRANCH`      | default branch, используемый как expected base                 |
+| `REPOSITORY_CLONE_ALLOWED`       | должно быть `false`; Hermes не клонирует repo                  |
 | `GITHUB_API_BASE_URL`            | GitHub API base URL                                            |
 | `GITHUB_WEB_BASE_URL`            | GitHub web base URL                                            |
 | `GITHUB_OWNER`                   | GitHub owner/org, сейчас `test-project`                        |
@@ -135,7 +135,6 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | `GITHUB_REPOSITORY_FULL_NAME`    | `owner/repo`, сейчас `test-project/test-project`               |
 | `GITHUB_REPOSITORY_HTML_URL`     | web URL репозитория                                            |
 | `GITHUB_REPOSITORY_API_URL`      | API URL репозитория                                            |
-| `GITHUB_PROVIDER_TOKEN`          | token только для SDLC MCP adapter; не передаётся Hermes agents |
 
 Каждый `secrets/hermes-<role>.env` содержит role-scoped secrets:
 
@@ -143,8 +142,8 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | ----------------------- | ------------------------------------------------- |
 | `HERMES_MODEL_ID`       | model ID в разрешённом gateway catalog            |
 | `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
-| `SDLC_MCP_TOKEN`        | short-lived role identity                         |
+| `GIT_PROVIDER_MCP_TOKEN` | short-lived role identity для provider API/MCP     |
 | `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
 | `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
 
-Не добавляйте `OPENAI_API_KEY`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens или admin PAT в role env-файлы. `OPENAI_API_KEY` берётся из `.env` и передаётся контейнерам через общий Compose environment. `GITHUB_PROVIDER_TOKEN` допускается только в `.env` для SDLC MCP repository adapter и не должен попадать в `compose.yaml` service environment. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Не добавляйте `OPENAI_API_KEY`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub/GitLab PAT в role env-файлы. `OPENAI_API_KEY` берётся из `.env` и передаётся контейнерам через общий Compose environment. `GIT_PROVIDER_MCP_TOKEN` допускается в role env-файлах только как короткоживущий token с минимальными provider scopes конкретной роли. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

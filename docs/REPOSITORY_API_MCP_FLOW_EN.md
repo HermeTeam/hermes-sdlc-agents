@@ -1,32 +1,30 @@
 # Repository API/MCP Flow
 
-> Audience: platform engineers, SDLC gateway maintainers, DevOps/SRE engineers, and agent operators who configure Hermes SDLC roles and repository integrations.
+> Audience: platform engineers, DevOps/SRE engineers, and agent operators who configure Hermes SDLC roles and direct GitHub/GitLab API/MCP repository integrations.
 
 ### Purpose
 
-This document describes the repository access flow used by `hermes-sdlc-agents` after migrating from local writable checkouts to provider-neutral repository access through the SDLC MCP gateway.
+This document describes the repository access flow used by `hermes-sdlc-agents` after migrating from local writable checkouts to direct GitHub/GitLab API/MCP access in the MVP.
 
 The core rule is:
 
 ```text
-Hermes agents do not receive GitHub/GitLab/Forgejo credentials and do not mount writable repository checkouts.
-All repository reads and writes go through typed SDLC MCP repository tools.
+Hermes agents do not mount writable repository checkouts.
+All repository reads and writes go through role-scoped GitHub/GitLab API/MCP tools with an exact allowlist.
 ```
 
 ### High-level architecture
 
 ```text
 Hermes role container
-  -> SDLC MCP gateway
-    -> repository adapter
-      -> GitHub API / GitLab API / Forgejo API / wrapped provider MCP
-    -> optional ephemeral workspace worker
-    -> CI adapter
-    -> policy engine
-    -> append-only audit log
+  -> GitHub/GitLab provider API/MCP endpoint
+    -> GitHub API / GitLab API
+    -> provider-side policy/permission checks
+    -> optional ephemeral workspace worker or trusted CI
+    -> provider/upstream audit log
 ```
 
-The SDLC MCP gateway is the security boundary. GitHub, GitLab, Forgejo, or provider MCP servers are upstream implementation details and must not be exposed directly to Hermes agents.
+The MVP does not use a separate repository gateway. The security boundary moves to the combination of role-scoped provider tokens, exact `tools.include`, provider MCP policy, GitHub/GitLab permissions, branch protection, and trusted CI.
 
 ### What changed from the old flow
 
@@ -44,28 +42,28 @@ New flow:
 
 ```text
 Hermes builder
-  -> reads repository files through SDLC MCP
+  -> reads repository files through GitHub/GitLab API/MCP
   -> creates a bounded patch/change-set
-  -> asks SDLC MCP to create/update a task branch
-  -> asks SDLC MCP to apply and commit the patch
-  -> triggers CI or workspace checks through SDLC MCP
-  -> creates a provider-neutral change request
+  -> creates/updates a task branch through GitHub/GitLab API/MCP
+  -> applies and commits the patch through GitHub/GitLab API/MCP
+  -> triggers CI or workspace checks through provider API/MCP
+  -> creates a change request
 ```
 
-There is no `REPO_DIR`, no `/workspace/repo`, and no Git provider token in the Hermes builder container.
+There is no `REPO_DIR` and no `/workspace/repo` in the Hermes builder container; instead of a broad provider credential it uses a short-lived role-scoped `GIT_PROVIDER_MCP_TOKEN`.
 
 ### Provider-neutral terminology
 
-The SDLC contract uses provider-neutral terms so the same agent flow works with GitHub, GitLab, or Forgejo.
+The workflow uses a limited set of shared terms so the same agent flow works with GitHub or GitLab.
 
-| SDLC term | GitHub | GitLab | Forgejo/Gitea |
-|---|---|---|---|
-| `change_request` | Pull Request | Merge Request | Pull Request |
-| review comment | PR review comment | Diff note/discussion | PR review comment |
-| approval | PR approval | MR approval | PR approval |
-| CI evidence | Checks / Actions | Pipelines / Jobs | Actions / external CI |
+| Workflow term | GitHub | GitLab |
+|---|---|---|
+| `change_request` | Pull Request | Merge Request |
+| review comment | PR review comment | Diff note/discussion |
+| approval | PR approval | MR approval |
+| CI evidence | Checks / Actions | Pipelines / Jobs |
 
-Provider-specific IDs and URLs should stay inside the SDLC MCP gateway. Agents should use stable `repository_id` values instead of raw provider URLs.
+Agents should use stable `repository_id` values instead of raw provider URLs, even with direct provider API/MCP access.
 
 Example repository registry entry:
 
@@ -101,12 +99,12 @@ Not allowed:
 
 #### Builder
 
-The builder implements approved work through SDLC MCP repository tools.
+The builder implements approved work through role-allowed GitHub/GitLab API/MCP repository tools.
 
 Allowed repository behavior:
 
 - read assigned `work_item`, `spec`, and `plan`;
-- read repository files and trees through MCP;
+- read repository files and trees through provider API/MCP;
 - create a task branch named `agent/<work-item-id>-<slug>`;
 - submit a bounded text patch/change-set;
 - commit changes through the repository adapter;
@@ -116,13 +114,13 @@ Allowed repository behavior:
 Not allowed:
 
 - use a local checkout;
-- obtain GitHub/GitLab/Forgejo credentials;
+- obtain broad GitHub/GitLab credentials outside the role-scoped token;
 - push directly with Git;
 - write protected branches;
 - merge change requests;
 - change CI workflows, quality gates, branch protection, or production configuration.
 
-The builder may return `PR_READY_FOR_REVIEW` only after the SDLC MCP gateway accepts the change-set and required CI/workspace evidence is available.
+The builder may return `PR_READY_FOR_REVIEW` only after the provider API/MCP accepts the change-set and required CI/workspace evidence is available.
 
 #### Reviewer
 
@@ -143,7 +141,7 @@ Not allowed:
 - merge;
 - change quality gates or branch protection.
 
-The gateway must enforce reviewer independence through provenance, not through model text.
+Provider policy or an external orchestrator must enforce reviewer independence through provenance, not through model text.
 
 #### Release
 
@@ -160,7 +158,7 @@ Incident and learning roles do not receive repository write access. Incident may
 
 ### Repository tools
 
-Typical provider-neutral tool surface:
+Typical direct provider API/MCP tool surface for the MVP:
 
 Read tools:
 
@@ -214,7 +212,7 @@ Example:
 }
 ```
 
-The gateway must reject the call if:
+The provider MCP/API policy must reject the call if:
 
 - the role is not allowed to call the tool;
 - the repository is outside the work item scope;
@@ -249,8 +247,8 @@ Because the builder no longer runs local shell commands in a checkout, validatio
 Preferred path:
 
 ```text
-SDLC MCP gateway
-  -> ephemeral workspace worker
+GitHub/GitLab provider API/MCP
+  -> ephemeral workspace worker or trusted CI
     -> clone repository in isolated workspace
     -> apply patch
     -> run allowlisted checks
@@ -271,8 +269,8 @@ If required CI/workspace evidence is missing, pending, or failed, the builder mu
 
 ### Security requirements
 
-- Hermes agents must not receive GitHub/GitLab/Forgejo tokens.
-- Provider tokens live only in the SDLC MCP repository adapter or workspace worker.
+- Hermes agents must not receive broad GitHub/GitLab tokens.
+- The role-scoped `GIT_PROVIDER_MCP_TOKEN` must have minimal repository scopes for the specific role.
 - Provider tokens must not have admin, branch protection, protected branch write, or merge scopes.
 - Repository content must be treated as untrusted input because it may contain prompt injection.
 - Provider MCP resources, prompts, sampling, and elicitation must not be exposed to Hermes.
@@ -292,7 +290,7 @@ Negative canaries:
 
 1. Builder attempts to write `main` directly and receives server-side deny.
 2. Builder attempts to modify a protected path and receives server-side deny.
-3. Builder attempts to call a raw GitHub/GitLab provider tool and receives deny or tool not found.
+3. Builder attempts to call a broad raw GitHub/GitLab provider tool and receives deny or tool not found.
 4. Reviewer attempts to modify the author branch and receives deny.
 5. Planner attempts to create a branch and receives deny.
 6. Any role attempts merge and receives deny.

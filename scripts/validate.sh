@@ -36,12 +36,12 @@ expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
 required_dotenv_keys = {
     "OPENAI_API_KEY",
-    "SDLC_MCP_URL",
-    "SDLC_REPOSITORY_ID",
-    "SDLC_REPOSITORY_PROVIDER",
-    "SDLC_REPOSITORY_ACCESS_MODE",
-    "SDLC_REPOSITORY_DEFAULT_BRANCH",
-    "SDLC_REPOSITORY_CLONE_ALLOWED",
+    "GIT_PROVIDER_MCP_URL",
+    "REPOSITORY_ID",
+    "REPOSITORY_PROVIDER",
+    "REPOSITORY_ACCESS_MODE",
+    "REPOSITORY_DEFAULT_BRANCH",
+    "REPOSITORY_CLONE_ALLOWED",
     "GITHUB_API_BASE_URL",
     "GITHUB_WEB_BASE_URL",
     "GITHUB_OWNER",
@@ -49,7 +49,6 @@ required_dotenv_keys = {
     "GITHUB_REPOSITORY_FULL_NAME",
     "GITHUB_REPOSITORY_HTML_URL",
     "GITHUB_REPOSITORY_API_URL",
-    "GITHUB_PROVIDER_TOKEN",
 }
 
 errors = []
@@ -71,8 +70,8 @@ dotenv_keys = set(dotenv_values)
 missing_dotenv_keys = sorted(required_dotenv_keys - dotenv_keys)
 if missing_dotenv_keys:
     errors.append(f".env.example missing required repository keys: {', '.join(missing_dotenv_keys)}")
-if dotenv_values.get("SDLC_REPOSITORY_CLONE_ALLOWED") != "false":
-    errors.append(".env.example: SDLC_REPOSITORY_CLONE_ALLOWED must be false")
+if dotenv_values.get("REPOSITORY_CLONE_ALLOWED") != "false":
+    errors.append(".env.example: REPOSITORY_CLONE_ALLOWED must be false")
 if dotenv_values.get("GITHUB_REPOSITORY_FULL_NAME") != "test-project/test-project":
     errors.append(".env.example: GITHUB_REPOSITORY_FULL_NAME must be test-project/test-project")
 if (root / ".env").is_file():
@@ -80,8 +79,8 @@ if (root / ".env").is_file():
     missing_runtime_dotenv_keys = sorted(required_dotenv_keys - set(runtime_dotenv_values))
     if missing_runtime_dotenv_keys:
         errors.append(f".env missing required repository keys: {', '.join(missing_runtime_dotenv_keys)}")
-    if runtime_dotenv_values.get("SDLC_REPOSITORY_CLONE_ALLOWED") != "false":
-        errors.append(".env: SDLC_REPOSITORY_CLONE_ALLOWED must be false")
+    if runtime_dotenv_values.get("REPOSITORY_CLONE_ALLOWED") != "false":
+        errors.append(".env: REPOSITORY_CLONE_ALLOWED must be false")
 
 for role in sorted(expected_roles):
     profile_dir = root / "profiles" / role
@@ -105,7 +104,12 @@ for role in sorted(expected_roles):
     if external_dirs != expected_external_skill_dirs:
         errors.append(f"{role}: skills.external_dirs must be {expected_external_skill_dirs}")
 
-    server = config.get("mcp_servers", {}).get("sdlc", {})
+    mcp_servers = config.get("mcp_servers", {})
+    if "sdlc" in mcp_servers:
+        errors.append(f"{role}: legacy repository gateway server must not be configured for MVP")
+    if "mcp-sdlc" in config.get("toolsets", []):
+        errors.append(f"{role}: mcp-sdlc toolset must not be enabled for MVP")
+    server = mcp_servers.get("repository", {})
     included = server.get("tools", {}).get("include", [])
     allowed = policy_roles[role].get("allowTools", [])
     if included != allowed:
@@ -134,9 +138,9 @@ for role in sorted(expected_roles):
         errors.append(f"{role}: terminal and file toolsets must be disabled")
     if role == "hermes-builder":
         if config.get("worktree") is not False or config.get("worktree_sync") is not False:
-            errors.append("hermes-builder: local worktree mode must be disabled in repository API/MCP mode")
+            errors.append("hermes-builder: local worktree mode must be disabled in direct repository API/MCP mode")
         if "terminal" in config.get("toolsets", []):
-            errors.append("hermes-builder: terminal toolset must be disabled in repository API/MCP mode")
+            errors.append("hermes-builder: terminal toolset must be disabled in direct repository API/MCP mode")
         if any(tool in included for tool in ["repo_merge_pull_request", "repo_merge_change_request"]):
             errors.append("hermes-builder: merge tool exposed")
         if any(tool in included for tool in ["repo_push_task_branch", "repo_create_pull_request"]):
@@ -206,7 +210,7 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: container_name mismatch")
     service_environment = service.get("environment", {})
     if "GITHUB_PROVIDER_TOKEN" in service_environment:
-        errors.append(f"{role}: GitHub provider token must not be passed to Hermes agents")
+        errors.append(f"{role}: legacy GitHub adapter token must not be passed to Hermes agents")
     if role != "hermes-builder" and any("/workspace/repo" in str(v) for v in service.get("volumes", [])):
         errors.append(f"{role}: repository mount must be absent")
     if role == "hermes-builder":

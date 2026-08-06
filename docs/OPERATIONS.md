@@ -3,12 +3,12 @@
 ## Initial rollout
 
 1. Разверните и проверьте LLM gateway с role quotas и model allowlist.
-2. Разверните SDLC MCP gateway/adapters, включая repository adapter для GitHub/GitLab/Forgejo, и примените `policies/roles.yaml` плюс argument-level rules.
-3. Настройте upstream service accounts. Проверьте, что ни один agent token не работает напрямую в upstream API, включая Git provider API.
+2. Разверните или настройте прямой GitHub/GitLab API/MCP endpoint и примените `policies/roles.yaml` плюс argument-level rules.
+3. Настройте role-scoped provider tokens. Проверьте, что ни один token не имеет merge/admin/branch-protection scopes.
 4. Запустите `scripts/bootstrap.sh`, заполните secrets, pin image digest.
-5. Выполните `scripts/validate.sh` и OPA unit/negative tests на gateway.
+5. Выполните `scripts/validate.sh` и OPA unit/negative tests на provider MCP/API policy layer.
 6. Запустите сначала planner/reviewer/learning, затем builder, release и incident.
-7. Для каждой роли выполните positive и negative canary; сопоставьте Hermes run, MCP audit и upstream audit.
+7. Для каждой роли выполните positive и negative canary; сопоставьте Hermes run, provider MCP audit и upstream audit.
 8. Только после canary подключайте Jira/OpenProject/webhook/CI orchestrator к `/v1/runs`.
 
 ## Day-2 checks
@@ -24,7 +24,7 @@
 
 - diff role config ↔ `policies/roles.yaml` через `scripts/validate.sh`;
 - active token subjects/JTI, TTL и unused identities;
-- branch protection, protected-path gate, repository adapter scopes и reviewer independence;
+- branch protection, protected-path gate, provider token scopes и reviewer independence;
 - runbook/flag allowlists и release policy version;
 - pending skill proposals и просроченные human approvals.
 
@@ -41,7 +41,7 @@
 1. Прочитайте upstream release/security notes.
 2. Обновите digest в отдельной ветке этого bundle.
 3. Запустите `hermes config check`/`doctor` в disposable copy каждого data volume.
-4. Выполните structural validation, MCP discovery snapshot, repository adapter canaries и все role canaries.
+4. Выполните structural validation, provider MCP discovery snapshot, repository canaries и все role canaries.
 5. Canary одной low-risk роли, затем последовательный rollout.
 6. Не запускайте два контейнера на одном `/opt/data`: Hermes state не рассчитан на concurrent writers.
 
@@ -64,7 +64,7 @@
 docker compose stop hermes-release
 ```
 
-Затем отзовите её MCP token/JTI и inbound API key. Остановка Hermes без revoke недостаточна, если token мог утечь. Для release/incident также временно запретите subject на MCP gateway и upstream adapter.
+Затем отзовите её provider MCP token/JTI и inbound API key. Остановка Hermes без revoke недостаточна, если token мог утечь. Для release/incident также временно запретите subject на provider MCP/API policy layer и upstream integrations.
 
 ## Incident involving an agent
 

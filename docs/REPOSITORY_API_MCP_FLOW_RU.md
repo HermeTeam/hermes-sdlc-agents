@@ -1,32 +1,30 @@
 # Флоу доступа к репозиториям через API/MCP
 
-> Аудитория: platform engineers, сопровождающие SDLC gateway, DevOps/SRE-инженеры и операторы агентов, которые настраивают Hermes SDLC роли и интеграции с репозиториями.
+> Аудитория: platform engineers, DevOps/SRE-инженеры и операторы агентов, которые настраивают Hermes SDLC роли и прямые GitHub/GitLab API/MCP интеграции с репозиториями.
 
 ### Назначение
 
-Этот документ описывает флоу доступа к репозиториям в `hermes-sdlc-agents` после миграции от локальных writable checkout к provider-neutral доступу через SDLC MCP gateway.
+Этот документ описывает флоу доступа к репозиториям в `hermes-sdlc-agents` после миграции от локальных writable checkout к прямому GitHub/GitLab API/MCP доступу в MVP.
 
 Главное правило:
 
 ```text
-Hermes agents не получают GitHub/GitLab/Forgejo credentials и не монтируют writable checkout репозитория.
-Все чтения и изменения репозитория выполняются через типизированные SDLC MCP repository tools.
+Hermes agents не монтируют writable checkout репозитория.
+Все чтения и изменения репозитория выполняются через role-scoped GitHub/GitLab API/MCP tools с exact allowlist.
 ```
 
 ### Высокоуровневая архитектура
 
 ```text
 Hermes role container
-  -> SDLC MCP gateway
-    -> repository adapter
-      -> GitHub API / GitLab API / Forgejo API / wrapped provider MCP
-    -> optional ephemeral workspace worker
-    -> CI adapter
-    -> policy engine
-    -> append-only audit log
+  -> GitHub/GitLab provider API/MCP endpoint
+    -> GitHub API / GitLab API
+    -> provider-side policy/permission checks
+    -> optional ephemeral workspace worker or trusted CI
+    -> provider/upstream audit log
 ```
 
-SDLC MCP gateway является границей безопасности. GitHub, GitLab, Forgejo или provider MCP servers являются upstream implementation details и не должны напрямую публиковаться Hermes agents.
+В MVP нет отдельного repository gateway. Граница безопасности переносится в комбинацию role-scoped provider tokens, exact `tools.include`, provider MCP policy, GitHub/GitLab permissions, branch protection и trusted CI.
 
 ### Что изменилось относительно старого флоу
 
@@ -44,28 +42,28 @@ Host REPO_DIR
 
 ```text
 Hermes builder
-  -> читает файлы репозитория через SDLC MCP
+  -> читает файлы репозитория через GitHub/GitLab API/MCP
   -> создаёт bounded patch/change-set
-  -> просит SDLC MCP создать/обновить task branch
-  -> просит SDLC MCP применить и закоммитить patch
-  -> запускает CI или workspace checks через SDLC MCP
-  -> создаёт provider-neutral change request
+  -> создаёт/обновляет task branch через GitHub/GitLab API/MCP
+  -> применяет и коммитит patch через GitHub/GitLab API/MCP
+  -> запускает CI или workspace checks через provider API/MCP
+  -> создаёт change request
 ```
 
-В Hermes builder container больше нет `REPO_DIR`, `/workspace/repo` и Git provider token.
+В Hermes builder container больше нет `REPO_DIR` и `/workspace/repo`; вместо broad provider credential используется короткоживущий role-scoped `GIT_PROVIDER_MCP_TOKEN`.
 
 ### Provider-neutral терминология
 
-SDLC contract использует provider-neutral термины, чтобы один и тот же agent flow работал с GitHub, GitLab или Forgejo.
+Workflow использует ограниченный набор общих терминов, чтобы один и тот же agent flow работал с GitHub или GitLab.
 
-| SDLC term | GitHub | GitLab | Forgejo/Gitea |
-|---|---|---|---|
-| `change_request` | Pull Request | Merge Request | Pull Request |
-| review comment | PR review comment | Diff note/discussion | PR review comment |
-| approval | PR approval | MR approval | PR approval |
-| CI evidence | Checks / Actions | Pipelines / Jobs | Actions / external CI |
+| Workflow term | GitHub | GitLab |
+|---|---|---|
+| `change_request` | Pull Request | Merge Request |
+| review comment | PR review comment | Diff note/discussion |
+| approval | PR approval | MR approval |
+| CI evidence | Checks / Actions | Pipelines / Jobs |
 
-Provider-specific IDs и URLs должны оставаться внутри SDLC MCP gateway. Agents должны использовать стабильные `repository_id`, а не raw provider URLs.
+Agents должны использовать стабильные `repository_id`, а не raw provider URLs, даже при прямом provider API/MCP доступе.
 
 Пример записи repository registry:
 
@@ -101,12 +99,12 @@ Planner имеет только read-only доступ к содержимому
 
 #### Builder
 
-Builder реализует утверждённую работу через SDLC MCP repository tools.
+Builder реализует утверждённую работу через role-allowed GitHub/GitLab API/MCP repository tools.
 
 Разрешено:
 
 - читать назначенные `work_item`, `spec` и `plan`;
-- читать repository files и trees через MCP;
+- читать repository files и trees через provider API/MCP;
 - создать task branch `agent/<work-item-id>-<slug>`;
 - передать bounded text patch/change-set;
 - закоммитить изменения через repository adapter;
@@ -116,13 +114,13 @@ Builder реализует утверждённую работу через SDLC
 Запрещено:
 
 - использовать local checkout;
-- получать GitHub/GitLab/Forgejo credentials;
+- получать broad GitHub/GitLab credentials вне role-scoped token;
 - делать direct Git push;
 - писать в protected branches;
 - merge-ить change requests;
 - менять CI workflows, quality gates, branch protection или production configuration.
 
-Builder может вернуть `PR_READY_FOR_REVIEW` только после того, как SDLC MCP gateway принял change-set и появилась обязательная CI/workspace evidence.
+Builder может вернуть `PR_READY_FOR_REVIEW` только после того, как provider API/MCP принял change-set и появилась обязательная CI/workspace evidence.
 
 #### Reviewer
 
@@ -143,7 +141,7 @@ Reviewer оценивает fixed revision конкретного change request
 - merge-ить;
 - менять quality gates или branch protection.
 
-Gateway обязан проверять reviewer independence по provenance, а не по тексту ответа модели.
+Provider policy или внешний orchestrator обязан проверять reviewer independence по provenance, а не по тексту ответа модели.
 
 #### Release
 
@@ -160,7 +158,7 @@ Incident и Learning roles не получают repository write access. Incide
 
 ### Repository tools
 
-Типичная provider-neutral tool surface:
+Типичная direct provider API/MCP tool surface для MVP:
 
 Read tools:
 
@@ -214,7 +212,7 @@ Reviewer tools:
 }
 ```
 
-Gateway должен отклонить вызов, если:
+Provider MCP/API policy должен отклонить вызов, если:
 
 - роль не имеет права вызывать tool;
 - repository не входит в scope work item;
@@ -249,8 +247,8 @@ Gateway должен отклонить вызов, если:
 Предпочтительный путь:
 
 ```text
-SDLC MCP gateway
-  -> ephemeral workspace worker
+GitHub/GitLab provider API/MCP
+  -> ephemeral workspace worker or trusted CI
     -> clone repository в isolated workspace
     -> apply patch
     -> run allowlisted checks
@@ -271,8 +269,8 @@ repo_commit_changes
 
 ### Security requirements
 
-- Hermes agents не должны получать GitHub/GitLab/Forgejo tokens.
-- Provider tokens находятся только в SDLC MCP repository adapter или workspace worker.
+- Hermes agents не должны получать broad GitHub/GitLab tokens.
+- Role-scoped `GIT_PROVIDER_MCP_TOKEN` должен иметь минимальные repository scopes для конкретной роли.
 - Provider tokens не должны иметь admin, branch protection, protected branch write или merge scopes.
 - Repository content должен считаться untrusted input, потому что он может содержать prompt injection.
 - Provider MCP resources, prompts, sampling и elicitation не должны публиковаться Hermes.
@@ -292,7 +290,7 @@ Negative canaries:
 
 1. Builder пытается писать напрямую в `main` и получает server-side deny.
 2. Builder пытается изменить protected path и получает server-side deny.
-3. Builder пытается вызвать raw GitHub/GitLab provider tool и получает deny или tool not found.
+3. Builder пытается вызвать broad raw GitHub/GitLab provider tool и получает deny или tool not found.
 4. Reviewer пытается изменить author branch и получает deny.
 5. Planner пытается создать branch и получает deny.
 6. Любая роль пытается выполнить merge и получает deny.

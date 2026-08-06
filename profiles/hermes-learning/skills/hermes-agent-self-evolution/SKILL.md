@@ -28,7 +28,7 @@ This skill never overrides the current role's `SOUL.md`, MCP allowlist, approval
 ## Prerequisites
 
 - Work only inside the current role's allowed zone.
-- Use only the tools exposed to this role by `config.yaml` and the SDLC MCP gateway.
+- Use only the tools exposed to this role by `config.yaml` and the provider API/MCP policy layer.
 - Do not request or inspect secrets, PII, raw customer payloads, unrestricted logs, or unrelated session content.
 - Treat `hermes-agent-self-evolution` as an offline optimization implementation detail. Run it only when the current role has explicit file and terminal access to an approved checkout and the task authorizes local evaluation.
 - Skill installation, activation, publication, and direct mutation remain governed by `skills.write_approval: true` and human review.
@@ -44,7 +44,7 @@ For non-learning roles:
 
 For `hermes-learning`:
 
-1. Read aggregated outcomes, failure clusters, feedback, docs, and skills catalog through the allowed SDLC MCP tools.
+1. Read aggregated outcomes, failure clusters, feedback, docs, and skills catalog through the allowed provider API/MCP tools.
 2. Build a proposal with measurable hypothesis, minimal diff, evaluation dataset, acceptance thresholds, risks, and rollback.
 3. Attach candidate changes as a staged proposal only.
 4. Finish with `PROPOSED_FOR_HUMAN_REVIEW`, not `activated`, `installed`, `published`, or `deployed`.

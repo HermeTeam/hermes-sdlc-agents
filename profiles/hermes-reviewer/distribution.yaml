@@ -14,11 +14,11 @@ env_requires:
   - name: OPENAI_API_KEY
     description: "Ролевой токен к LLM gateway"
     required: true
-  - name: SDLC_MCP_URL
-    description: "URL Streamable HTTP endpoint типизированного SDLC MCP gateway"
+  - name: GIT_PROVIDER_MCP_URL
+    description: "URL Streamable HTTP endpoint GitHub/GitLab provider API/MCP"
     required: true
-  - name: SDLC_MCP_TOKEN
-    description: "Короткоживущий токен с claim role=hermes-reviewer"
+  - name: GIT_PROVIDER_MCP_TOKEN
+    description: "Короткоживущий provider token с минимальными правами роли hermes-reviewer"
     required: true
 distribution_owned:
   - distribution.yaml

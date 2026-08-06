@@ -7,7 +7,7 @@ toolsets:
   - skills
   - todo
   - clarify
-  - mcp-sdlc
+  - mcp-repository
   - mcp-ddg-search
   - mcp-context7
   - mcp-playwright
@@ -126,10 +126,10 @@ gateway:
       direct_model_requests: false
 
 mcp_servers:
-  sdlc:
-    url: "${SDLC_MCP_URL}"
+  repository:
+    url: "${GIT_PROVIDER_MCP_URL}"
     headers:
-      Authorization: "Bearer ${SDLC_MCP_TOKEN}"
+      Authorization: "Bearer ${GIT_PROVIDER_MCP_TOKEN}"
       X-Hermes-Role: "hermes-reviewer"
     ssl_verify: true
     enabled: true
