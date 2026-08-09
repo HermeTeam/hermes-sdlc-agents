@@ -3,7 +3,11 @@ secrets/*.env
 runtime/
 *.log
 *.zip
+*.sqlite
+*.sqlite-*
 .DS_Store
+__pycache__/
+*.py[cod]
 
 # Hermes runtime state must never enter a distribution.
 auth.json

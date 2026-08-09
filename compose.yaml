@@ -21,15 +21,29 @@ x-hermes-environment: &hermes-environment
   GITHUB_REPOSITORY_FULL_NAME: "${GITHUB_REPOSITORY_FULL_NAME:?Set GITHUB_REPOSITORY_FULL_NAME in .env}"
   GITHUB_REPOSITORY_HTML_URL: "${GITHUB_REPOSITORY_HTML_URL:?Set GITHUB_REPOSITORY_HTML_URL in .env}"
   GITHUB_REPOSITORY_API_URL: "${GITHUB_REPOSITORY_API_URL:?Set GITHUB_REPOSITORY_API_URL in .env}"
+  ORCHESTRATOR_ENABLED: "${ORCHESTRATOR_ENABLED:-false}"
+  ORCHESTRATOR_PROVIDER: "${ORCHESTRATOR_PROVIDER:-github}"
+  ORCHESTRATOR_CRON_SCHEDULE: "${ORCHESTRATOR_CRON_SCHEDULE:-*/5 * * * *}"
+  ORCHESTRATOR_DB_PATH: /opt/data/sdlc-orchestrator/orchestrator.sqlite
+  ORCHESTRATOR_LOCK_PATH: /opt/data/sdlc-orchestrator/run_once.lock
+  ORCHESTRATOR_HERMES_URL: http://127.0.0.1:8642
+  ORCHESTRATOR_MAX_STARTS_PER_TICK: "${ORCHESTRATOR_MAX_STARTS_PER_TICK:-1}"
+  ORCHESTRATOR_RUN_TIMEOUT_SECONDS: "${ORCHESTRATOR_RUN_TIMEOUT_SECONDS:-5400}"
+  PYTHONPATH: /opt/hermes-sdlc-orchestrator
 
 x-hermes-common: &hermes-common
-  image: "${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
-  command: gateway run
+  image: "${HERMES_ORCHESTRATOR_IMAGE:-hermes-sdlc-agent-orchestrator:local}"
+  build:
+    context: .
+    dockerfile: Dockerfile.orchestrator
+    args:
+      HERMES_BASE_IMAGE: "${HERMES_IMAGE:-nousresearch/hermes-agent:latest}"
+  entrypoint: [/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh]
   depends_on:
     skills-superset-sync:
       condition: service_completed_successfully
   restart: unless-stopped
-  init: false
+  init: true
   security_opt:
     - no-new-privileges:true
   cap_drop: [ALL]
@@ -80,12 +94,14 @@ services:
     env_file: [./secrets/hermes-planner.env]
     environment:
       <<: *hermes-environment
+      ORCHESTRATOR_ROLE: planner
       GIT_PROVIDER_MCP_TOKEN: "${PLANNER_GITHUB_MCP_TOKEN:?Set PLANNER_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
     volumes:
       - planner-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-planner:/etc/hermes:ro
       - ./profiles/hermes-planner/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -96,12 +112,14 @@ services:
     environment:
       <<: *hermes-environment
       HERMES_WRITE_SAFE_ROOT: /opt/data
+      ORCHESTRATOR_ROLE: builder
       GIT_PROVIDER_MCP_TOKEN: "${BUILDER_GITHUB_MCP_TOKEN:?Set BUILDER_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
     volumes:
       - builder-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-builder:/etc/hermes:ro
       - ./profiles/hermes-builder/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -111,12 +129,14 @@ services:
     env_file: [./secrets/hermes-reviewer.env]
     environment:
       <<: *hermes-environment
+      ORCHESTRATOR_ROLE: reviewer
       GIT_PROVIDER_MCP_TOKEN: "${REVIEWER_GITHUB_MCP_TOKEN:?Set REVIEWER_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
     volumes:
       - reviewer-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-reviewer:/etc/hermes:ro
       - ./profiles/hermes-reviewer/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -126,12 +146,14 @@ services:
     env_file: [./secrets/hermes-release.env]
     environment:
       <<: *hermes-environment
+      ORCHESTRATOR_ROLE: release
       GIT_PROVIDER_MCP_TOKEN: "${RELEASE_GITHUB_MCP_TOKEN:?Set RELEASE_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
     volumes:
       - release-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-release:/etc/hermes:ro
       - ./profiles/hermes-release/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -141,12 +163,14 @@ services:
     env_file: [./secrets/hermes-incident.env]
     environment:
       <<: *hermes-environment
+      ORCHESTRATOR_ROLE: incident
       GIT_PROVIDER_MCP_TOKEN: "${INCIDENT_GITHUB_MCP_TOKEN:?Set INCIDENT_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
     volumes:
       - incident-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-incident:/etc/hermes:ro
       - ./profiles/hermes-incident/SOUL.md:/opt/data/SOUL.md:ro
 
@@ -156,12 +180,14 @@ services:
     env_file: [./secrets/hermes-learning.env]
     environment:
       <<: *hermes-environment
+      ORCHESTRATOR_ROLE: learning
       GIT_PROVIDER_MCP_TOKEN: "${LEARNING_GITHUB_MCP_TOKEN:?Set LEARNING_GITHUB_MCP_TOKEN in .env}"
     ports:
       - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
     volumes:
       - learning-data:/opt/data
       - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-learning:/etc/hermes:ro
       - ./profiles/hermes-learning/SOUL.md:/opt/data/SOUL.md:ro
 

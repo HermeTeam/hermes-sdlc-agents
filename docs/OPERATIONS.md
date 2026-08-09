@@ -9,7 +9,19 @@
 5. Выполните `scripts/validate.sh` и OPA unit/negative tests на provider MCP/API policy layer.
 6. Запустите сначала planner/reviewer/learning, затем builder, release и incident.
 7. Для каждой роли выполните positive и negative canary; сопоставьте Hermes run, provider MCP audit и upstream audit.
-8. Только после canary подключайте Jira/OpenProject/webhook/CI orchestrator к `/v1/runs`.
+8. Только после canary включайте role-local cron orchestrator или подключайте внешний Jira/OpenProject/webhook/CI orchestrator к `/v1/runs`.
+
+## Role-local cron orchestrator rollout
+
+1. Соберите derived image из `Dockerfile.orchestrator`, передав `HERMES_BASE_IMAGE` с pinned Hermes digest.
+2. Оставьте `ORCHESTRATOR_ENABLED=false` и запустите обычные role health/smoke checks.
+3. Заполните только для planner role-local `ORCHESTRATOR_GITHUB_TOKEN` с read-only issue scope.
+4. Включите planner и выполните вручную внутри контейнера `/opt/hermes-sdlc-orchestrator/bin/orchestrator-run-once.sh`.
+5. Повторите ручной запуск и проверьте, что SQLite dedupe не создаёт второй Hermes run для того же assignment key.
+6. Включайте cron для builder/reviewer только после отдельных positive и negative canaries.
+7. Release, incident и learning держите отключёнными, пока их safety policy и retry rules не проверены отдельно.
+
+Для emergency stop достаточно остановить конкретный role container/Pod и отозвать его `API_SERVER_KEY`, GitHub MCP token и orchestrator read-only token. Не запускайте две replicas одной роли на одном `/opt/data`: local SQLite dedupe не является distributed lock.
 
 ## Day-2 checks
 

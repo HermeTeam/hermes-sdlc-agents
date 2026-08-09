@@ -43,5 +43,5 @@ generatorOptions:
   disableNameSuffixHash: true
 
 images:
-  - name: nousresearch/hermes-agent
+  - name: hermes-sdlc-agent-orchestrator
     newTag: latest

@@ -41,6 +41,30 @@ GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/
 
 The active `mcp_servers.repository.tools.include` lists contain native GitHub MCP tools. They must be confirmed against runtime `tools/list`; GitLab requires a separate future mapping. The old abstract `repo_*`, `ci_*`, `quality_*`, `work_item_*`, `spec_*`, and `plan_*` facade tools are not active runtime tools.
 
+## Container cron orchestrator
+
+Каждый role container содержит один локальный cron-compatible orchestrator, который по умолчанию отключён:
+
+```env
+ORCHESTRATOR_ENABLED=false
+ORCHESTRATOR_PROVIDER=github
+ORCHESTRATOR_CRON_SCHEDULE=*/5 * * * *
+ORCHESTRATOR_MAX_STARTS_PER_TICK=1
+ORCHESTRATOR_RUN_TIMEOUT_SECONDS=5400
+```
+
+Wrapper `/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh` запускает cron runner и затем `hermes gateway run`. Cron вызывает `/opt/hermes-sdlc-orchestrator/bin/orchestrator-run-once.sh`, который пишет JSON summaries в `/opt/data/sdlc-orchestrator/orchestrator.log` и хранит SQLite dedupe state в `/opt/data/sdlc-orchestrator/orchestrator.sqlite`.
+
+Оркестратор передаёт задания только в локальный API конкретной роли:
+
+```env
+ORCHESTRATOR_HERMES_URL=http://127.0.0.1:8642
+ORCHESTRATOR_DB_PATH=/opt/data/sdlc-orchestrator/orchestrator.sqlite
+ORCHESTRATOR_LOCK_PATH=/opt/data/sdlc-orchestrator/run_once.lock
+```
+
+`ORCHESTRATOR_HERMES_URL` намеренно валидируется как localhost-only. Issue title/body считаются untrusted input и попадают только в фиксированный role prompt template; они не могут менять role, endpoint, token или command.
+
 ## hermes-planner
 
 Назначение: превратить требования и фактическую структуру системы в traceable `spec` и `plan`.
@@ -138,6 +162,12 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | `RELEASE_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-release`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `INCIDENT_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-incident`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `LEARNING_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-learning`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `HERMES_ORCHESTRATOR_IMAGE`      | derived image with supercronic/wrapper/orchestrator code for Compose |
+| `ORCHESTRATOR_ENABLED`           | глобальный default, должен оставаться `false` до canary rollout       |
+| `ORCHESTRATOR_PROVIDER`          | provider discovery adapter, `github` или `gitlab`                     |
+| `ORCHESTRATOR_CRON_SCHEDULE`     | cron schedule для `run-once`, default `*/5 * * * *`                   |
+| `ORCHESTRATOR_MAX_STARTS_PER_TICK` | максимум новых Hermes runs за один tick                             |
+| `ORCHESTRATOR_RUN_TIMEOUT_SECONDS` | timeout budget, сохраняется как config для reconciliation policy     |
 | `REPOSITORY_ID`                  | стабильный repository ID для provider API/MCP calls            |
 | `REPOSITORY_PROVIDER`            | provider, сейчас `github`                                      |
 | `REPOSITORY_ACCESS_MODE`         | режим доступа, сейчас `github-direct-api-mcp`                  |
@@ -159,5 +189,7 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
 | `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
 | `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
+| `ORCHESTRATOR_GITHUB_TOKEN` | role-local read-only token для issue discovery |
+| `ORCHESTRATOR_GITLAB_TOKEN` | role-local read-only token для GitLab discovery, пусто если не используется |
 
-Не добавляйте `OPENAI_API_KEY`, `GIT_PROVIDER_MCP_TOKEN`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в role env-файлы. `OPENAI_API_KEY` и role-specific `*_GITHUB_MCP_TOKEN` берутся из `.env` и передаются контейнерам через Compose environment. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Не добавляйте `OPENAI_API_KEY`, `GIT_PROVIDER_MCP_TOKEN`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в role env-файлы. `OPENAI_API_KEY` и role-specific `*_GITHUB_MCP_TOKEN` берутся из `.env` и передаются контейнерам через Compose environment. `ORCHESTRATOR_GITHUB_TOKEN` должен быть read-only для поиска issues и не заменяет GitHub MCP credential агента. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

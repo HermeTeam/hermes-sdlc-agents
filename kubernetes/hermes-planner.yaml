@@ -63,9 +63,9 @@ spec:
             - {name: shared-skills, mountPath: /shared-skills}
       containers:
         - name: hermes
-          image: nousresearch/hermes-agent
+          image: hermes-sdlc-agent-orchestrator
           imagePullPolicy: IfNotPresent
-          args: [gateway, run]
+          command: [/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh]
           envFrom:
             - secretRef:
                 name: hermes-planner-env
@@ -76,6 +76,16 @@ spec:
             - {name: API_SERVER_HOST, value: 0.0.0.0}
             - {name: API_SERVER_PORT, value: "8642"}
             - {name: HERMES_WRITE_SAFE_ROOT, value: /opt/data}
+            - {name: ORCHESTRATOR_ENABLED, value: "false"}
+            - {name: ORCHESTRATOR_ROLE, value: planner}
+            - {name: ORCHESTRATOR_PROVIDER, value: github}
+            - {name: ORCHESTRATOR_CRON_SCHEDULE, value: "*/5 * * * *"}
+            - {name: ORCHESTRATOR_DB_PATH, value: /opt/data/sdlc-orchestrator/orchestrator.sqlite}
+            - {name: ORCHESTRATOR_LOCK_PATH, value: /opt/data/sdlc-orchestrator/run_once.lock}
+            - {name: ORCHESTRATOR_HERMES_URL, value: http://127.0.0.1:8642}
+            - {name: ORCHESTRATOR_MAX_STARTS_PER_TICK, value: "1"}
+            - {name: ORCHESTRATOR_RUN_TIMEOUT_SECONDS, value: "5400"}
+            - {name: PYTHONPATH, value: /opt/hermes-sdlc-orchestrator}
           ports:
             - {name: api, containerPort: 8642, protocol: TCP}
           livenessProbe:

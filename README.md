@@ -1,4 +1,4 @@
-# Hermes SDLC Agents
+#  HermeTeam - Hermes-based SDLC AI Agents Team
 
 A ready-to-run bundle of six isolated Hermes Agent roles for controlled software delivery lifecycle (SDLC) automation. The bundle includes real `config.yaml` and `SOUL.md` files, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize templates, a shared read-only skills superset, server-side policy examples for the official GitHub MCP Server MVP, bootstrap scripts, structural validation, and smoke tests.
 
@@ -46,6 +46,7 @@ hermes-sdlc-agents/
 │       ├── config.yaml           # managed role config
 │       ├── SOUL.md               # identity, process, stop conditions
 │       └── skills/               # role-safe shared skills, including self-evolution
+├── orchestrator/                  # role-local cron issue discovery and /v1/runs submitter
 ├── policies/
 │   ├── roles.yaml                # canonical role/tool/constraint matrix
 │   ├── mcp-policy.rego           # sample server-side OPA decision
@@ -92,6 +93,12 @@ Detailed flow documentation:
 - [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
 - [Repository API/MCP Flow — Russian](docs/REPOSITORY_API_MCP_FLOW_RU.md)
 
+## Role-local cron orchestrator
+
+The bundle includes a disabled-by-default cron orchestrator under `orchestrator/`. Each role container runs the same wrapper, writes a minimal cron environment file under `/opt/data/sdlc-orchestrator/`, discovers provider issues with its own read-only `ORCHESTRATOR_GITHUB_TOKEN`, deduplicates assignments in local SQLite, and submits only to `http://127.0.0.1:8642/v1/runs` with that container's own `API_SERVER_KEY`.
+
+Compose builds `Dockerfile.orchestrator` from the pinned `HERMES_IMAGE`, adds `supercronic`, and bind-mounts `./orchestrator` read-only for local iteration. Kubernetes expects the same orchestrator code baked into the `hermes-sdlc-agent-orchestrator` image. Keep `ORCHESTRATOR_ENABLED=false` until canaries pass for one role at a time.
+
 ## Quick start with Docker Compose
 
 Requirements: Docker Engine with Compose v2, an OpenAI-compatible LLM gateway, and GitHub credentials accepted by the official GitHub MCP Server. Compose is intended for local/single-host runs; for production, restrict egress with a firewall/egress proxy or use the Kubernetes NetworkPolicy from this bundle.
@@ -105,7 +112,7 @@ Then:
 
 1. Pin `HERMES_IMAGE` to an immutable digest in `.env`.
 2. Keep the `test-project/test-project` GitHub repository target in `.env.example` and keep `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` for the GitHub MVP.
-3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file.
+3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file, including role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` values before enabling cron.
 4. Set six different GitHub MCP tokens in the main `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
 5. Validate the configuration:
 

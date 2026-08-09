@@ -1,4 +1,4 @@
-# Hermes SDLC Agents
+#  HermeTeam - Hermes-based SDLC AI Agents Team
 
 Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MVP на официальном GitHub MCP Server, bootstrap, structural validation и smoke tests.
 
@@ -46,6 +46,7 @@ hermes-sdlc-agents/
 │       ├── config.yaml           # managed role config
 │       ├── SOUL.md               # identity, process, stop conditions
 │       └── skills/               # role-safe shared skills, including self-evolution
+├── orchestrator/                  # role-local cron discovery issues и submitter в /v1/runs
 ├── policies/
 │   ├── roles.yaml                # каноническая role/tool/constraint matrix
 │   ├── mcp-policy.rego           # пример server-side OPA decision
@@ -92,6 +93,12 @@ hermes-sdlc-agents/
 - [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
 - [Флоу доступа к репозиториям через API/MCP — Русский](docs/REPOSITORY_API_MCP_FLOW_RU.md)
 
+## Role-local cron orchestrator
+
+В bundle добавлен отключённый по умолчанию cron orchestrator в `orchestrator/`. Каждый role container запускает один и тот же wrapper, пишет минимальный cron env file в `/opt/data/sdlc-orchestrator/`, ищет provider issues своим read-only `ORCHESTRATOR_GITHUB_TOKEN`, дедуплицирует назначения в локальном SQLite и отправляет runs только в `http://127.0.0.1:8642/v1/runs` с собственным `API_SERVER_KEY` контейнера.
+
+Compose собирает `Dockerfile.orchestrator` от зафиксированного `HERMES_IMAGE`, добавляет `supercronic` и монтирует `./orchestrator` read-only для локальной итерации. Kubernetes ожидает тот же код внутри image `hermes-sdlc-agent-orchestrator`. Держите `ORCHESTRATOR_ENABLED=false`, пока canary не пройдёт отдельно для каждой роли.
+
 ## Быстрый запуск через Docker Compose
 
 Требования: Docker Engine с Compose v2, OpenAI-совместимый LLM gateway и GitHub credentials, принимаемые official GitHub MCP Server. Compose предназначен для локального/single-host запуска; production egress ограничьте firewall/egress proxy или используйте Kubernetes NetworkPolicy из bundle.
@@ -105,7 +112,7 @@ scripts/bootstrap.sh
 
 1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
 2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` для GitHub MVP.
-3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`.
+3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`, включая role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` перед включением cron.
 4. Задайте шесть разных GitHub MCP tokens в основном `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
 5. Проверьте конфигурацию:
 

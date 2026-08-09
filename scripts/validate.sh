@@ -44,8 +44,19 @@ role_github_token_vars = {
     "hermes-incident": "INCIDENT_GITHUB_MCP_TOKEN",
     "hermes-learning": "LEARNING_GITHUB_MCP_TOKEN",
 }
+role_short_names = {role: role.removeprefix("hermes-") for role in role_github_token_vars}
+orchestrator_wrapper = "/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh"
+orchestrator_mount = "./orchestrator:/opt/hermes-sdlc-orchestrator:ro"
+orchestrator_db_path = "/opt/data/sdlc-orchestrator/orchestrator.sqlite"
+orchestrator_lock_path = "/opt/data/sdlc-orchestrator/run_once.lock"
 required_dotenv_keys = {
     "OPENAI_API_KEY",
+    "HERMES_ORCHESTRATOR_IMAGE",
+    "ORCHESTRATOR_ENABLED",
+    "ORCHESTRATOR_PROVIDER",
+    "ORCHESTRATOR_CRON_SCHEDULE",
+    "ORCHESTRATOR_MAX_STARTS_PER_TICK",
+    "ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
     "GIT_PROVIDER_MCP_URL",
     "REPOSITORY_ID",
     "REPOSITORY_PROVIDER",
@@ -60,6 +71,14 @@ required_dotenv_keys = {
     "GITHUB_REPOSITORY_HTML_URL",
     "GITHUB_REPOSITORY_API_URL",
 } | set(role_github_token_vars.values())
+runtime_optional_dotenv_keys = {
+    "HERMES_ORCHESTRATOR_IMAGE",
+    "ORCHESTRATOR_ENABLED",
+    "ORCHESTRATOR_PROVIDER",
+    "ORCHESTRATOR_CRON_SCHEDULE",
+    "ORCHESTRATOR_MAX_STARTS_PER_TICK",
+    "ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
+}
 
 errors = []
 if set(policy_roles) != expected_roles:
@@ -88,9 +107,13 @@ if dotenv_values.get("GITHUB_REPOSITORY_FULL_NAME") != "test-project/test-projec
     errors.append(".env.example: GITHUB_REPOSITORY_FULL_NAME must be test-project/test-project")
 if "GIT_PROVIDER_MCP_TOKEN" in dotenv_values:
     errors.append(".env.example: use role-specific *_GITHUB_MCP_TOKEN keys, not generic GIT_PROVIDER_MCP_TOKEN")
+if dotenv_values.get("ORCHESTRATOR_ENABLED") != "false":
+    errors.append(".env.example: ORCHESTRATOR_ENABLED must default to false")
+if dotenv_values.get("ORCHESTRATOR_PROVIDER") != "github":
+    errors.append(".env.example: ORCHESTRATOR_PROVIDER must default to github")
 if (root / ".env").is_file():
     runtime_dotenv_values = parse_dotenv(root / ".env")
-    missing_runtime_dotenv_keys = sorted(required_dotenv_keys - set(runtime_dotenv_values))
+    missing_runtime_dotenv_keys = sorted((required_dotenv_keys - runtime_optional_dotenv_keys) - set(runtime_dotenv_values))
     if missing_runtime_dotenv_keys:
         errors.append(f".env missing required repository keys: {', '.join(missing_runtime_dotenv_keys)}")
     if runtime_dotenv_values.get("REPOSITORY_CLONE_ALLOWED") != "false":
@@ -99,6 +122,17 @@ if (root / ".env").is_file():
         errors.append(f".env: GIT_PROVIDER_MCP_URL must be {github_mcp_url} for GitHub MVP")
     if "GIT_PROVIDER_MCP_TOKEN" in runtime_dotenv_values:
         errors.append(".env: use role-specific *_GITHUB_MCP_TOKEN keys, not generic GIT_PROVIDER_MCP_TOKEN")
+    if "ORCHESTRATOR_PROVIDER" in runtime_dotenv_values and runtime_dotenv_values.get("ORCHESTRATOR_PROVIDER") not in {"github", "gitlab"}:
+        errors.append(".env: ORCHESTRATOR_PROVIDER must be github or gitlab")
+
+if not (root / "Dockerfile.orchestrator").is_file():
+    errors.append("Dockerfile.orchestrator is required for cron runner packaging")
+for script_name in ["orchestrator/bin/hermes-with-orchestrator.sh", "orchestrator/bin/orchestrator-run-once.sh"]:
+    script_path = root / script_name
+    if not script_path.is_file():
+        errors.append(f"{script_name} missing")
+    elif not (script_path.stat().st_mode & 0o111):
+        errors.append(f"{script_name} must be executable")
 
 for role in sorted(expected_roles):
     profile_dir = root / "profiles" / role
@@ -178,6 +212,10 @@ for role in sorted(expected_roles):
                 errors.append(f"{secret_template.relative_to(root)}: OPENAI_API_KEY must be supplied from .env, not role secrets")
             if "GIT_PROVIDER_MCP_TOKEN" in secret_text:
                 errors.append(f"{secret_template.relative_to(root)}: GIT_PROVIDER_MCP_TOKEN must be supplied from role-specific .env token, not role secrets")
+            if secret_template.name.endswith(".env.example"):
+                secret_values = parse_dotenv(secret_template)
+                if "ORCHESTRATOR_GITHUB_TOKEN" not in secret_values:
+                    errors.append(f"{secret_template.relative_to(root)}: ORCHESTRATOR_GITHUB_TOKEN placeholder missing")
 
     workload_path = root / "kubernetes" / f"{role}.yaml"
     workload_docs = [doc for doc in yaml.safe_load_all(workload_path.read_text(encoding="utf-8")) if doc]
@@ -187,6 +225,10 @@ for role in sorted(expected_roles):
         errors.append(f"{role}: Kubernetes file must contain one Deployment and one Service")
     else:
         pod_spec = deployments[0]["spec"]["template"]["spec"]
+        if deployments[0].get("spec", {}).get("replicas") != 1:
+            errors.append(f"{role}: Kubernetes replicas must be 1 for local SQLite dedupe")
+        if deployments[0].get("spec", {}).get("strategy", {}).get("type") != "Recreate":
+            errors.append(f"{role}: Kubernetes strategy must be Recreate")
         if pod_spec.get("automountServiceAccountToken") is not False:
             errors.append(f"{role}: Kubernetes service-account token must not be mounted")
         containers = pod_spec.get("containers", [])
@@ -199,11 +241,26 @@ for role in sorted(expected_roles):
         if len(containers) != 1:
             errors.append(f"{role}: exactly one main Hermes container is required")
         else:
+            container = containers[0]
             refs = containers[0].get("envFrom", [])
             expected_secret = f"{role}-env"
             if not any(item.get("secretRef", {}).get("name") == expected_secret for item in refs):
                 errors.append(f"{role}: expected Secret ref {expected_secret}")
             mounts = containers[0].get("volumeMounts", [])
+            command = container.get("command", [])
+            if command != [orchestrator_wrapper]:
+                errors.append(f"{role}: Kubernetes container must start via orchestrator wrapper")
+            container_env = {item.get("name"): item.get("value") for item in container.get("env", [])}
+            if container_env.get("ORCHESTRATOR_ROLE") != role_short_names[role]:
+                errors.append(f"{role}: Kubernetes ORCHESTRATOR_ROLE mismatch")
+            if container_env.get("ORCHESTRATOR_DB_PATH") != orchestrator_db_path:
+                errors.append(f"{role}: Kubernetes ORCHESTRATOR_DB_PATH must be {orchestrator_db_path}")
+            if container_env.get("ORCHESTRATOR_LOCK_PATH") != orchestrator_lock_path:
+                errors.append(f"{role}: Kubernetes ORCHESTRATOR_LOCK_PATH must be {orchestrator_lock_path}")
+            if container_env.get("ORCHESTRATOR_HERMES_URL") != "http://127.0.0.1:8642":
+                errors.append(f"{role}: Kubernetes ORCHESTRATOR_HERMES_URL must be localhost")
+            if str(container).count("API_SERVER_KEY") > 0:
+                errors.append(f"{role}: Kubernetes API_SERVER_KEY must come only from the role Secret envFrom")
             if not any(
                 mount.get("name") == "shared-skills"
                 and mount.get("mountPath") == "/opt/hermes-shared-skills/current"
@@ -232,7 +289,21 @@ for role, service in compose.get("services", {}).items():
         continue
     if service.get("container_name") != role:
         errors.append(f"{role}: container_name mismatch")
+    if service.get("entrypoint") != [orchestrator_wrapper]:
+        errors.append(f"{role}: compose service must start via orchestrator wrapper")
+    if service.get("init") is not True:
+        errors.append(f"{role}: compose init must be true for child reaping")
     service_environment = service.get("environment", {})
+    if service_environment.get("ORCHESTRATOR_ROLE") != role_short_names[role]:
+        errors.append(f"{role}: compose ORCHESTRATOR_ROLE mismatch")
+    if service_environment.get("ORCHESTRATOR_DB_PATH") != orchestrator_db_path:
+        errors.append(f"{role}: compose ORCHESTRATOR_DB_PATH must be {orchestrator_db_path}")
+    if service_environment.get("ORCHESTRATOR_LOCK_PATH") != orchestrator_lock_path:
+        errors.append(f"{role}: compose ORCHESTRATOR_LOCK_PATH must be {orchestrator_lock_path}")
+    if service_environment.get("ORCHESTRATOR_HERMES_URL") != "http://127.0.0.1:8642":
+        errors.append(f"{role}: compose ORCHESTRATOR_HERMES_URL must be localhost")
+    if "API_SERVER_KEY" in service_environment:
+        errors.append(f"{role}: API_SERVER_KEY must come only from the role env_file")
     if "GITHUB_PROVIDER_TOKEN" in service_environment:
         errors.append(f"{role}: legacy GitHub adapter token must not be passed to Hermes agents")
     expected_token_expr = f"${{{role_github_token_vars[role]}:?Set {role_github_token_vars[role]} in .env}}"
@@ -246,6 +317,8 @@ for role, service in compose.get("services", {}).items():
             errors.append("hermes-builder: compose local repository mount references must be absent")
     if "shared-skills:/opt/hermes-shared-skills:ro" not in service.get("volumes", []):
         errors.append(f"{role}: shared-skills volume must be mounted read-only")
+    if orchestrator_mount not in service.get("volumes", []):
+        errors.append(f"{role}: orchestrator code must be mounted read-only in compose")
     depends_on = service.get("depends_on", {})
     if depends_on.get("skills-superset-sync", {}).get("condition") != "service_completed_successfully":
         errors.append(f"{role}: must wait for skills-superset-sync")
