@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: hermes-project-manager-data
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hermes-project-manager
+  labels: &labels
+    app.kubernetes.io/name: hermes-project-manager
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/part-of: hermes-sdlc
+    hermes.sdlc/role: project-manager
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  revisionHistoryLimit: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hermes-project-manager
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      serviceAccountName: hermes-agent
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 45
+      securityContext:
+        fsGroup: 10000
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: sync-shared-skills
+          image: alpine/git:2.49.1
+          imagePullPolicy: IfNotPresent
+          command: [/bin/sh, -ec]
+          args:
+            - |
+              tmp_dir="$(mktemp -d)"
+              trap 'rm -rf "${tmp_dir}"' EXIT
+              git clone --depth=1 --filter=blob:none --sparse "${SKILLS_SUPERSET_REPO_URL}" "${tmp_dir}/repo"
+              git -C "${tmp_dir}/repo" checkout "${SKILLS_SUPERSET_REF}"
+              git -C "${tmp_dir}/repo" sparse-checkout set skills
+              cp -a "${tmp_dir}/repo/skills/." /shared-skills/
+          env:
+            - {name: SKILLS_SUPERSET_REPO_URL, value: "https://github.com/stanta/skills_superset.git"}
+            - {name: SKILLS_SUPERSET_REF, value: main}
+          securityContext:
+            runAsUser: 10000
+            runAsGroup: 10000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: shared-skills, mountPath: /shared-skills}
+      containers:
+        - name: hermes
+          image: hermes-sdlc-agent-orchestrator
+          imagePullPolicy: IfNotPresent
+          command: [/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh]
+          envFrom:
+            - secretRef:
+                name: hermes-project-manager-env
+          env:
+            - {name: HERMES_MANAGED_DIR, value: /etc/hermes}
+            - {name: HERMES_DASHBOARD, value: "0"}
+            - {name: API_SERVER_ENABLED, value: "true"}
+            - {name: API_SERVER_HOST, value: 0.0.0.0}
+            - {name: API_SERVER_PORT, value: "8642"}
+            - {name: HERMES_WRITE_SAFE_ROOT, value: /opt/data}
+            - {name: ORCHESTRATOR_ENABLED, value: "false"}
+            - {name: ORCHESTRATOR_ROLE, value: project-manager}
+            - {name: ORCHESTRATOR_PROVIDER, value: github}
+            - {name: ORCHESTRATOR_CRON_SCHEDULE, value: "*/5 * * * *"}
+            - {name: ORCHESTRATOR_DB_PATH, value: /opt/data/sdlc-orchestrator/orchestrator.sqlite}
+            - {name: ORCHESTRATOR_LOCK_PATH, value: /opt/data/sdlc-orchestrator/run_once.lock}
+            - {name: ORCHESTRATOR_HERMES_URL, value: http://127.0.0.1:8642}
+            - {name: ORCHESTRATOR_MAX_STARTS_PER_TICK, value: "1"}
+            - {name: ORCHESTRATOR_RUN_TIMEOUT_SECONDS, value: "5400"}
+            - {name: PYTHONPATH, value: /opt/hermes-sdlc-orchestrator}
+          ports:
+            - {name: api, containerPort: 8642, protocol: TCP}
+          livenessProbe:
+            httpGet: {path: /health, port: api}
+            initialDelaySeconds: 45
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet: {path: /health, port: api}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests: {cpu: 250m, memory: 1Gi}
+            limits: {cpu: "2", memory: 4Gi}
+          securityContext: &container-security
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+              add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+          volumeMounts:
+            - {name: data, mountPath: /opt/data}
+            - {name: shared-skills, mountPath: /opt/hermes-shared-skills/current, readOnly: true}
+            - {name: profile, mountPath: /etc/hermes, readOnly: true}
+            - {name: profile, mountPath: /opt/data/SOUL.md, subPath: SOUL.md, readOnly: true}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hermes-project-manager-data
+        - name: shared-skills
+          emptyDir: {}
+        - name: profile
+          configMap:
+            name: hermes-project-manager-profile
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hermes-project-manager
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: hermes-project-manager
+  ports:
+    - {name: api, port: 8642, targetPort: api, protocol: TCP}

@@ -35,6 +35,24 @@ test_provider_tool_not_in_allowlist_denied if {
   }
 }
 
+test_project_manager_create_issue_allowed if {
+  repository_mcp.allow with input as {
+    "identity": identity("hermes-project-manager"),
+    "repository": repo,
+    "tool": "create_issue",
+    "args": scoped_args({"title": "PM status", "body": "Prepared project status"}),
+  }
+}
+
+test_project_manager_push_denied if {
+  not repository_mcp.allow with input as {
+    "identity": identity("hermes-project-manager"),
+    "repository": repo,
+    "tool": "push_files",
+    "args": scoped_args({"branch": "agent/REQ-1-change", "files": []}),
+  }
+}
+
 test_wrong_repository_denied if {
   not repository_mcp.allow with input as {
     "identity": identity("hermes-planner"),

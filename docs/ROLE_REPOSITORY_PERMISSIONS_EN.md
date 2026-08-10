@@ -13,7 +13,7 @@ Goal: grant each role only the repository permissions it needs, without clone ac
 - Do not grant direct write access to protected branches: `main`, `master`, `release/*`.
 - Builder may write only to task branches with the `agent/` prefix.
 - Reviewer must not be able to modify files or the author's branch.
-- Planner must not have code write access.
+- Planner and project manager must not have code write access.
 - Release, incident, and learning roles receive repository-write permissions only if their workflow is actually represented in GitHub/GitLab Issues, PRs/MRs, Releases, or Deployments.
 - The repository is not cloned into Hermes containers. All work goes through provider API/MCP.
 
@@ -42,6 +42,7 @@ This table uses GitHub fine-grained permission names. For a GitHub App, use equi
 | Role | Minimum GitHub permissions | Purpose |
 |---|---|---|
 | `hermes-planner` | Metadata: read; Contents: read; Issues: read; Pull requests: read; Actions: read | Read requirements, issue context, code, PR context, and CI evidence for planning |
+| `hermes-project-manager` | Metadata: read; Contents: read; Issues: read/write; Pull requests: read; Actions: read | Manage intake, status, backlog, risks, decisions, and evidence through Issues without code or branch mutation |
 | `hermes-builder` | Metadata: read; Contents: read/write; Pull requests: read/write; Actions: read; Actions: write only if builder triggers workflows | Create `agent/*` branches, write change-sets, open PRs, read/trigger CI |
 | `hermes-reviewer` | Metadata: read; Contents: read; Pull requests: read/write; Issues: read/write if PR comments use issue comments; Actions: read; Code scanning alerts: read; Dependabot alerts: read | Read diff/evidence, leave review/comments, approve/request changes, inspect security findings |
 | `hermes-release` | Metadata: read; Actions: read; Deployments: read/write only if release is managed through GitHub Deployments; Releases: read/write only if release creates GitHub Releases | Read immutable candidate/evidence and perform only approved promote/abort actions if GitHub is the release control plane |
@@ -55,6 +56,7 @@ GitLab permissions depend on token type. For project access tokens, prefer the l
 | Role | Project role | Token scopes | Purpose |
 |---|---|---|---|
 | `hermes-planner` | Reporter | `read_api`, `read_repository` | Read issues, MR context, repository files, and pipeline evidence |
+| `hermes-project-manager` | Reporter | `api`, `read_repository` | Read/update project-management issues and read repository evidence without repository writes |
 | `hermes-builder` | Developer | `api`, `read_repository`, `write_repository` | Create branch, commit/change-set, MR, and trigger pipeline |
 | `hermes-reviewer` | Reporter or Developer | `api`, `read_repository`; Developer only if approval/comment APIs require it | Read MR diff/evidence and leave review/discussions |
 | `hermes-release` | Reporter, or Maintainer only when GitLab Deployments/Releases write is required | `api`, `read_repository`; `write_repository` is not needed for normal release approval | Read pipeline/release evidence and manage release/deployment only if GitLab is the release control plane |
@@ -104,6 +106,30 @@ GitLab minimum:
 Role: Reporter
 Scopes: read_api, read_repository
 ```
+
+### hermes-project-manager
+
+Role purpose: define measurable project goals, preserve BRD/PRD governance, manage Funnel/Discovery, scope, roadmap/backlog, WIP, risks, weekly decision reporting, flow/health metrics, status, decisions, and evidence gates.
+
+Allow:
+
+- read repository tree and file contents as evidence;
+- search code to understand impact and dependencies;
+- read issues/work items;
+- create issues for project-management artifacts;
+- add issue comments for status, weekly reports, decision packets, risk updates, retrospectives, and handoffs.
+
+Deny:
+
+- create branch;
+- push files;
+- create PR/MR;
+- approve PR/MR;
+- merge;
+- micromanage the technical implementation approach owned by the Tech Lead and Delivery Team;
+- change budget, access rights, credentials, production state, repository settings, workflows, rulesets, or branch protection.
+
+Exit: updated or prepared project state with concrete next step, owner, deadline/range, and completion evidence.
 
 ### hermes-builder
 
@@ -339,6 +365,7 @@ Recommended starting point:
 | Role | GitHub MCP toolsets |
 |---|---|
 | `hermes-planner` | `repos`, `issues`, `pull_requests`, `actions` read-only where supported |
+| `hermes-project-manager` | `repos`, `issues`, `pull_requests`, `actions` read-only plus issue comment/create where supported |
 | `hermes-builder` | `repos`, `git`, `pull_requests`, `actions` |
 | `hermes-reviewer` | `repos`, `pull_requests`, `issues`, `actions`, `code_security`, `dependabot` |
 | `hermes-release` | `actions`, optional `repos`/release/deployment tools if exposed |

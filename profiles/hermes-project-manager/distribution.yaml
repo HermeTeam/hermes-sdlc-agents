@@ -1,0 +1,27 @@
+name: hermes-project-manager
+version: 1.0.0
+description: "IT Project Manager: defines measurable goals, manages scope, backlog, risks, WIP, status, and evidence. Does not change code or perform deployment."
+hermes_requires: ">=0.19.0"
+author: "SDLC Platform Team"
+license: "MIT"
+env_requires:
+  - name: HERMES_MODEL_ID
+    description: "Идентификатор модели в OpenAI-совместимом LLM gateway"
+    required: true
+  - name: HERMES_MODEL_BASE_URL
+    description: "URL OpenAI-совместимого LLM gateway, включая /v1"
+    required: true
+  - name: OPENAI_API_KEY
+    description: "Ролевой токен к LLM gateway; не используйте ключ с иными полномочиями"
+    required: true
+  - name: GIT_PROVIDER_MCP_URL
+    description: "URL Streamable HTTP endpoint GitHub/GitLab provider API/MCP"
+    required: true
+  - name: GIT_PROVIDER_MCP_TOKEN
+    description: "Короткоживущий provider token с минимальными правами роли hermes-project-manager"
+    required: true
+distribution_owned:
+  - distribution.yaml
+  - config.yaml
+  - SOUL.md
+  - skills/

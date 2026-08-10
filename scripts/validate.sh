@@ -28,7 +28,7 @@ for yaml_path in sorted(root.rglob("*.yaml")):
 policy = yaml.safe_load((root / "policies/roles.yaml").read_text(encoding="utf-8"))
 policy_roles = policy["spec"]["roles"]
 expected_roles = {
-    "hermes-planner", "hermes-builder", "hermes-reviewer",
+    "hermes-planner", "hermes-project-manager", "hermes-builder", "hermes-reviewer",
     "hermes-release", "hermes-incident", "hermes-learning",
 }
 expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
@@ -38,6 +38,7 @@ legacy_facade_tool_prefixes = ("repo_", "ci_", "quality_", "work_item_", "spec_"
 github_mcp_url = "https://api.githubcopilot.com/mcp/"
 role_github_token_vars = {
     "hermes-planner": "PLANNER_GITHUB_MCP_TOKEN",
+    "hermes-project-manager": "PROJECT_MANAGER_GITHUB_MCP_TOKEN",
     "hermes-builder": "BUILDER_GITHUB_MCP_TOKEN",
     "hermes-reviewer": "REVIEWER_GITHUB_MCP_TOKEN",
     "hermes-release": "RELEASE_GITHUB_MCP_TOKEN",
@@ -82,7 +83,7 @@ runtime_optional_dotenv_keys = {
 
 errors = []
 if set(policy_roles) != expected_roles:
-    errors.append("roles.yaml does not define exactly the six expected roles")
+    errors.append("roles.yaml does not define exactly the seven expected roles")
 
 dotenv_example = root / ".env.example"
 def parse_dotenv(path):

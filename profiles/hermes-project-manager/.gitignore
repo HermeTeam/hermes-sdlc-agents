@@ -1,0 +1,12 @@
+.env
+auth.json
+state.db*
+memories/
+sessions/
+logs/
+mcp-tokens/
+pairing/
+pending/
+home/
+workspace/
+local/

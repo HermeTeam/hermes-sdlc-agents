@@ -10,6 +10,7 @@ fi
 
 roles=(
   hermes-planner
+  hermes-project-manager
   hermes-builder
   hermes-reviewer
   hermes-release

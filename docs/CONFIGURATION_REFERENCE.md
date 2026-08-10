@@ -2,7 +2,7 @@
 
 ## Общая база
 
-Все шесть `config.yaml` используют OpenAI-совместимый internal model endpoint:
+Все семь `config.yaml` используют OpenAI-совместимый internal model endpoint:
 
 ```yaml
 model:
@@ -76,6 +76,23 @@ ORCHESTRATOR_LOCK_PATH=/opt/data/sdlc-orchestrator/run_once.lock
 - Exit states: `READY_FOR_BUILD` или `BLOCKED`.
 
 Server-side обязательства: repository/ref scope, GitHub token scopes, deny repository write/deployment tools, and audit.
+
+## hermes-project-manager
+
+Назначение: управлять IT-проектом через BRD/PRD governance, измеримые цели, Funnel/Discovery separation, roadmap/backlog, WIP, риски, weekly decision reporting, flow/health metrics, статусы, решения и evidence gates.
+
+- Built-ins: `skills`, `todo`, `clarify`; `file` и `terminal` отключены.
+- Read tools: GitHub file contents, repository tree, code search, issues.
+- Write tools: GitHub issue comments and issue creation for PM artifacts only.
+- Runtime: repository не mounted; code/branch/deployment/production credentials отсутствуют.
+- Exit states: `CHARTER_READY`, `ROADMAP_READY`, `READY_FOR_ITERATION`, `IN_PROGRESS`, `REVIEW`, `DONE`, `BLOCKED`, `REPLAN_REQUIRED`, `PAUSED`, or `KILLED` depending on project state and evidence.
+- Governance: every material charter/roadmap/status/decision references BRD/PRD when available; changes to vision, scope, constraints, requirements, success metrics, budget, deadlines, guardrails, or authority boundaries become `CHANGE_REQUEST` decision packets.
+- Workflow: `FUNNEL -> DISCOVERY -> READY -> IN_PROGRESS -> REVIEW/VALIDATION -> DONE`, with `PARKING_LOT / NOT_NOW` for off-goal ideas.
+- Reporting: `/weekly-report` follows the PM decision report format and includes outcome status, completed evidence, WIP/throughput/aging/cycle-time trend, quality/incidents, blockers, forecast changes, risks, and next coherent result.
+- Metrics: tracks outcome, flow, quality/reliability, and team/system health metrics including SLE, blocked time, queue time, decision waiting time, unplanned work, and bus factor where data exists.
+- Execution boundary: PM owns route integrity, dependencies, risk, flow, forecast, and governance; Sponsor/PO/Tech Lead/Delivery Team keep their decision rights and implementation ownership.
+
+Server-side обязательства: repository scope, issue mutation audit, deny code/branch/deployment tools, human approval for material commitment changes, and prompt-injection treatment of ticket/document content as data.
 
 ## hermes-builder
 
@@ -157,6 +174,7 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | `OPENAI_API_KEY`                 | общий LLM/OpenRouter token, передаётся всем Hermes containers  |
 | `GIT_PROVIDER_MCP_URL`           | official GitHub MCP endpoint, `https://api.githubcopilot.com/mcp/` |
 | `PLANNER_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-planner`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `PROJECT_MANAGER_GITHUB_MCP_TOKEN` | GitHub MCP credential for `hermes-project-manager`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `BUILDER_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-builder`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `REVIEWER_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-reviewer`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `RELEASE_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-release`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |

@@ -13,7 +13,7 @@
 - Не выдавайте права на прямой write в protected branches: `main`, `master`, `release/*`.
 - Builder может писать только в task branches с prefix `agent/`.
 - Reviewer не должен иметь права менять файлы или ветку автора.
-- Planner не должен иметь write-доступ к коду.
+- Planner и project manager не должны иметь write-доступ к коду.
 - Release/incident/learning получают repository-write только если соответствующий workflow реально представлен в GitHub/GitLab Issues, PR/MR, Releases или Deployments.
 - Репозиторий не клонируется в Hermes containers. Работа идёт только через provider API/MCP.
 
@@ -42,6 +42,7 @@
 | Роль | Минимальные GitHub permissions | Зачем |
 |---|---|---|
 | `hermes-planner` | Metadata: read; Contents: read; Issues: read; Pull requests: read; Actions: read | Читать требования, issue context, код, PR context и CI evidence для планирования |
+| `hermes-project-manager` | Metadata: read; Contents: read; Issues: read/write; Pull requests: read; Actions: read | Управлять intake, статусами, backlog, рисками, решениями и evidence через Issues без code/branch mutation |
 | `hermes-builder` | Metadata: read; Contents: read/write; Pull requests: read/write; Actions: read; Actions: write только если builder запускает workflow | Создавать `agent/*` branch, писать change-set, открывать PR, читать/запускать CI |
 | `hermes-reviewer` | Metadata: read; Contents: read; Pull requests: read/write; Issues: read/write если PR comments идут через issue comments; Actions: read; Code scanning alerts: read; Dependabot alerts: read | Читать diff/evidence, оставлять review/comments, approve/request changes, анализировать security findings |
 | `hermes-release` | Metadata: read; Actions: read; Deployments: read/write только если release управляется GitHub Deployments; Releases: read/write только если release создаёт GitHub Release | Читать immutable candidate/evidence и выполнять только разрешённый promote/abort через GitHub-native механизм, если он используется |
@@ -55,6 +56,7 @@ GitLab permissions зависят от типа token. Для project access tok
 | Роль | Project role | Token scopes | Зачем |
 |---|---|---|---|
 | `hermes-planner` | Reporter | `read_api`, `read_repository` | Читать issues, MR context, repository files и pipeline evidence |
+| `hermes-project-manager` | Reporter | `api`, `read_repository` | Читать/обновлять project-management issues и читать repository evidence без repository writes |
 | `hermes-builder` | Developer | `api`, `read_repository`, `write_repository` | Создавать branch, commit/change-set, MR и запускать pipeline |
 | `hermes-reviewer` | Reporter или Developer | `api`, `read_repository`; Developer нужен только если approve/comment требует write permissions | Читать MR diff/evidence и оставлять review/discussions |
 | `hermes-release` | Reporter или Maintainer только при GitLab Deployments/Releases write | `api`, `read_repository`; `write_repository` не нужен для обычного release approval | Читать pipeline/release evidence, управлять release/deployment только если GitLab является release control plane |
@@ -104,6 +106,30 @@ GitLab minimum:
 Role: Reporter
 Scopes: read_api, read_repository
 ```
+
+### hermes-project-manager
+
+Назначение роли: определять измеримые цели проекта, сохранять BRD/PRD governance, управлять Funnel/Discovery, scope, roadmap/backlog, WIP, рисками, weekly decision reporting, flow/health metrics, статусами, решениями и evidence gates.
+
+Разрешить:
+
+- read repository tree и file contents как evidence;
+- search code для понимания impact/dependencies;
+- read issues/work items;
+- create issues для project-management artifacts;
+- add issue comments для статусов, weekly reports, decision packets, risk updates, retrospectives и handoffs.
+
+Запретить:
+
+- create branch;
+- push files;
+- create PR/MR;
+- approve PR/MR;
+- merge;
+- микроменеджить technical implementation approach, который принадлежит Tech Lead и Delivery Team;
+- менять budget, access rights, credentials, production state, repository settings, workflows, rulesets или branch protection.
+
+Выход: обновлённое или подготовленное состояние проекта с concrete next step, owner, deadline/range и completion evidence.
 
 ### hermes-builder
 
@@ -339,6 +365,7 @@ Optional: write_repository for MR proposal branches
 | Роль | GitHub MCP toolsets |
 |---|---|
 | `hermes-planner` | `repos`, `issues`, `pull_requests`, `actions` read-only where supported |
+| `hermes-project-manager` | `repos`, `issues`, `pull_requests`, `actions` read-only plus issue comment/create where supported |
 | `hermes-builder` | `repos`, `git`, `pull_requests`, `actions` |
 | `hermes-reviewer` | `repos`, `pull_requests`, `issues`, `actions`, `code_security`, `dependabot` |
 | `hermes-release` | `actions`, optional `repos`/release/deployment tools if exposed |

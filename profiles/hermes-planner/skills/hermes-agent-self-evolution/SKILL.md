@@ -54,6 +54,7 @@ For `hermes-learning`:
 | Role | Allowed self-evolution action |
 |---|---|
 | `hermes-planner` | Identify spec or planning failure patterns and hand off improvement evidence. |
+| `hermes-project-manager` | Identify goal, backlog, WIP, risk, status, or decision-process failure patterns and hand off evidence. |
 | `hermes-builder` | Identify implementation, test, or tooling friction and hand off verified evidence. |
 | `hermes-reviewer` | Identify review rubric gaps, missing tests, or recurring defect classes and hand off evidence. |
 | `hermes-release` | Identify gate, metric, rollout, or rollback policy gaps and hand off evidence. |

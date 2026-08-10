@@ -12,13 +12,14 @@ GitLab support is out of scope for this MVP and requires a separate tool mapping
 
 ## Identity And Tokens
 
-Each role token in the main `.env` must be a GitHub credential accepted by the official GitHub MCP Server, such as a fine-grained PAT or GitHub App installation token scoped to the target repository. Compose maps `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN` into container-local `GIT_PROVIDER_MCP_TOKEN` for the matching agent. An arbitrary internal workload JWT will not work unless an intermediate proxy translates it into a GitHub credential.
+Each role token in the main `.env` must be a GitHub credential accepted by the official GitHub MCP Server, such as a fine-grained PAT or GitHub App installation token scoped to the target repository. Compose maps `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN` into container-local `GIT_PROVIDER_MCP_TOKEN` for the matching agent. An arbitrary internal workload JWT will not work unless an intermediate proxy translates it into a GitHub credential.
 
 Recommended minimum fine-grained GitHub permissions:
 
 | Role | Permissions |
 | --- | --- |
 | `hermes-planner` | Contents read, Issues read, Pull requests read, Metadata read |
+| `hermes-project-manager` | Contents read, Issues read/write, Pull requests read, Metadata read |
 | `hermes-builder` | Contents read/write, Pull requests read/write, Actions read/write if triggering workflows otherwise read, Metadata read |
 | `hermes-reviewer` | Contents read, Pull requests read/write, Issues read/write for PR comments if needed, Actions read, Metadata read |
 | `hermes-release` | Actions read, Metadata read |
@@ -34,6 +35,7 @@ The offline configuration currently uses the GitHub MVP tool shape below. Treat 
 | Role | Native GitHub MCP tools |
 | --- | --- |
 | `hermes-planner` | `get_file_contents`, `get_repository_tree`, `search_code`, `issue_read`, `list_issues` |
+| `hermes-project-manager` | `get_file_contents`, `get_repository_tree`, `search_code`, `issue_read`, `list_issues`, `add_issue_comment`, `create_issue` |
 | `hermes-builder` | `get_file_contents`, `get_repository_tree`, `search_code`, `create_branch`, `push_files`, `create_pull_request`, `actions_run_trigger`, `actions_get`, `actions_list`, `get_job_logs` |
 | `hermes-reviewer` | `pull_request_read`, `get_file_contents`, `actions_get`, `actions_list`, `get_job_logs`, `add_issue_comment` |
 | `hermes-release` | `actions_get`, `actions_list` |

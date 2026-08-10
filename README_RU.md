@@ -1,6 +1,6 @@
 #  HermeTeam - Hermes-based SDLC AI Agents Team
 
-Готовый набор из шести изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MVP на официальном GitHub MCP Server, bootstrap, structural validation и smoke tests.
+Готовый набор из семи изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MVP на официальном GitHub MCP Server, bootstrap, structural validation и smoke tests.
 
 English version: [README.md](README.md).
 
@@ -25,6 +25,7 @@ English version: [README.md](README.md).
 | Роль              | Разрешено                                                                                          | Жёстко исключено                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `hermes-planner`  | GitHub repository/file/tree/search и issue reads                                                    | code write, branch/PR creation, deployment, production, skill mutation                                                |
+| `hermes-project-manager` | GitHub repository/file/tree/search и issue read/comment/create для BRD/PRD-aligned PM-артефактов, weekly decision reports, flow metrics и Funnel/Discovery governance | code write, branch/PR creation, merge, deployment, production, budget/access mutation, technical micromanagement, skill mutation |
 | `hermes-builder`  | GitHub repository read, создание `agent/*` branch, `push_files`, PR creation, Actions evidence      | local checkout, broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation  |
 | `hermes-reviewer` | PR/file/Actions reads и issue/PR comments                                                           | author-branch mutation, merge, production, skill mutation                                                             |
 | `hermes-release`  | GitHub Actions read-only evidence для MVP                                                           | deployment mutation, пока native release/deployment tools не обнаружены и не ограничены                              |
@@ -113,7 +114,7 @@ scripts/bootstrap.sh
 1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
 2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` для GitHub MVP.
 3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`, включая role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` перед включением cron.
-4. Задайте шесть разных GitHub MCP tokens в основном `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
+4. Задайте семь разных GitHub MCP tokens в основном `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
 5. Проверьте конфигурацию:
 
 ```bash
@@ -132,6 +133,7 @@ API по умолчанию доступен только на loopback хост
 | Роль     | URL                         |
 | -------- | --------------------------- |
 | planner  | `http://127.0.0.1:18642/v1` |
+| project-manager | `http://127.0.0.1:18648/v1` |
 | builder  | `http://127.0.0.1:18643/v1` |
 | reviewer | `http://127.0.0.1:18644/v1` |
 | release  | `http://127.0.0.1:18645/v1` |

@@ -1,6 +1,6 @@
 #  HermeTeam - Hermes-based SDLC AI Agents Team
 
-A ready-to-run bundle of six isolated Hermes Agent roles for controlled software delivery lifecycle (SDLC) automation. The bundle includes real `config.yaml` and `SOUL.md` files, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize templates, a shared read-only skills superset, server-side policy examples for the official GitHub MCP Server MVP, bootstrap scripts, structural validation, and smoke tests.
+A ready-to-run bundle of seven isolated Hermes Agent roles for controlled software delivery lifecycle (SDLC) automation. The bundle includes real `config.yaml` and `SOUL.md` files, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize templates, a shared read-only skills superset, server-side policy examples for the official GitHub MCP Server MVP, bootstrap scripts, structural validation, and smoke tests.
 
 Russian version: [README_RU.md](README_RU.md).
 
@@ -25,6 +25,7 @@ Hermes documentation separates profile isolation from sandboxing: a profile isol
 | Role              | Allowed                                                                                            | Strictly excluded                                                                                                     |
 | ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `hermes-planner`  | GitHub repository/file/tree/search and issue reads                                                  | code write, branch/PR creation, deployment, production, skill mutation                                                |
+| `hermes-project-manager` | GitHub repository/file/tree/search and issue read/comment/create for BRD/PRD-aligned PM artifacts, weekly decision reports, flow metrics, and Funnel/Discovery governance | code write, branch/PR creation, merge, deployment, production, budget/access mutation, technical micromanagement, skill mutation |
 | `hermes-builder`  | GitHub repository read, `agent/*` branch creation, `push_files`, PR creation, Actions evidence      | local checkout, broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation  |
 | `hermes-reviewer` | PR/file/Actions reads and issue/PR comments                                                         | author-branch mutation, merge, production, skill mutation                                                             |
 | `hermes-release`  | GitHub Actions read-only evidence for MVP                                                           | deployment mutation until native release/deployment tools are discovered and scoped                                   |
@@ -113,7 +114,7 @@ Then:
 1. Pin `HERMES_IMAGE` to an immutable digest in `.env`.
 2. Keep the `test-project/test-project` GitHub repository target in `.env.example` and keep `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` for the GitHub MVP.
 3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file, including role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` values before enabling cron.
-4. Set six different GitHub MCP tokens in the main `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
+4. Set seven different GitHub MCP tokens in the main `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
 5. Validate the configuration:
 
 ```bash
@@ -132,6 +133,7 @@ By default, APIs are bound only to the host loopback interface:
 | Role     | URL                         |
 | -------- | --------------------------- |
 | planner  | `http://127.0.0.1:18642/v1` |
+| project-manager | `http://127.0.0.1:18648/v1` |
 | builder  | `http://127.0.0.1:18643/v1` |
 | reviewer | `http://127.0.0.1:18644/v1` |
 | release  | `http://127.0.0.1:18645/v1` |

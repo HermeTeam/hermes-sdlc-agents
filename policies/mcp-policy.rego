@@ -6,6 +6,7 @@ default allow := false
 
 protected_branches := {"main", "master"}
 builder_branch_mutations := {"create_branch", "push_files", "create_pull_request", "actions_run_trigger"}
+project_manager_mutations := {"add_issue_comment", "create_issue"}
 reviewer_mutations := {"add_issue_comment"}
 incident_mutations := {"add_issue_comment"}
 learning_mutations := {"add_issue_comment", "create_issue"}
@@ -82,6 +83,28 @@ push_file_paths_allowed(files) if {
 allow if {
   base_authorized
   input.identity.role == "hermes-planner"
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-project-manager"
+  not project_manager_mutations[input.tool]
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-project-manager"
+  input.tool == "add_issue_comment"
+  nonempty(input.args, "issue_number")
+  nonempty(input.args, "body")
+}
+
+allow if {
+  base_authorized
+  input.identity.role == "hermes-project-manager"
+  input.tool == "create_issue"
+  nonempty(input.args, "title")
+  nonempty(input.args, "body")
 }
 
 allow if {

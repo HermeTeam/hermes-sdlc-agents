@@ -6,9 +6,10 @@ set -a
 source "${bundle_root}/.env"
 set +a
 
-roles=(planner builder reviewer release incident learning)
+roles=(planner project-manager builder reviewer release incident learning)
 ports=(
   "${PLANNER_API_PORT:-18642}"
+  "${PROJECT_MANAGER_API_PORT:-18648}"
   "${BUILDER_API_PORT:-18643}"
   "${REVIEWER_API_PORT:-18644}"
   "${RELEASE_API_PORT:-18645}"

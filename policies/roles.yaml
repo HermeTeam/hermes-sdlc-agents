@@ -30,6 +30,26 @@ spec:
         denyProduction: true
         denyDeployments: true
 
+    hermes-project-manager:
+      allowTools:
+        - get_file_contents
+        - get_repository_tree
+        - search_code
+        - issue_read
+        - list_issues
+        - add_issue_comment
+        - create_issue
+      constraints:
+        environments: [none]
+        repositoryMode: read-only
+        writableArtifactTypes: [charter, roadmap, backlog, status, decision, risk, retrospective]
+        allowedMutations: [add_issue_comment, create_issue]
+        denyCodeMutation: true
+        denyBranchMutation: true
+        denyProduction: true
+        denyDeployments: true
+        requireHumanApprovalForCommitmentChange: true
+
     hermes-builder:
       allowTools:
         - get_file_contents

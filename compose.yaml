@@ -105,6 +105,23 @@ services:
       - ./profiles/hermes-planner:/etc/hermes:ro
       - ./profiles/hermes-planner/SOUL.md:/opt/data/SOUL.md:ro
 
+  hermes-project-manager:
+    <<: *hermes-common
+    container_name: hermes-project-manager
+    env_file: [./secrets/hermes-project-manager.env]
+    environment:
+      <<: *hermes-environment
+      ORCHESTRATOR_ROLE: project-manager
+      GIT_PROVIDER_MCP_TOKEN: "${PROJECT_MANAGER_GITHUB_MCP_TOKEN:?Set PROJECT_MANAGER_GITHUB_MCP_TOKEN in .env}"
+    ports:
+      - "127.0.0.1:${PROJECT_MANAGER_API_PORT:-18648}:8642"
+    volumes:
+      - project-manager-data:/opt/data
+      - shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
+      - ./profiles/hermes-project-manager:/etc/hermes:ro
+      - ./profiles/hermes-project-manager/SOUL.md:/opt/data/SOUL.md:ro
+
   hermes-builder:
     <<: *hermes-common
     container_name: hermes-builder
@@ -198,6 +215,7 @@ networks:
 volumes:
   shared-skills:
   planner-data:
+  project-manager-data:
   builder-data:
   reviewer-data:
   release-data:
