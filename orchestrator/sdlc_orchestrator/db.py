@@ -46,7 +46,21 @@ CREATE TABLE IF NOT EXISTS agent_runs (
   completed_at TEXT,
   raw_status TEXT,
   final_status TEXT,
+  final_response_json TEXT,
+  timed_out_at TEXT,
   error TEXT,
+  FOREIGN KEY(assignment_key) REFERENCES role_assignments(assignment_key)
+);
+CREATE TABLE IF NOT EXISTS transitions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  assignment_key TEXT NOT NULL,
+  from_role TEXT NOT NULL,
+  final_status TEXT NOT NULL,
+  next_role TEXT,
+  provider_applied INTEGER NOT NULL DEFAULT 0,
+  provider_result TEXT,
+  error TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY(assignment_key) REFERENCES role_assignments(assignment_key)
 );
 CREATE TABLE IF NOT EXISTS poll_state (
@@ -74,9 +88,14 @@ def connect(path: Path) -> Iterator[sqlite3.Connection]:
 
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
-    columns = {row["name"] for row in conn.execute("PRAGMA table_info(work_items)")}
-    if "body_text" not in columns:
+    work_item_columns = {row["name"] for row in conn.execute("PRAGMA table_info(work_items)")}
+    if "body_text" not in work_item_columns:
         conn.execute("ALTER TABLE work_items ADD COLUMN body_text TEXT NOT NULL DEFAULT ''")
+    agent_run_columns = {row["name"] for row in conn.execute("PRAGMA table_info(agent_runs)")}
+    if "final_response_json" not in agent_run_columns:
+        conn.execute("ALTER TABLE agent_runs ADD COLUMN final_response_json TEXT")
+    if "timed_out_at" not in agent_run_columns:
+        conn.execute("ALTER TABLE agent_runs ADD COLUMN timed_out_at TEXT")
 
 
 def upsert_work_item(conn: sqlite3.Connection, item: WorkItem) -> int:
@@ -157,7 +176,35 @@ def mark_assignment_started(conn: sqlite3.Connection, assignment_key: str, herme
 
 
 def active_runs(conn: sqlite3.Connection) -> list[sqlite3.Row]:
-    return list(conn.execute("SELECT * FROM agent_runs WHERE status='ACTIVE' ORDER BY started_at ASC"))
+    return list(
+        conn.execute(
+            """
+            SELECT
+              ar.assignment_key,
+              ar.hermes_run_id,
+              ar.session_id,
+              ar.status AS run_status,
+              ar.started_at,
+              ra.role,
+              wi.provider,
+              wi.repository_id,
+              wi.kind,
+              wi.external_id,
+              wi.title,
+              wi.body_text,
+              wi.body_hash,
+              wi.url,
+              wi.labels_json,
+              wi.assignees_json,
+              wi.updated_at
+            FROM agent_runs ar
+            JOIN role_assignments ra ON ra.assignment_key = ar.assignment_key
+            JOIN work_items wi ON wi.id = ra.work_item_id
+            WHERE ar.status='ACTIVE'
+            ORDER BY ar.started_at ASC
+            """
+        )
+    )
 
 
 def mark_run_finished(
@@ -167,14 +214,18 @@ def mark_run_finished(
     final_status: str | None,
     raw_status: str,
     error: str | None = None,
+    final_response_json: str | None = None,
+    timed_out: bool = False,
 ) -> None:
     conn.execute(
         """
         UPDATE agent_runs
-        SET status=?, raw_status=?, final_status=?, error=?, completed_at=CURRENT_TIMESTAMP
+        SET status=?, raw_status=?, final_status=?, final_response_json=?, error=?,
+            completed_at=CURRENT_TIMESTAMP,
+            timed_out_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE timed_out_at END
         WHERE assignment_key=?
         """,
-        (run_status, raw_status, final_status, error, assignment_key),
+        (run_status, raw_status, final_status, final_response_json, error, 1 if timed_out else 0, assignment_key),
     )
     conn.execute(
         "UPDATE role_assignments SET status=?, updated_at=CURRENT_TIMESTAMP WHERE assignment_key=?",
@@ -184,9 +235,29 @@ def mark_run_finished(
 
 def counts(conn: sqlite3.Connection) -> dict[str, int]:
     result = {}
-    for table in ("work_items", "role_assignments", "agent_runs"):
+    for table in ("work_items", "role_assignments", "agent_runs", "transitions"):
         result[table] = int(conn.execute(f"SELECT COUNT(*) AS count FROM {table}").fetchone()["count"])
     return result
+
+
+def record_transition(
+    conn: sqlite3.Connection,
+    *,
+    assignment_key: str,
+    from_role: str,
+    final_status: str,
+    next_role: str | None,
+    provider_applied: bool,
+    provider_result: str | None = None,
+    error: str | None = None,
+) -> None:
+    conn.execute(
+        """
+        INSERT INTO transitions(assignment_key, from_role, final_status, next_role, provider_applied, provider_result, error)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        (assignment_key, from_role, final_status, next_role, 1 if provider_applied else 0, provider_result, error),
+    )
 
 
 def row_to_work_item(row: sqlite3.Row) -> WorkItem:

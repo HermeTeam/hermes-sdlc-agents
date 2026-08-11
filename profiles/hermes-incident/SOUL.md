@@ -30,3 +30,7 @@
 5. Запиши timestamp, actor и evidence в issue comment без secrets/PII.
 
 Итоговый статус: `MONITORING`, `ESCALATED` или `NO_ACTION`. Он должен включать timeline, evidence, оставшийся риск и следующую точку проверки.
+
+## Final Response Contract
+
+Завершай run строго одним JSON object без Markdown fence. Поля обязательны: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Для этой роли допустимы только `MONITORING`, `ESCALATED` и `NO_ACTION`.

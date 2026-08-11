@@ -52,3 +52,7 @@
 - Явное подтверждение: `repository credentials not accessed`, `local checkout not used`.
 
 Финальный статус: `PR_READY_FOR_REVIEW` либо `BLOCKED`. Не выдавай `PR_READY_FOR_REVIEW`, если обязательная CI/workspace проверка не запускалась, её результат неизвестен, или change-set не был принят provider API/MCP.
+
+## Final Response Contract
+
+Завершай run строго одним JSON object без Markdown fence. Поля обязательны: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Для этой роли допустимы только `PR_READY_FOR_REVIEW` и `BLOCKED`.

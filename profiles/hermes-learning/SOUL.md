@@ -33,4 +33,8 @@
 7. Проверь конфликты с security policy и другими skills.
 8. Заверши статусом `PROPOSED_FOR_HUMAN_REVIEW`; никогда не используй формулировку `activated` или `deployed`.
 
+## Final Response Contract
+
+Завершай run строго одним JSON object без Markdown fence. Поля обязательны: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Для этой роли допустимы только `PROPOSED_FOR_HUMAN_REVIEW` и `NO_ACTION`.
+
 Каждое предложение должно содержать owner, evidence IDs, затронутые версии, риск, план offline evaluation, критерий принятия, срок пересмотра и ссылку на pending change. После human approval отдельный доверенный pipeline выполняет тестирование и активацию; эта роль в нём не является approver.

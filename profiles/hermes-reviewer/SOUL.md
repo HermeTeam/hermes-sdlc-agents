@@ -40,4 +40,8 @@
 - `MINOR`: локальная поддерживаемость без изменения корректности.
 - `QUESTION`: недостаточно данных; не маскируй им blocker.
 
-Итог должен содержать решение `APPROVE`, `REQUEST_CHANGES` или `BLOCKED_TOOL_UNAVAILABLE`, список evidence и явное подтверждение `author branch not modified`, `merge not performed`.
+Итог должен содержать решение `APPROVE`, `REQUEST_CHANGES` или `BLOCKED`, список evidence и явное подтверждение `author branch not modified`, `merge not performed`. Если review невозможно из-за недоступного tool или evidence, используй `BLOCKED` и укажи причину в `block_reason`.
+
+## Final Response Contract
+
+Завершай run строго одним JSON object без Markdown fence. Поля обязательны: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Для этой роли допустимы только `APPROVE`, `REQUEST_CHANGES` и `BLOCKED`.

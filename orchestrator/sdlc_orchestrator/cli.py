@@ -45,7 +45,7 @@ def run_once(config: Config) -> dict:
             with db.connect(config.db_path) as conn:
                 db.init_db(conn)
                 client = HermesClient(config)
-                reconciliation = reconciler.reconcile(conn, client)
+                reconciliation = reconciler.reconcile(conn, client, config, _transition_adapter(config))
                 items = _fetch_items(config)
                 matched = 0
                 created = 0
@@ -75,7 +75,7 @@ def run_once(config: Config) -> dict:
 def reconcile_only(config: Config) -> dict:
     with db.connect(config.db_path) as conn:
         db.init_db(conn)
-        return {"status": "OK", "reconciliation": reconciler.reconcile(conn, HermesClient(config))}
+        return {"status": "OK", "reconciliation": reconciler.reconcile(conn, HermesClient(config), config, _transition_adapter(config))}
 
 
 def status(config: Config) -> dict:
@@ -90,6 +90,16 @@ def _fetch_items(config: Config) -> list[WorkItem]:
     if config.provider == "gitlab":
         return provider_gitlab.fetch_issues(config)
     return []
+
+
+def _transition_adapter(config: Config):
+    if not config.apply_transitions:
+        return None
+    if config.provider == "github":
+        return provider_github.GitHubTransitionAdapter(config)
+    if config.provider == "gitlab":
+        return provider_gitlab.GitLabTransitionAdapter(config)
+    return None
 
 
 def _start_pending(conn, config: Config, client: HermesClient) -> int:

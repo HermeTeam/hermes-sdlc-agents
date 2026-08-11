@@ -5,20 +5,7 @@ import os
 from pathlib import Path
 from urllib.parse import urlparse
 
-
-VALID_ROLES = {"planner", "builder", "reviewer", "release", "incident", "learning"}
-TERMINAL_LABELS = {"state:done", "state:cancelled", "hermes:blocked", "hermes:manual-only"}
-DEFAULT_ROLE_LABELS = {
-    "planner": {"hermes:planner", "state:ready-for-planning"},
-    "builder": {"hermes:builder", "state:ready-for-build"},
-    "reviewer": {"hermes:reviewer", "state:review-needed"},
-    "release": {"hermes:release", "state:ready-for-release"},
-    "incident": {"hermes:incident"},
-    "learning": {"hermes:learning"},
-}
-DEFAULT_ROLE_ASSIGNEES = {
-    role: f"hermes-{role}" for role in VALID_ROLES
-}
+from .statuses import DEFAULT_ROLE_ASSIGNEES, DEFAULT_ROLE_LABELS, TERMINAL_LABELS, VALID_ROLES, env_role_name
 
 
 class ConfigError(ValueError):
@@ -72,6 +59,8 @@ class Config:
     role_labels: set[str] = field(default_factory=set)
     terminal_labels: set[str] = field(default_factory=lambda: set(TERMINAL_LABELS))
     role_assignees: set[str] = field(default_factory=set)
+    apply_transitions: bool = False
+    transition_comment_only: bool = True
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -100,8 +89,9 @@ class Config:
         if not api_server_key:
             raise ConfigError("API_SERVER_KEY is required")
 
-        role_labels = _csv_set(f"ORCHESTRATOR_{role.upper()}_LABELS", DEFAULT_ROLE_LABELS[role])
-        role_assignees = _csv_set(f"ORCHESTRATOR_{role.upper()}_ASSIGNEES", {DEFAULT_ROLE_ASSIGNEES[role]})
+        role_env_name = env_role_name(role)
+        role_labels = _csv_set(f"ORCHESTRATOR_{role_env_name}_LABELS", DEFAULT_ROLE_LABELS[role])
+        role_assignees = _csv_set(f"ORCHESTRATOR_{role_env_name}_ASSIGNEES", {DEFAULT_ROLE_ASSIGNEES[role]})
 
         return cls(
             enabled=_bool(os.getenv("ORCHESTRATOR_ENABLED"), False),
@@ -123,6 +113,8 @@ class Config:
             role_labels=role_labels,
             terminal_labels=_csv_set("ORCHESTRATOR_TERMINAL_LABELS", TERMINAL_LABELS),
             role_assignees=role_assignees,
+            apply_transitions=_bool(os.getenv("ORCHESTRATOR_APPLY_TRANSITIONS"), False),
+            transition_comment_only=_bool(os.getenv("ORCHESTRATOR_TRANSITION_COMMENT_ONLY"), True),
         )
 
 

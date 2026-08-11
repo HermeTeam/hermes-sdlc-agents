@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-import sqlite3
 import sys
 import tempfile
 import threading
@@ -11,29 +10,33 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from sdlc_orchestrator.assignment import matches_role
+from sdlc_orchestrator.assignment import assignment_key, matches_role
 from sdlc_orchestrator.config import Config, ConfigError
-from sdlc_orchestrator.db import connect, ensure_assignment, init_db, pending_assignments, upsert_work_item
+from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, pending_assignments, upsert_work_item
+from sdlc_orchestrator.final_response import FinalResponseError, parse_final_response
 from sdlc_orchestrator.hermes_client import HermesClient
 from sdlc_orchestrator.locking import LockNotAcquired, nonblocking_lock
 from sdlc_orchestrator.provider_base import WorkItem
 from sdlc_orchestrator.provider_github import normalize_issue as normalize_github_issue
 from sdlc_orchestrator.provider_gitlab import fetch_issues as fetch_gitlab_issues
-from sdlc_orchestrator.reconciler import extract_final_status
+from sdlc_orchestrator.reconciler import reconcile
+from sdlc_orchestrator.statuses import FinalStatus
+from sdlc_orchestrator.transitions import ProviderTransitionResult
 
 
-def item(labels=(), assignees=()) -> WorkItem:
+def item(labels=(), assignees=(), body="Body", updated_at="2026-08-08T00:00:00Z") -> WorkItem:
     return WorkItem(
         provider="github",
         repository_id="test-project/test-project",
         kind="issue",
         external_id="123",
         title="Title",
-        body="Body",
-        body_hash="hash",
+        body=body,
+        body_hash=str(abs(hash(body))),
         url="https://github.com/test-project/test-project/issues/123",
         labels=tuple(labels),
         assignees=tuple(assignees),
+        updated_at=updated_at,
     )
 
 
@@ -52,6 +55,8 @@ def config(**overrides) -> Config:
         role_labels={"hermes:builder", "state:ready-for-build"},
         terminal_labels={"state:done", "state:cancelled", "hermes:blocked", "hermes:manual-only"},
         role_assignees={"hermes-builder"},
+        apply_transitions=False,
+        transition_comment_only=True,
     )
     values.update(overrides)
     return Config(**values)
@@ -77,6 +82,27 @@ class ConfigTests(unittest.TestCase):
             env.clear()
             env.update(old_env)
 
+    def test_project_manager_role_loads_from_env(self) -> None:
+        old_env = dict(__import__("os").environ)
+        env = __import__("os").environ
+        try:
+            env.clear()
+            env.update(
+                {
+                    "ORCHESTRATOR_ROLE": "project-manager",
+                    "ORCHESTRATOR_HERMES_URL": "http://127.0.0.1:8642",
+                    "API_SERVER_KEY": "secret",
+                    "REPOSITORY_ID": "test-project/test-project",
+                    "ORCHESTRATOR_PROJECT_MANAGER_LABELS": "Hermes:Project-Manager, state:custom-pm",
+                }
+            )
+            loaded = Config.from_env()
+        finally:
+            env.clear()
+            env.update(old_env)
+        self.assertEqual(loaded.role, "project-manager")
+        self.assertEqual(loaded.role_labels, {"hermes:project-manager", "state:custom-pm"})
+
 
 class FilteringTests(unittest.TestCase):
     def test_role_filter_ignores_other_roles(self) -> None:
@@ -96,9 +122,16 @@ class DatabaseTests(unittest.TestCase):
             with connect(path) as conn:
                 init_db(conn)
                 work_item_id = upsert_work_item(conn, item(labels=("hermes:builder",)))
-                self.assertTrue(ensure_assignment(conn, "github:test:issue:123:builder:v1", work_item_id, "builder"))
-                self.assertFalse(ensure_assignment(conn, "github:test:issue:123:builder:v1", work_item_id, "builder"))
+                key = "github:test:issue:123:builder:v1"
+                self.assertTrue(ensure_assignment(conn, key, work_item_id, "builder"))
+                self.assertFalse(ensure_assignment(conn, key, work_item_id, "builder"))
                 self.assertEqual(len(pending_assignments(conn, 10)), 1)
+
+    def test_assignment_key_is_revision_aware(self) -> None:
+        first = item(updated_at="2026-08-08T00:00:00Z")
+        changed = item(updated_at="2026-08-09T00:00:00Z")
+        self.assertNotEqual(assignment_key(first, "builder"), assignment_key(changed, "builder"))
+        self.assertIn(":v2:", assignment_key(first, "builder"))
 
 
 class LockTests(unittest.TestCase):
@@ -143,12 +176,169 @@ class HermesClientTests(unittest.TestCase):
         self.assertEqual(received["body"]["model"], "hermes-builder")
 
 
-class ReconcilerTests(unittest.TestCase):
-    def test_extract_final_status_from_completed_output(self) -> None:
-        self.assertEqual(extract_final_status({"output": "Final: PR_READY_FOR_REVIEW"}), "PR_READY_FOR_REVIEW")
+class FinalResponseTests(unittest.TestCase):
+    def final_payload(self, *, status="PR_READY_FOR_REVIEW", role="builder", key="key") -> dict:
+        return {
+            "output": json.dumps(
+                {
+                    "assignment_key": key,
+                    "role": role,
+                    "final_status": status,
+                    "summary": "done",
+                    "evidence": [],
+                    "next_handoff": None,
+                    "block_reason": None,
+                }
+            )
+        }
 
-    def test_invalid_output_has_no_final_status(self) -> None:
-        self.assertIsNone(extract_final_status({"output": "I did some work"}))
+    def test_valid_json_final_response_is_accepted(self) -> None:
+        parsed = parse_final_response(self.final_payload(), expected_role="builder", expected_assignment_key="key")
+        self.assertEqual(parsed.final_status, FinalStatus.PR_READY_FOR_REVIEW)
+
+    def test_free_text_output_is_rejected(self) -> None:
+        with self.assertRaises(FinalResponseError):
+            parse_final_response({"output": "Final: PR_READY_FOR_REVIEW"}, expected_role="builder", expected_assignment_key="key")
+
+    def test_wrong_assignment_key_is_rejected(self) -> None:
+        with self.assertRaises(FinalResponseError):
+            parse_final_response(self.final_payload(key="other"), expected_role="builder", expected_assignment_key="key")
+
+    def test_wrong_role_is_rejected(self) -> None:
+        with self.assertRaises(FinalResponseError):
+            parse_final_response(self.final_payload(role="reviewer"), expected_role="builder", expected_assignment_key="key")
+
+    def test_unknown_status_is_rejected(self) -> None:
+        with self.assertRaises(FinalResponseError):
+            parse_final_response(self.final_payload(status="BLOCKED_TOOL_UNAVAILABLE"), expected_role="builder", expected_assignment_key="key")
+
+    def test_status_not_allowed_for_role_is_rejected(self) -> None:
+        with self.assertRaises(FinalResponseError):
+            parse_final_response(self.final_payload(status="BLOCKED", role="release"), expected_role="release", expected_assignment_key="key")
+
+    def test_reviewer_blocked_is_accepted(self) -> None:
+        parsed = parse_final_response(self.final_payload(status="BLOCKED", role="reviewer"), expected_role="reviewer", expected_assignment_key="key")
+        self.assertEqual(parsed.final_status, FinalStatus.BLOCKED)
+
+    def test_release_blocked_no_action_is_accepted(self) -> None:
+        parsed = parse_final_response(self.final_payload(status="BLOCKED_NO_ACTION", role="release"), expected_role="release", expected_assignment_key="key")
+        self.assertEqual(parsed.final_status, FinalStatus.BLOCKED_NO_ACTION)
+
+
+class FakeClient:
+    def __init__(self, payloads: dict[str, dict]) -> None:
+        self.payloads = payloads
+
+    def get_run(self, run_id: str) -> dict:
+        return self.payloads[run_id]
+
+
+class FakeTransitionAdapter:
+    def __init__(self) -> None:
+        self.calls = []
+
+    def apply_issue_transition(self, item, *, add_labels, remove_labels, comment, idempotency_key):
+        self.calls.append(
+            {
+                "item": item,
+                "add_labels": add_labels,
+                "remove_labels": remove_labels,
+                "comment": comment,
+                "idempotency_key": idempotency_key,
+            }
+        )
+        return ProviderTransitionResult(applied=True, details={"ok": True})
+
+
+class ReconcilerTests(unittest.TestCase):
+    def completed_payload(self, *, role: str, key: str, final_status: str) -> dict:
+        return {
+            "status": "completed",
+            "output": json.dumps(
+                {
+                    "assignment_key": key,
+                    "role": role,
+                    "final_status": final_status,
+                    "summary": "finished",
+                    "evidence": [],
+                    "next_handoff": None,
+                    "block_reason": None,
+                }
+            ),
+        }
+
+    def test_completed_run_records_transition_when_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:planner",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "planner")
+                ensure_assignment(conn, key, work_item_id, "planner")
+                mark_assignment_started(conn, key, "run_1", "session")
+                summary = reconcile(conn, FakeClient({"run_1": self.completed_payload(role="planner", key=key, final_status="READY_FOR_BUILD")}), config(role="planner"))
+                self.assertEqual(summary["completed"], 1)
+                row = conn.execute("SELECT final_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT next_role, provider_applied FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+                self.assertEqual(row["final_status"], "READY_FOR_BUILD")
+                self.assertEqual(transition["next_role"], "builder")
+                self.assertEqual(transition["provider_applied"], 0)
+
+    def test_transition_adapter_receives_expected_labels(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder", "state:ready-for-build"))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                cfg = config(apply_transitions=True, transition_comment_only=False)
+                reconcile(conn, FakeClient({"run_1": self.completed_payload(role="builder", key=key, final_status="PR_READY_FOR_REVIEW")}), cfg, adapter)
+            self.assertEqual(adapter.calls[0]["add_labels"], {"state:review-needed", "hermes:reviewer"})
+            self.assertEqual(adapter.calls[0]["remove_labels"], {"state:ready-for-build", "hermes:builder"})
+
+    def test_active_run_times_out(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                conn.execute("UPDATE agent_runs SET started_at='2000-01-01 00:00:00' WHERE assignment_key=?", (key,))
+                summary = reconcile(conn, FakeClient({}), config(run_timeout_seconds=60))
+                row = conn.execute("SELECT status, final_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+                self.assertEqual(summary["timeout"], 1)
+                self.assertEqual(row["status"], "TIMEOUT")
+                self.assertEqual(row["final_status"], "BLOCKED")
+
+    def test_full_status_cycle_transition_targets(self) -> None:
+        cases = [
+            ("planner", "READY_FOR_BUILD", {"state:ready-for-build", "hermes:builder"}),
+            ("builder", "PR_READY_FOR_REVIEW", {"state:review-needed", "hermes:reviewer"}),
+            ("reviewer", "REQUEST_CHANGES", {"state:ready-for-build", "hermes:builder"}),
+            ("reviewer", "APPROVE", {"state:ready-for-release", "hermes:release"}),
+        ]
+        for role, final_status, expected_labels in cases:
+            with self.subTest(role=role, final_status=final_status):
+                with tempfile.TemporaryDirectory() as tmp:
+                    path = Path(tmp) / "orchestrator.sqlite"
+                    adapter = FakeTransitionAdapter()
+                    with connect(path) as conn:
+                        init_db(conn)
+                        work_item = item(labels=(f"hermes:{role}",))
+                        work_item_id = upsert_work_item(conn, work_item)
+                        key = assignment_key(work_item, role)
+                        ensure_assignment(conn, key, work_item_id, role)
+                        mark_assignment_started(conn, key, "run_1", "session")
+                        reconcile(conn, FakeClient({"run_1": self.completed_payload(role=role, key=key, final_status=final_status)}), config(role=role, apply_transitions=True, transition_comment_only=False), adapter)
+                    self.assertEqual(adapter.calls[0]["add_labels"], expected_labels)
 
 
 class ProviderTests(unittest.TestCase):

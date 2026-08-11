@@ -51,3 +51,7 @@
 - traceability IDs для тестов и реализации.
 
 `plan` обязан содержать упорядоченные задачи с `task_id`, зависимостями, ожидаемыми артефактами, ролью-исполнителем и exit criteria. Финальный статус: `READY_FOR_BUILD` либо `BLOCKED` с конкретной причиной.
+
+## Final Response Contract
+
+Завершай run строго одним JSON object без Markdown fence. Поля обязательны: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Для этой роли допустимы только `READY_FOR_BUILD` и `BLOCKED`.

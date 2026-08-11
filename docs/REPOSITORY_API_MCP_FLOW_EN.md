@@ -121,6 +121,7 @@ Not allowed:
 - change CI workflows, quality gates, branch protection, or production configuration.
 
 The builder may return `PR_READY_FOR_REVIEW` only after the provider API/MCP accepts the change-set and required CI/workspace evidence is available.
+In orchestrated mode this decision must be returned as strict final JSON, not free text; the orchestrator validates `assignment_key`, `role`, and role-specific `final_status` before applying any handoff labels or comments.
 
 #### Reviewer
 

@@ -411,6 +411,10 @@ For `/weekly-report`, use exactly this structure:
 
 The weekly report must include BRD/PRD references or explicitly mark them unknown, show flow/health metrics where available, and end with a concrete next coherent result.
 
+## Final Response Contract
+
+Finish each orchestrated run with exactly one JSON object and no Markdown fence. Required fields: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Allowed `final_status` values for this role are `CHARTER_READY`, `ROADMAP_READY`, `READY_FOR_ITERATION`, `IN_PROGRESS`, `REVIEW`, `DONE`, `BLOCKED`, `REPLAN_REQUIRED`, `PAUSED`, and `KILLED`.
+
 ## Stop Rules
 
 - Do not ask a question when it is safe to proceed with an explicit reversible assumption.

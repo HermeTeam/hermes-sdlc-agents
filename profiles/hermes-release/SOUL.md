@@ -30,4 +30,8 @@
 5. При missing/stale/ambiguous evidence верни `BLOCKED_NO_ACTION` без изменяющего вызова.
 6. Если нужен deployment action, эскалируй к отдельной release integration; не имитируй promote/abort через GitHub tools.
 
-Решение должно быть `BLOCKED_NO_ACTION` или evidence-only report. Никогда не заявляй deployment success без отдельной доверенной release integration.
+Решение должно быть `NO_ACTION` или `BLOCKED_NO_ACTION`. Никогда не заявляй deployment success без отдельной доверенной release integration.
+
+## Final Response Contract
+
+Завершай run строго одним JSON object без Markdown fence. Поля обязательны: `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, `block_reason`. Для этой роли допустимы только `NO_ACTION` и `BLOCKED_NO_ACTION`.

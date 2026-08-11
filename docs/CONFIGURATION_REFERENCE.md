@@ -74,6 +74,7 @@ ORCHESTRATOR_LOCK_PATH=/opt/data/sdlc-orchestrator/run_once.lock
 - Write tools: none through the repository MCP in the GitHub MVP.
 - Runtime: repository вообще не mounted; production credentials отсутствуют.
 - Exit states: `READY_FOR_BUILD` или `BLOCKED`.
+- Orchestrator final response: strict JSON object with `assignment_key`, `role`, `final_status`, `summary`, `evidence`, `next_handoff`, and `block_reason`; free-text status extraction is rejected.
 
 Server-side обязательства: repository/ref scope, GitHub token scopes, deny repository write/deployment tools, and audit.
 
@@ -86,6 +87,7 @@ Server-side обязательства: repository/ref scope, GitHub token scope
 - Write tools: GitHub issue comments and issue creation for PM artifacts only.
 - Runtime: repository не mounted; code/branch/deployment/production credentials отсутствуют.
 - Exit states: `CHARTER_READY`, `ROADMAP_READY`, `READY_FOR_ITERATION`, `IN_PROGRESS`, `REVIEW`, `DONE`, `BLOCKED`, `REPLAN_REQUIRED`, `PAUSED`, or `KILLED` depending on project state and evidence.
+- Orchestrator labels may use `ORCHESTRATOR_PROJECT_MANAGER_LABELS` and `ORCHESTRATOR_PROJECT_MANAGER_ASSIGNEES` because role names are normalized from `project-manager` to `PROJECT_MANAGER` for env vars.
 - Governance: every material charter/roadmap/status/decision references BRD/PRD when available; changes to vision, scope, constraints, requirements, success metrics, budget, deadlines, guardrails, or authority boundaries become `CHANGE_REQUEST` decision packets.
 - Workflow: `FUNNEL -> DISCOVERY -> READY -> IN_PROGRESS -> REVIEW/VALIDATION -> DONE`, with `PARKING_LOT / NOT_NOW` for off-goal ideas.
 - Reporting: `/weekly-report` follows the PM decision report format and includes outcome status, completed evidence, WIP/throughput/aging/cycle-time trend, quality/incidents, blockers, forecast changes, risks, and next coherent result.
@@ -107,6 +109,7 @@ Server-side обязательства: repository scope, issue mutation audit, 
 - MCP writes: `create_branch`, `push_files`, `create_pull_request`, `actions_run_trigger`.
 - Нет MCP merge, deployment, flag, runbook или gate mutation tools.
 - Exit states: `PR_READY_FOR_REVIEW` или `BLOCKED`.
+- `PR_READY_FOR_REVIEW` triggers the canonical transition to reviewer only after strict JSON validation.
 
 Hard controls: `agent/*` branch prefix, protected branches, provider token без merge/admin, protected-path check for `push_files` and in trusted CI outside the author branch. `approvals.deny` не заменяет эти controls.
 
@@ -118,7 +121,7 @@ Hard controls: `agent/*` branch prefix, protected branches, provider token бе�
 - Read tools: Pull Request metadata, file contents, Actions evidence and job logs.
 - Write tools: `add_issue_comment` only in the GitHub MVP.
 - Нет branch-content write и merge tools.
-- Exit decision: `APPROVE` или `REQUEST_CHANGES`.
+- Exit decision: `APPROVE`, `REQUEST_CHANGES`, or `BLOCKED`. Tool/evidence unavailability must be represented as `BLOCKED` with `block_reason`, not a separate status.
 
 Provider policy или внешний orchestrator проверяет `independence_verified` по provenance: reviewer subject не должен совпадать с author/implementation subject.
 
@@ -130,7 +133,7 @@ Provider policy или внешний orchestrator проверяет `independe
 - Read tools: GitHub Actions evidence only in the GitHub MVP.
 - Mutations: none until native release/deployment tools are discovered and scoped.
 - Нет Kubernetes service-account token, kubeconfig или исходного кода.
-- Exit states: `BLOCKED_NO_ACTION` for deployment changes in the GitHub MVP.
+- Exit states: `NO_ACTION` or `BLOCKED_NO_ACTION` in the GitHub MVP.
 
 Deployment promotion/abort requires a separate policy-enforced integration outside the current GitHub-only MCP allowlist.
 
@@ -156,6 +159,11 @@ Deployment promotion/abort requires a separate policy-enforced integration outsi
 - Write tools: GitHub issue comment/create for human-reviewed proposals.
 - Нет `skills_activate/install/publish` и прямого docs write.
 - Exit state: `PROPOSED_FOR_HUMAN_REVIEW`.
+- Learning may also return `NO_ACTION` when no safe proposal is justified by the evidence.
+
+## Orchestrator state machine
+
+The role-local orchestrator uses canonical runtime status enums and revision-aware assignment keys (`v2:<revision>`). Completed Hermes runs must return strict JSON; regex/free-text status extraction is not part of the reconciliation path. Valid final statuses are stored in SQLite, and the transition layer records the next handoff. Provider issue label/comment mutations are controlled by `ORCHESTRATOR_APPLY_TRANSITIONS` and default to disabled; `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=true` avoids label changes during rollout.
 
 Human approver и activation pipeline являются отдельными identities. Learning agent не может одобрить собственный pending change.
 

@@ -8,6 +8,7 @@ from urllib.request import Request, urlopen
 
 from .config import Config
 from .provider_base import WorkItem
+from .transitions import ProviderTransitionResult
 
 
 def fetch_issues(config: Config) -> list[WorkItem]:
@@ -49,3 +50,29 @@ def normalize_issue(issue: dict, repository_id: str) -> WorkItem:
         assignees=assignees,
         updated_at=issue.get("updated_at"),
     )
+
+
+class GitLabTransitionAdapter:
+    def __init__(self, _config: Config) -> None:
+        pass
+
+    def apply_issue_transition(
+        self,
+        item: WorkItem,
+        *,
+        add_labels: set[str],
+        remove_labels: set[str],
+        comment: str,
+        idempotency_key: str,
+    ) -> ProviderTransitionResult:
+        return ProviderTransitionResult(
+            applied=False,
+            details={
+                "mode": "unsupported",
+                "provider": item.provider,
+                "idempotency_key": idempotency_key,
+                "comment": comment,
+                "add_labels": sorted(add_labels),
+                "remove_labels": sorted(remove_labels),
+            },
+        )

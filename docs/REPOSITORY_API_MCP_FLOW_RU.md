@@ -121,6 +121,7 @@ Builder реализует утверждённую работу через role
 - менять CI workflows, quality gates, branch protection или production configuration.
 
 Builder может вернуть `PR_READY_FOR_REVIEW` только после того, как provider API/MCP принял change-set и появилась обязательная CI/workspace evidence.
+В orchestrated mode это решение должно возвращаться строгим final JSON, а не свободным текстом; orchestrator проверяет `assignment_key`, `role` и допустимый для роли `final_status` перед применением handoff labels/comments.
 
 #### Reviewer
 
