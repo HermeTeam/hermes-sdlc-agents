@@ -9,6 +9,7 @@ from .config import Config
 from .final_response import FinalResponseError, parse_final_response
 from .hermes_client import HermesClient, HermesRunNotFound
 from .transitions import ProviderTransitionAdapter, apply_failure_transition, apply_transition
+from .workspace_artifacts import maybe_record_self_evolution_result
 
 
 COMPLETED = {"completed", "succeeded", "success", "done"}
@@ -168,6 +169,11 @@ def reconcile(
                     raw,
                     assignment_status="COMPLETED",
                     final_response_json=final_response.to_json(),
+                )
+                maybe_record_self_evolution_result(
+                    item=item,
+                    final_response=final_response,
+                    raw_payload=payload,
                 )
                 apply_transition(
                     conn,

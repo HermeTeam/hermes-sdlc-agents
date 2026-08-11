@@ -32,6 +32,7 @@ This skill never overrides the current role's `SOUL.md`, MCP allowlist, approval
 - Do not request or inspect secrets, PII, raw customer payloads, unrestricted logs, or unrelated session content.
 - Treat `hermes-agent-self-evolution` as an offline optimization implementation detail. Run it only when the current role has explicit file and terminal access to an approved checkout and the task authorizes local evaluation.
 - Skill installation, activation, publication, and direct mutation remain governed by `skills.write_approval: true` and human review.
+- Do not write `self-evolution-results.jsonl` directly. The orchestrator persists validated final-response artifacts in the role workspace after JSON validation.
 
 ## How to Run
 
@@ -40,14 +41,15 @@ For non-learning roles:
 1. Capture the observed failure or improvement opportunity.
 2. Minimize the evidence to role-safe, non-sensitive facts.
 3. Create a handoff item for `hermes-learning` instead of changing skills or prompts directly.
-4. Continue the original role workflow and final status.
+4. Put the handoff details in `next_handoff` with `target_role: "learning"` and `skill: "hermes-agent-self-evolution"`.
+5. Continue the original role workflow and final status.
 
 For `hermes-learning`:
 
 1. Read aggregated outcomes, failure clusters, feedback, docs, and skills catalog through the allowed provider API/MCP tools.
 2. Build a proposal with measurable hypothesis, minimal diff, evaluation dataset, acceptance thresholds, risks, and rollback.
 3. Attach candidate changes as a staged proposal only.
-4. Finish with `PROPOSED_FOR_HUMAN_REVIEW`, not `activated`, `installed`, `published`, or `deployed`.
+4. Finish proposals with `final_status: "PROPOSED_FOR_HUMAN_REVIEW"`, not `activated`, `installed`, `published`, or `deployed`.
 
 ## Quick Reference
 

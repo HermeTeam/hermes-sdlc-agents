@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -23,6 +25,7 @@ from sdlc_orchestrator.provider_gitlab import fetch_issues as fetch_gitlab_issue
 from sdlc_orchestrator.reconciler import reconcile
 from sdlc_orchestrator.statuses import FinalStatus
 from sdlc_orchestrator.transitions import ProviderTransitionResult
+from sdlc_orchestrator.workspace_artifacts import ARTIFACT_FILE_NAME, maybe_record_self_evolution_result
 
 
 def item(labels=(), assignees=(), body="Body", updated_at="2026-08-08T00:00:00Z") -> WorkItem:
@@ -395,6 +398,76 @@ class FinalResponseTests(unittest.TestCase):
         self.assertEqual(parsed.final_status, FinalStatus.BLOCKED_NO_ACTION)
 
 
+class WorkspaceArtifactTests(unittest.TestCase):
+    def final_response(self, *, role="learning", status="PROPOSED_FOR_HUMAN_REVIEW", key="key", next_handoff=None):
+        payload = {
+            "output": json.dumps(
+                {
+                    "assignment_key": key,
+                    "role": role,
+                    "final_status": status,
+                    "summary": "proposal ready",
+                    "evidence": [{"source": "issue-123"}],
+                    "next_handoff": next_handoff,
+                    "block_reason": None,
+                }
+            )
+        }
+        return parse_final_response(payload, expected_role=role, expected_assignment_key=key)
+
+    def test_proposed_for_human_review_appends_jsonl_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            safe_root = Path(tmp) / "opt-data"
+            workspace = safe_root / "workspace"
+            with patch.dict(os.environ, {"HERMES_WORKSPACE_DIR": str(workspace)}), patch("sdlc_orchestrator.workspace_artifacts.SAFE_ROOT", safe_root):
+                recorded = maybe_record_self_evolution_result(item=item(), final_response=self.final_response())
+            artifact = workspace / ARTIFACT_FILE_NAME
+            lines = artifact.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(recorded)
+        self.assertEqual(len(lines), 1)
+        record = json.loads(lines[0])
+        self.assertEqual(record["final_status"], "PROPOSED_FOR_HUMAN_REVIEW")
+        self.assertEqual(record["repository_id"], "test-project/test-project")
+        self.assertEqual(record["evidence"], [{"source": "issue-123"}])
+
+    def test_non_learning_handoff_to_self_evolution_appends_record(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            safe_root = Path(tmp) / "opt-data"
+            workspace = safe_root / "planner-workspace"
+            final_response = self.final_response(
+                role="planner",
+                status="READY_FOR_BUILD",
+                next_handoff={"target_role": "learning", "skill": "hermes-agent-self-evolution"},
+            )
+            with patch.dict(os.environ, {"HERMES_WORKSPACE_DIR": str(workspace)}), patch("sdlc_orchestrator.workspace_artifacts.SAFE_ROOT", safe_root):
+                recorded = maybe_record_self_evolution_result(item=item(), final_response=final_response)
+            artifact = workspace / ARTIFACT_FILE_NAME
+            lines = artifact.read_text(encoding="utf-8").splitlines()
+        self.assertTrue(recorded)
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(json.loads(lines[0])["role"], "planner")
+
+    def test_normal_planner_response_writes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            safe_root = Path(tmp) / "opt-data"
+            workspace = safe_root / "workspace"
+            final_response = self.final_response(role="planner", status="READY_FOR_BUILD")
+            with patch.dict(os.environ, {"HERMES_WORKSPACE_DIR": str(workspace)}), patch("sdlc_orchestrator.workspace_artifacts.SAFE_ROOT", safe_root):
+                recorded = maybe_record_self_evolution_result(item=item(), final_response=final_response)
+        self.assertFalse(recorded)
+        self.assertFalse((workspace / ARTIFACT_FILE_NAME).exists())
+
+    def test_workspace_outside_safe_root_is_ignored(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            safe_root = Path(tmp) / "opt-data"
+            outside = Path(tmp) / "outside"
+            with self.assertLogs("sdlc_orchestrator.workspace_artifacts", level="WARNING"):
+                with patch.dict(os.environ, {"HERMES_WORKSPACE_DIR": str(outside)}), patch("sdlc_orchestrator.workspace_artifacts.SAFE_ROOT", safe_root):
+                    recorded = maybe_record_self_evolution_result(item=item(), final_response=self.final_response())
+        self.assertFalse(recorded)
+        self.assertFalse((outside / ARTIFACT_FILE_NAME).exists())
+
+
 class FakeClient:
     def __init__(self, payloads: dict[str, dict]) -> None:
         self.payloads = payloads
@@ -431,7 +504,7 @@ class FakeTransitionAdapter:
 
 
 class ReconcilerTests(unittest.TestCase):
-    def completed_payload(self, *, role: str, key: str, final_status: str) -> dict:
+    def completed_payload(self, *, role: str, key: str, final_status: str, next_handoff=None) -> dict:
         return {
             "status": "completed",
             "output": json.dumps(
@@ -441,7 +514,7 @@ class ReconcilerTests(unittest.TestCase):
                     "final_status": final_status,
                     "summary": "finished",
                     "evidence": [],
-                    "next_handoff": None,
+                    "next_handoff": next_handoff,
                     "block_reason": None,
                 }
             ),
@@ -464,6 +537,33 @@ class ReconcilerTests(unittest.TestCase):
                 self.assertEqual(row["final_status"], "READY_FOR_BUILD")
                 self.assertEqual(transition["next_role"], "builder")
                 self.assertEqual(transition["provider_applied"], 0)
+
+    def test_artifact_write_failure_does_not_fail_reconcile(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            safe_root = Path(tmp) / "opt-data"
+            unsafe_workspace = Path(tmp) / "outside"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:planner",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "planner")
+                ensure_assignment(conn, key, work_item_id, "planner")
+                mark_assignment_started(conn, key, "run_1", "session")
+                payload = self.completed_payload(
+                    role="planner",
+                    key=key,
+                    final_status="READY_FOR_BUILD",
+                    next_handoff={"target_role": "learning", "skill": "hermes-agent-self-evolution"},
+                )
+                with self.assertLogs("sdlc_orchestrator.workspace_artifacts", level="WARNING"):
+                    with patch.dict(os.environ, {"HERMES_WORKSPACE_DIR": str(unsafe_workspace)}), patch("sdlc_orchestrator.workspace_artifacts.SAFE_ROOT", safe_root):
+                        summary = reconcile(conn, FakeClient({"run_1": payload}), config(role="planner"))
+                row = conn.execute("SELECT status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT next_role FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["completed"], 1)
+        self.assertEqual(row["status"], "COMPLETED")
+        self.assertEqual(transition["next_role"], "builder")
 
     def test_missing_gateway_run_is_marked_lost_and_reconcile_continues(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

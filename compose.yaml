@@ -7,6 +7,7 @@ x-hermes-environment: &hermes-environment
   API_SERVER_HOST: "0.0.0.0"
   API_SERVER_PORT: "8642"
   HERMES_WRITE_SAFE_ROOT: /opt/data
+  HERMES_WORKSPACE_DIR: /opt/data/workspace
   OPENAI_API_KEY: "${OPENAI_API_KEY:?Set OPENAI_API_KEY in .env}"
   GIT_PROVIDER_MCP_URL: "${GIT_PROVIDER_MCP_URL:?Set GIT_PROVIDER_MCP_URL in .env}"
   REPOSITORY_ID: "${REPOSITORY_ID:?Set REPOSITORY_ID in .env}"
@@ -120,6 +121,7 @@ services:
       - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
     volumes:
       - planner-data:/opt/data
+      - ./workspace/planner:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-planner:/etc/hermes:ro
@@ -150,6 +152,7 @@ services:
       - "127.0.0.1:${PROJECT_MANAGER_API_PORT:-18648}:8642"
     volumes:
       - project-manager-data:/opt/data
+      - ./workspace/project-manager:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-project-manager:/etc/hermes:ro
@@ -181,6 +184,7 @@ services:
       - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
     volumes:
       - builder-data:/opt/data
+      - ./workspace/builder:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-builder:/etc/hermes:ro
@@ -211,6 +215,7 @@ services:
       - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
     volumes:
       - reviewer-data:/opt/data
+      - ./workspace/reviewer:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-reviewer:/etc/hermes:ro
@@ -241,6 +246,7 @@ services:
       - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
     volumes:
       - release-data:/opt/data
+      - ./workspace/release:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-release:/etc/hermes:ro
@@ -271,6 +277,7 @@ services:
       - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
     volumes:
       - incident-data:/opt/data
+      - ./workspace/incident:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-incident:/etc/hermes:ro
@@ -301,6 +308,7 @@ services:
       - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
     volumes:
       - learning-data:/opt/data
+      - ./workspace/learning:/opt/data/workspace
       - shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
       - ./profiles/hermes-learning:/etc/hermes:ro

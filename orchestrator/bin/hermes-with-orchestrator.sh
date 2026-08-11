@@ -7,6 +7,10 @@ CRONTAB_FILE="${DATA_DIR}/crontab"
 LOG_FILE="${ORCHESTRATOR_LOG_FILE:-${DATA_DIR}/orchestrator.log}"
 RUN_ONCE="/opt/hermes-sdlc-orchestrator/bin/orchestrator-run-once.sh"
 SCHEDULE="${ORCHESTRATOR_CRON_SCHEDULE:-*/5 * * * *}"
+STARTUP_RUN_ENABLED="${ORCHESTRATOR_STARTUP_RUN_ENABLED:-true}"
+STARTUP_HEALTH_URL="${ORCHESTRATOR_STARTUP_HEALTH_URL:-${ORCHESTRATOR_HERMES_URL:-http://127.0.0.1:8642}/health}"
+STARTUP_WAIT_SECONDS="${ORCHESTRATOR_STARTUP_WAIT_SECONDS:-60}"
+STARTUP_WAIT_INTERVAL_SECONDS="${ORCHESTRATOR_STARTUP_WAIT_INTERVAL_SECONDS:-2}"
 
 apply_default_env() {
   name="$1"
@@ -38,8 +42,11 @@ if [ -n "${HERMES_MODEL_OPENAI_API_KEY:-}" ]; then
 fi
 
 mkdir -p "${DATA_DIR}"
+export HERMES_WORKSPACE_DIR="${HERMES_WORKSPACE_DIR:-/opt/data/workspace}"
+mkdir -p "${HERMES_WORKSPACE_DIR}"
 touch "${LOG_FILE}"
 chmod 0700 "${DATA_DIR}"
+chmod 0700 "${HERMES_WORKSPACE_DIR}" || true
 
 write_env_var() {
   name="$1"
@@ -63,6 +70,7 @@ for key in \
   ORCHESTRATOR_RETRY_DELAY_SECONDS \
   ORCHESTRATOR_RETRY_LOST_RUNS \
   ORCHESTRATOR_RETRY_TRANSIENT_FAILURES \
+  HERMES_WORKSPACE_DIR \
   ORCHESTRATOR_GITHUB_TOKEN \
   ORCHESTRATOR_GITLAB_TOKEN \
   REPOSITORY_ID \
@@ -81,6 +89,7 @@ rm -f "${ENV_FILE}.tmp"
 printf '%s %s\n' "${SCHEDULE}" "${RUN_ONCE}" >"${CRONTAB_FILE}"
 
 cron_pid=""
+startup_run_pid=""
 start_scheduler() {
   if command -v supercronic >/dev/null 2>&1; then
     supercronic -passthrough-logs "${CRONTAB_FILE}" >>"${LOG_FILE}" 2>&1 &
@@ -98,9 +107,53 @@ start_scheduler() {
   fi
 }
 
+log_message() {
+  printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" >>"${LOG_FILE}"
+}
+
+wait_for_gateway() {
+  if ! command -v curl >/dev/null 2>&1; then
+    log_message '{"status":"NO_OP","reason":"startup scan skipped; curl unavailable for gateway health check"}'
+    return 1
+  fi
+
+  waited=0
+  while [ "${waited}" -le "${STARTUP_WAIT_SECONDS}" ]; do
+    if curl -fsS "${STARTUP_HEALTH_URL}" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep "${STARTUP_WAIT_INTERVAL_SECONDS}"
+    waited=$((waited + STARTUP_WAIT_INTERVAL_SECONDS))
+  done
+
+  log_message '{"status":"NO_OP","reason":"startup scan skipped; gateway health check did not become ready"}'
+  return 1
+}
+
+run_startup_orchestrator_once() {
+  if [ "${STARTUP_RUN_ENABLED}" != "true" ]; then
+    return 0
+  fi
+  if [ "${ORCHESTRATOR_ENABLED:-false}" != "true" ]; then
+    return 0
+  fi
+  if ! wait_for_gateway; then
+    return 0
+  fi
+  if "${RUN_ONCE}" >>"${LOG_FILE}" 2>&1; then
+    log_message '{"status":"OK","reason":"startup orchestrator run completed"}'
+  else
+    status="$?"
+    log_message "{\"status\":\"ERROR\",\"reason\":\"startup orchestrator run failed\",\"exit_code\":${status}}"
+  fi
+}
+
 stop_children() {
   if [ -n "${hermes_pid:-}" ]; then
     kill -TERM "${hermes_pid}" 2>/dev/null || true
+  fi
+  if [ -n "${startup_run_pid}" ]; then
+    kill -TERM "${startup_run_pid}" 2>/dev/null || true
   fi
   if [ -n "${cron_pid}" ]; then
     kill -TERM "${cron_pid}" 2>/dev/null || true
@@ -112,10 +165,16 @@ trap 'stop_children; wait; exit 143' INT TERM
 start_scheduler
 hermes gateway run &
 hermes_pid="$!"
+run_startup_orchestrator_once &
+startup_run_pid="$!"
 set +e
 wait "${hermes_pid}"
 status="$?"
 set -e
+if [ -n "${startup_run_pid}" ]; then
+  kill -TERM "${startup_run_pid}" 2>/dev/null || true
+  wait "${startup_run_pid}" 2>/dev/null || true
+fi
 if [ -n "${cron_pid}" ]; then
   kill -TERM "${cron_pid}" 2>/dev/null || true
   wait "${cron_pid}" 2>/dev/null || true

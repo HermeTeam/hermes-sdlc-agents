@@ -62,6 +62,7 @@ orchestrator_wrapper = "/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrat
 orchestrator_mount = "./orchestrator:/opt/hermes-sdlc-orchestrator:ro"
 orchestrator_db_path = "/opt/data/sdlc-orchestrator/orchestrator.sqlite"
 orchestrator_lock_path = "/opt/data/sdlc-orchestrator/run_once.lock"
+workspace_dir = "/opt/data/workspace"
 required_dotenv_keys = {
     "OPENAI_API_KEY",
     "HERMES_ORCHESTRATOR_IMAGE",
@@ -378,6 +379,8 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: compose ORCHESTRATOR_LOCK_PATH must be {orchestrator_lock_path}")
     if service_environment.get("ORCHESTRATOR_HERMES_URL") != "http://127.0.0.1:8642":
         errors.append(f"{role}: compose ORCHESTRATOR_HERMES_URL must be localhost")
+    if service_environment.get("HERMES_WORKSPACE_DIR") != workspace_dir:
+        errors.append(f"{role}: compose HERMES_WORKSPACE_DIR must be {workspace_dir}")
     if service_environment.get("ORCHESTRATOR_APPLY_TRANSITIONS") != "${ORCHESTRATOR_APPLY_TRANSITIONS:-false}":
         errors.append(f"{role}: compose ORCHESTRATOR_APPLY_TRANSITIONS must be mapped from .env with false default")
     if service_environment.get("ORCHESTRATOR_TRANSITION_COMMENT_ONLY") != "${ORCHESTRATOR_TRANSITION_COMMENT_ONLY:-true}":
@@ -418,12 +421,12 @@ for role, service in compose.get("services", {}).items():
     expected_token_expr = f"${{{role_github_token_vars[role]}:?Set {role_github_token_vars[role]} in .env}}"
     if service_environment.get("GIT_PROVIDER_MCP_TOKEN") != expected_token_expr:
         errors.append(f"{role}: GIT_PROVIDER_MCP_TOKEN must be mapped from {role_github_token_vars[role]}")
-    if role != "hermes-builder" and any("/workspace/repo" in str(v) for v in service.get("volumes", [])):
-        errors.append(f"{role}: repository mount must be absent")
-    if role == "hermes-builder":
-        service_text = str(service)
-        if "/workspace/repo" in service_text or "REPO_DIR" in service_text:
-            errors.append("hermes-builder: compose local repository mount references must be absent")
+    service_text = str(service)
+    if "/workspace/repo" in service_text or "REPO_DIR" in service_text:
+        errors.append(f"{role}: compose local repository mount references must be absent")
+    expected_workspace_mount = f"./workspace/{role_short_names[role]}:{workspace_dir}"
+    if expected_workspace_mount not in service.get("volumes", []):
+        errors.append(f"{role}: workspace must be mounted as {expected_workspace_mount}")
     if "shared-skills:/opt/hermes-shared-skills:ro" not in service.get("volumes", []):
         errors.append(f"{role}: shared-skills volume must be mounted read-only")
     if orchestrator_mount not in service.get("volumes", []):
