@@ -7,7 +7,7 @@ import sqlite3
 from . import db
 from .config import Config
 from .final_response import FinalResponseError, parse_final_response
-from .hermes_client import HermesClient
+from .hermes_client import HermesClient, HermesRunNotFound
 from .transitions import ProviderTransitionAdapter, apply_failure_transition, apply_transition
 
 
@@ -23,7 +23,7 @@ def reconcile(
     config: Config,
     provider_adapter: ProviderTransitionAdapter | None = None,
 ) -> dict[str, int]:
-    summary = {"active": 0, "completed": 0, "failed": 0, "cancelled": 0, "timeout": 0, "invalid_output": 0}
+    summary = {"active": 0, "completed": 0, "failed": 0, "cancelled": 0, "timeout": 0, "invalid_output": 0, "lost": 0}
     for run in db.active_runs(conn):
         summary["active"] += 1
         if _timed_out(run["started_at"], config.run_timeout_seconds):
@@ -49,7 +49,37 @@ def reconcile(
             )
             summary["timeout"] += 1
             continue
-        payload = client.get_run(run["hermes_run_id"])
+        try:
+            payload = client.get_run(run["hermes_run_id"])
+        except HermesRunNotFound as exc:
+            # TODO(refactor-standalone-db): When the orchestrator moves from local SQLite to
+            # PostgreSQL/MongoDB, replace this local lost-run recovery with a DB-backed run
+            # lease/checkpoint model shared with Hermes Gateway.
+            raw = json.dumps(
+                {"status": "lost", "run_id": run["hermes_run_id"], "error": str(exc)},
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+            db.mark_run_finished(
+                conn,
+                run["assignment_key"],
+                "LOST",
+                None,
+                raw,
+                error="Hermes run disappeared from gateway runtime; likely container restart/recreate while SQLite persisted ACTIVE run",
+            )
+            apply_failure_transition(
+                conn,
+                item=db.row_to_work_item(run),
+                assignment_key=run["assignment_key"],
+                role=run["role"],
+                failure_status="LOST",
+                summary="Hermes run was not found in the gateway runtime; marked lost locally so reconciliation can continue",
+                config=config,
+                provider_adapter=provider_adapter,
+            )
+            summary["lost"] += 1
+            continue
         status = str(payload.get("status") or payload.get("state") or "").lower()
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         if status in COMPLETED:

@@ -15,7 +15,7 @@ from sdlc_orchestrator.config import Config, ConfigError
 from sdlc_orchestrator.cli import status as orchestrator_status
 from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, pending_assignments, upsert_work_item
 from sdlc_orchestrator.final_response import FinalResponseError, parse_final_response
-from sdlc_orchestrator.hermes_client import HermesClient
+from sdlc_orchestrator.hermes_client import HermesClient, HermesRunNotFound
 from sdlc_orchestrator.locking import LockNotAcquired, nonblocking_lock
 from sdlc_orchestrator.provider_base import WorkItem
 from sdlc_orchestrator.provider_github import GitHubTransitionAdapter, normalize_issue as normalize_github_issue
@@ -202,6 +202,30 @@ class HermesClientTests(unittest.TestCase):
         self.assertEqual(received["idempotency"], "key-1")
         self.assertEqual(received["body"]["model"], "hermes-builder")
 
+    def test_get_run_raises_typed_exception_for_run_not_found(self) -> None:
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"error":{"code":"run_not_found","message":"Run not found"}}')
+
+            def log_message(self, *_args):
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            client = HermesClient(config(hermes_url=f"http://127.0.0.1:{server.server_port}"))
+            with self.assertRaises(HermesRunNotFound) as raised:
+                client.get_run("run_missing")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+        self.assertEqual(raised.exception.run_id, "run_missing")
+
 
 class FinalResponseTests(unittest.TestCase):
     def final_payload(self, *, status="PR_READY_FOR_REVIEW", role="builder", key="key") -> dict:
@@ -260,6 +284,16 @@ class FakeClient:
         return self.payloads[run_id]
 
 
+class MissingThenCompletedClient:
+    def __init__(self, completed_payload: dict) -> None:
+        self.completed_payload = completed_payload
+
+    def get_run(self, run_id: str) -> dict:
+        if run_id == "run_missing":
+            raise HermesRunNotFound(run_id, '{"error":{"code":"run_not_found"}}')
+        return self.completed_payload
+
+
 class FakeTransitionAdapter:
     def __init__(self) -> None:
         self.calls = []
@@ -311,6 +345,40 @@ class ReconcilerTests(unittest.TestCase):
                 self.assertEqual(row["final_status"], "READY_FOR_BUILD")
                 self.assertEqual(transition["next_role"], "builder")
                 self.assertEqual(transition["provider_applied"], 0)
+
+    def test_missing_gateway_run_is_marked_lost_and_reconcile_continues(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                missing_item = item(labels=("hermes:planner",), body="missing")
+                ok_item = item(labels=("hermes:planner",), body="ok")
+                missing_id = upsert_work_item(conn, missing_item)
+                missing_key = assignment_key(missing_item, "planner")
+                ensure_assignment(conn, missing_key, missing_id, "planner")
+                mark_assignment_started(conn, missing_key, "run_missing", "session-missing")
+                ok_id = upsert_work_item(conn, ok_item)
+                ok_key = assignment_key(ok_item, "planner")
+                ensure_assignment(conn, ok_key, ok_id, "planner")
+                mark_assignment_started(conn, ok_key, "run_ok", "session-ok")
+
+                summary = reconcile(
+                    conn,
+                    MissingThenCompletedClient(self.completed_payload(role="planner", key=ok_key, final_status="READY_FOR_BUILD")),
+                    config(role="planner", apply_transitions=True),
+                    adapter,
+                )
+
+                missing_row = conn.execute("SELECT status, error FROM agent_runs WHERE assignment_key=?", (missing_key,)).fetchone()
+                ok_row = conn.execute("SELECT status FROM agent_runs WHERE assignment_key=?", (ok_key,)).fetchone()
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (missing_key,)).fetchone()
+                self.assertEqual(summary["lost"], 1)
+                self.assertEqual(summary["completed"], 1)
+                self.assertEqual(missing_row["status"], "LOST")
+                self.assertIn("disappeared", missing_row["error"])
+                self.assertEqual(ok_row["status"], "COMPLETED")
+                self.assertEqual(transition["final_status"], "LOST")
 
     def test_transition_adapter_receives_expected_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

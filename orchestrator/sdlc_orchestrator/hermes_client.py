@@ -7,6 +7,13 @@ from urllib.request import Request, urlopen
 from .config import Config
 
 
+class HermesRunNotFound(RuntimeError):
+    def __init__(self, run_id: str, detail: str) -> None:
+        super().__init__(f"Hermes run not found: {run_id}: {detail}")
+        self.run_id = run_id
+        self.detail = detail
+
+
 class HermesClient:
     def __init__(self, config: Config) -> None:
         self._base_url = config.hermes_url
@@ -31,9 +38,9 @@ class HermesClient:
             f"{self._base_url}/v1/runs/{run_id}",
             headers={"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"},
         )
-        return self._json(request)
+        return self._json(request, missing_run_id=run_id)
 
-    def _json(self, request: Request) -> dict:
+    def _json(self, request: Request, *, missing_run_id: str | None = None) -> dict:
         try:
             with urlopen(request, timeout=30) as response:
                 if response.status == 204:
@@ -41,6 +48,8 @@ class HermesClient:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
+            if exc.code == 404 and missing_run_id is not None and "run_not_found" in detail:
+                raise HermesRunNotFound(missing_run_id, detail) from exc
             raise RuntimeError(f"Hermes API request failed: HTTP {exc.code}: {detail}") from exc
         except (URLError, TimeoutError) as exc:
             raise RuntimeError(f"Hermes API request failed: {exc}") from exc
