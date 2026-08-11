@@ -50,6 +50,10 @@ class Config:
     lock_path: Path
     max_starts_per_tick: int
     run_timeout_seconds: int
+    max_attempts_per_assignment: int = 3
+    retry_delay_seconds: int = 300
+    retry_lost_runs: bool = True
+    retry_transient_failures: bool = True
     github_token: str | None = None
     github_api_base_url: str = "https://api.github.com"
     github_repository_full_name: str | None = None
@@ -104,6 +108,10 @@ class Config:
             lock_path=lock_path,
             max_starts_per_tick=_int_env("ORCHESTRATOR_MAX_STARTS_PER_TICK", 1, 0),
             run_timeout_seconds=_int_env("ORCHESTRATOR_RUN_TIMEOUT_SECONDS", 5400, 60),
+            max_attempts_per_assignment=_int_env("ORCHESTRATOR_MAX_ATTEMPTS_PER_ASSIGNMENT", 3, 1),
+            retry_delay_seconds=_int_env("ORCHESTRATOR_RETRY_DELAY_SECONDS", 300, 0),
+            retry_lost_runs=_bool(os.getenv("ORCHESTRATOR_RETRY_LOST_RUNS"), True),
+            retry_transient_failures=_bool(os.getenv("ORCHESTRATOR_RETRY_TRANSIENT_FAILURES"), True),
             github_token=os.getenv("ORCHESTRATOR_GITHUB_TOKEN") or None,
             github_api_base_url=os.getenv("GITHUB_API_BASE_URL", "https://api.github.com").rstrip("/"),
             github_repository_full_name=os.getenv("GITHUB_REPOSITORY_FULL_NAME") or None,

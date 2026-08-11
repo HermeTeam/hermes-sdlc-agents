@@ -20,6 +20,11 @@ def main(argv: list[str] | None = None) -> int:
     subparsers.add_parser("run-once")
     subparsers.add_parser("reconcile")
     subparsers.add_parser("status")
+    requeue_parser = subparsers.add_parser("requeue")
+    requeue_parser.add_argument("--assignment-key")
+    requeue_parser.add_argument("--status", action="append", dest="statuses")
+    requeue_parser.add_argument("--limit", type=int)
+    requeue_parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     try:
@@ -30,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
             return _print(reconcile_only(config))
         if args.command == "status":
             return _print(status(config))
+        if args.command == "requeue":
+            return _print(requeue(config, assignment_key=args.assignment_key, statuses=args.statuses, limit=args.limit, dry_run=args.dry_run))
     except ConfigError as exc:
         return _print({"status": "ERROR", "error": str(exc)}, exit_code=2)
     except Exception as exc:
@@ -88,7 +95,47 @@ def status(config: Config) -> dict:
             "apply_transitions": config.apply_transitions,
             "transition_comment_only": config.transition_comment_only,
             "counts": db.counts(conn),
+            "assignment_statuses": db.assignment_status_counts(conn, config.role),
+            "run_statuses": db.run_status_counts(conn, config.role),
+            "queue": db.queue_counts(conn, config.role),
         }
+
+
+def requeue(
+    config: Config,
+    *,
+    assignment_key: str | None = None,
+    statuses: list[str] | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+) -> dict:
+    safe_statuses = {"BLOCKED_CONFIG", "FAILED_FINAL", "LOST", "FAILED"}
+    selected_statuses = {status.strip().upper() for status in statuses} if statuses else safe_statuses
+    with db.connect(config.db_path) as conn:
+        db.init_db(conn)
+        matches = db.matching_requeue_assignments(
+            conn,
+            role=config.role,
+            statuses=selected_statuses,
+            assignment_key=assignment_key,
+            limit=limit,
+        )
+        if dry_run:
+            return {
+                "status": "OK",
+                "matched": len(matches),
+                "requeued": 0,
+                "dry_run": True,
+                "assignments": [dict(row) for row in matches],
+            }
+        requeued = db.requeue_assignments(
+            conn,
+            role=config.role,
+            statuses=selected_statuses,
+            assignment_key=assignment_key,
+            limit=limit,
+        )
+        return {"status": "OK", "matched": len(matches), "requeued": requeued, "dry_run": False}
 
 
 def _fetch_items(config: Config) -> list[WorkItem]:

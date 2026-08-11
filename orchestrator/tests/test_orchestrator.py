@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sdlc_orchestrator.assignment import assignment_key, matches_role
 from sdlc_orchestrator.config import Config, ConfigError
-from sdlc_orchestrator.cli import status as orchestrator_status
+from sdlc_orchestrator.cli import requeue as orchestrator_requeue, status as orchestrator_status
 from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, pending_assignments, upsert_work_item
 from sdlc_orchestrator.final_response import FinalResponseError, parse_final_response
 from sdlc_orchestrator.hermes_client import HermesClient, HermesRunNotFound
@@ -116,6 +116,24 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(payload["apply_transitions"])
         self.assertTrue(payload["transition_comment_only"])
 
+    def test_status_includes_queue_breakdowns_and_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            cfg = config(db_path=path)
+            with connect(path) as conn:
+                init_db(conn)
+                work_item_id = upsert_work_item(conn, item(labels=("hermes:builder",)))
+                ensure_assignment(conn, "pending-key", work_item_id, "builder")
+                ensure_assignment(conn, "blocked-key", work_item_id, "builder")
+                conn.execute("UPDATE role_assignments SET status='BLOCKED_CONFIG' WHERE assignment_key='blocked-key'")
+                mark_assignment_started(conn, "pending-key", "run_1", "session")
+                conn.execute("UPDATE agent_runs SET status='FAILED' WHERE assignment_key='pending-key'")
+            payload = orchestrator_status(cfg)
+        self.assertIn("counts", payload)
+        self.assertEqual(payload["assignment_statuses"], {"BLOCKED_CONFIG": 1, "STARTED": 1})
+        self.assertEqual(payload["run_statuses"], {"FAILED": 1})
+        self.assertEqual(payload["queue"]["active"], 1)
+
 
 class FilteringTests(unittest.TestCase):
     def test_role_filter_ignores_other_roles(self) -> None:
@@ -159,6 +177,107 @@ class DatabaseTests(unittest.TestCase):
                 ensure_assignment(conn, "builder-key", work_item_id, "builder")
                 rows = pending_assignments(conn, "builder", 10)
                 self.assertEqual([row["assignment_key"] for row in rows], ["builder-key"])
+
+    def test_pending_assignments_ignore_delayed_retries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item_id = upsert_work_item(conn, item(labels=("hermes:builder",)))
+                ensure_assignment(conn, "due-key", work_item_id, "builder")
+                ensure_assignment(conn, "delayed-key", work_item_id, "builder")
+                conn.execute("UPDATE role_assignments SET next_retry_at='2999-01-01 00:00:00' WHERE assignment_key='delayed-key'")
+                rows = pending_assignments(conn, "builder", 10)
+                self.assertEqual([row["assignment_key"] for row in rows], ["due-key"])
+
+    def test_migration_allows_second_run_attempt_for_same_assignment(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                conn.executescript(
+                    """
+                    CREATE TABLE work_items (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      provider TEXT NOT NULL,
+                      repository_id TEXT NOT NULL,
+                      kind TEXT NOT NULL,
+                      external_id TEXT NOT NULL,
+                      title TEXT NOT NULL,
+                      body_text TEXT NOT NULL DEFAULT '',
+                      body_hash TEXT NOT NULL,
+                      url TEXT NOT NULL,
+                      labels_json TEXT NOT NULL,
+                      assignees_json TEXT NOT NULL,
+                      updated_at TEXT,
+                      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      UNIQUE(provider, repository_id, external_id)
+                    );
+                    CREATE TABLE role_assignments (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      assignment_key TEXT NOT NULL UNIQUE,
+                      work_item_id INTEGER NOT NULL,
+                      role TEXT NOT NULL,
+                      status TEXT NOT NULL DEFAULT 'PENDING',
+                      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    CREATE TABLE agent_runs (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      assignment_key TEXT NOT NULL UNIQUE,
+                      hermes_run_id TEXT NOT NULL UNIQUE,
+                      session_id TEXT,
+                      status TEXT NOT NULL,
+                      started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                      completed_at TEXT,
+                      raw_status TEXT,
+                      final_status TEXT,
+                      final_response_json TEXT,
+                      timed_out_at TEXT,
+                      error TEXT
+                    );
+                    CREATE TABLE transitions (
+                      id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      assignment_key TEXT NOT NULL,
+                      from_role TEXT NOT NULL,
+                      final_status TEXT NOT NULL,
+                      next_role TEXT,
+                      provider_applied INTEGER NOT NULL DEFAULT 0,
+                      provider_result TEXT,
+                      error TEXT,
+                      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                    """
+                )
+                work_item_id = upsert_work_item(conn, item(labels=("hermes:builder",)))
+                ensure_assignment(conn, "retry-key", work_item_id, "builder")
+                conn.execute("INSERT INTO agent_runs(assignment_key, hermes_run_id, session_id, status) VALUES ('retry-key', 'run_1', 'session', 'FAILED')")
+                init_db(conn)
+                conn.execute("UPDATE role_assignments SET status='PENDING', attempt_count=1 WHERE assignment_key='retry-key'")
+                mark_assignment_started(conn, "retry-key", "run_2", "session")
+                rows = conn.execute("SELECT hermes_run_id, attempt_number FROM agent_runs WHERE assignment_key='retry-key' ORDER BY id").fetchall()
+        self.assertEqual([(row["hermes_run_id"], row["attempt_number"]) for row in rows], [("run_1", 1), ("run_2", 2)])
+
+    def test_requeue_dry_run_and_update_preserve_historical_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            cfg = config(db_path=path)
+            with connect(path) as conn:
+                init_db(conn)
+                work_item_id = upsert_work_item(conn, item(labels=("hermes:builder",)))
+                ensure_assignment(conn, "blocked-key", work_item_id, "builder")
+                mark_assignment_started(conn, "blocked-key", "run_1", "session")
+                conn.execute("UPDATE agent_runs SET status='FAILED' WHERE assignment_key='blocked-key'")
+                conn.execute("UPDATE role_assignments SET status='BLOCKED_CONFIG', blocked_reason='bad key', last_error_code='CONFIG_AUTH' WHERE assignment_key='blocked-key'")
+            dry = orchestrator_requeue(cfg, statuses=["BLOCKED_CONFIG"], dry_run=True)
+            self.assertEqual(dry["matched"], 1)
+            self.assertEqual(dry["requeued"], 0)
+            updated = orchestrator_requeue(cfg, statuses=["BLOCKED_CONFIG"])
+            with connect(path) as conn:
+                assignment = conn.execute("SELECT status, blocked_reason, last_error_code FROM role_assignments WHERE assignment_key='blocked-key'").fetchone()
+                run_count = conn.execute("SELECT COUNT(*) AS count FROM agent_runs WHERE assignment_key='blocked-key' AND status='FAILED'").fetchone()
+        self.assertEqual(updated, {"status": "OK", "matched": 1, "requeued": 1, "dry_run": False})
+        self.assertEqual(dict(assignment), {"status": "PENDING", "blocked_reason": None, "last_error_code": None})
+        self.assertEqual(run_count["count"], 1)
 
 
 class LockTests(unittest.TestCase):
@@ -371,14 +490,103 @@ class ReconcilerTests(unittest.TestCase):
                 )
 
                 missing_row = conn.execute("SELECT status, error FROM agent_runs WHERE assignment_key=?", (missing_key,)).fetchone()
+                missing_assignment = conn.execute("SELECT status, next_retry_at FROM role_assignments WHERE assignment_key=?", (missing_key,)).fetchone()
                 ok_row = conn.execute("SELECT status FROM agent_runs WHERE assignment_key=?", (ok_key,)).fetchone()
                 transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (missing_key,)).fetchone()
                 self.assertEqual(summary["lost"], 1)
+                self.assertEqual(summary["requeued"], 1)
                 self.assertEqual(summary["completed"], 1)
                 self.assertEqual(missing_row["status"], "LOST")
                 self.assertIn("disappeared", missing_row["error"])
+                self.assertEqual(missing_assignment["status"], "PENDING")
+                self.assertIsNotNone(missing_assignment["next_retry_at"])
                 self.assertEqual(ok_row["status"], "COMPLETED")
-                self.assertEqual(transition["final_status"], "LOST")
+                self.assertEqual(transition["final_status"], "LOST_REQUEUED")
+                self.assertEqual(len(adapter.calls), 1)
+                self.assertEqual(adapter.calls[0]["item"].body, "ok")
+
+    def test_missing_gateway_run_at_max_attempts_is_failed_final(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:planner",), body="missing")
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "planner")
+                ensure_assignment(conn, key, work_item_id, "planner")
+                mark_assignment_started(conn, key, "run_missing", "session")
+                summary = reconcile(conn, MissingThenCompletedClient({}), config(role="planner", apply_transitions=True, max_attempts_per_assignment=1), adapter)
+                assignment = conn.execute("SELECT status FROM role_assignments WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["lost"], 1)
+        self.assertEqual(summary["failed_final"], 1)
+        self.assertEqual(assignment["status"], "FAILED_FINAL")
+        self.assertEqual(transition["final_status"], "LOST")
+        self.assertEqual(len(adapter.calls), 1)
+
+    def test_failed_payload_invalid_api_key_blocks_config(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                summary = reconcile(conn, FakeClient({"run_1": {"status": "failed", "error": {"message": "401 invalid_api_key"}}}), config(apply_transitions=True), adapter)
+                assignment = conn.execute("SELECT status, blocked_reason, last_error_code FROM role_assignments WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["blocked_config"], 1)
+        self.assertEqual(assignment["status"], "BLOCKED_CONFIG")
+        self.assertEqual(assignment["last_error_code"], "CONFIG_AUTH")
+        self.assertIn("invalid_api_key", assignment["blocked_reason"])
+        self.assertEqual(transition["final_status"], "BLOCKED_CONFIG")
+        self.assertEqual(len(adapter.calls), 1)
+
+    def test_transient_failed_payload_requeues_until_attempts_exhausted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                summary = reconcile(conn, FakeClient({"run_1": {"status": "failed", "error": "HTTP 503 temporarily unavailable"}}), config(apply_transitions=True), adapter)
+                assignment = conn.execute("SELECT status, next_retry_at FROM role_assignments WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["requeued"], 1)
+        self.assertEqual(assignment["status"], "PENDING")
+        self.assertIsNotNone(assignment["next_retry_at"])
+        self.assertEqual(transition["final_status"], "FAILED_REQUEUED")
+        self.assertEqual(adapter.calls, [])
+
+    def test_transient_failed_payload_at_max_attempts_is_failed_final(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                summary = reconcile(conn, FakeClient({"run_1": {"status": "failed", "error": "HTTP 429 rate limit"}}), config(apply_transitions=True, max_attempts_per_assignment=1), adapter)
+                assignment = conn.execute("SELECT status FROM role_assignments WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["failed_final"], 1)
+        self.assertEqual(assignment["status"], "FAILED_FINAL")
+        self.assertEqual(transition["final_status"], "FAILED_FINAL")
+        self.assertEqual(len(adapter.calls), 1)
 
     def test_transition_adapter_receives_expected_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
