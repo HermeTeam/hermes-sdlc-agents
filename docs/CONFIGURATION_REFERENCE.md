@@ -171,7 +171,9 @@ Deployment promotion/abort requires a separate policy-enforced integration outsi
 
 ## Orchestrator state machine
 
-The role-local orchestrator uses canonical runtime status enums and revision-aware assignment keys (`v2:<revision>`). Completed Hermes runs must return strict JSON; regex/free-text status extraction is not part of the reconciliation path. Valid final statuses are stored in SQLite, and the transition layer records the next handoff. Provider issue label/comment mutations are controlled by `ORCHESTRATOR_APPLY_TRANSITIONS` and default to disabled; `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=true` avoids label changes during rollout.
+The role-local orchestrator uses canonical runtime status enums and revision-aware assignment keys (`v2:<revision>`). Issue revisions are based on semantic content, not provider `updated_at`, so orchestrator comments and labels do not create new assignments by themselves. Completed Hermes runs must return strict JSON; regex/free-text status extraction is not part of the reconciliation path. Valid final statuses are stored in SQLite, and the transition layer records the next handoff. Provider issue label/comment mutations are controlled by `ORCHESTRATOR_APPLY_TRANSITIONS` and default to disabled; `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=true` is a canary mode that writes comments only and does not start downstream label-based roles.
+
+`sdlc_orchestrator status` includes `apply_transitions` and `transition_comment_only` so operators can identify disabled, comment-only canary, and label-changing modes.
 
 Human approver и activation pipeline являются отдельными identities. Learning agent не может одобрить собственный pending change.
 

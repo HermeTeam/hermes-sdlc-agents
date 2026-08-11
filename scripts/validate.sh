@@ -60,6 +60,8 @@ required_dotenv_keys = {
     "ORCHESTRATOR_CRON_SCHEDULE",
     "ORCHESTRATOR_MAX_STARTS_PER_TICK",
     "ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
+    "ORCHESTRATOR_APPLY_TRANSITIONS",
+    "ORCHESTRATOR_TRANSITION_COMMENT_ONLY",
     "GIT_PROVIDER_MCP_URL",
     "REPOSITORY_ID",
     "REPOSITORY_PROVIDER",
@@ -81,6 +83,8 @@ runtime_optional_dotenv_keys = {
     "ORCHESTRATOR_CRON_SCHEDULE",
     "ORCHESTRATOR_MAX_STARTS_PER_TICK",
     "ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
+    "ORCHESTRATOR_APPLY_TRANSITIONS",
+    "ORCHESTRATOR_TRANSITION_COMMENT_ONLY",
 }
 
 errors = []
@@ -118,6 +122,10 @@ if dotenv_values.get("ORCHESTRATOR_ENABLED") != "false":
     errors.append(".env.example: ORCHESTRATOR_ENABLED must default to false")
 if dotenv_values.get("ORCHESTRATOR_PROVIDER") != "github":
     errors.append(".env.example: ORCHESTRATOR_PROVIDER must default to github")
+if dotenv_values.get("ORCHESTRATOR_APPLY_TRANSITIONS") != "false":
+    errors.append(".env.example: ORCHESTRATOR_APPLY_TRANSITIONS must default to false")
+if dotenv_values.get("ORCHESTRATOR_TRANSITION_COMMENT_ONLY") != "true":
+    errors.append(".env.example: ORCHESTRATOR_TRANSITION_COMMENT_ONLY must default to true")
 if (root / ".env").is_file():
     runtime_dotenv_values = parse_dotenv(root / ".env")
     missing_runtime_dotenv_keys = sorted((required_dotenv_keys - runtime_optional_dotenv_keys) - set(runtime_dotenv_values))
@@ -272,6 +280,10 @@ for role in sorted(expected_roles):
                 errors.append(f"{role}: Kubernetes ORCHESTRATOR_LOCK_PATH must be {orchestrator_lock_path}")
             if container_env.get("ORCHESTRATOR_HERMES_URL") != "http://127.0.0.1:8642":
                 errors.append(f"{role}: Kubernetes ORCHESTRATOR_HERMES_URL must be localhost")
+            if container_env.get("ORCHESTRATOR_APPLY_TRANSITIONS") != "false":
+                errors.append(f"{role}: Kubernetes ORCHESTRATOR_APPLY_TRANSITIONS must default to false")
+            if container_env.get("ORCHESTRATOR_TRANSITION_COMMENT_ONLY") != "true":
+                errors.append(f"{role}: Kubernetes ORCHESTRATOR_TRANSITION_COMMENT_ONLY must default to true")
             if str(container).count("API_SERVER_KEY") > 0:
                 errors.append(f"{role}: Kubernetes API_SERVER_KEY must come only from the role Secret envFrom")
             if not any(
@@ -315,6 +327,10 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: compose ORCHESTRATOR_LOCK_PATH must be {orchestrator_lock_path}")
     if service_environment.get("ORCHESTRATOR_HERMES_URL") != "http://127.0.0.1:8642":
         errors.append(f"{role}: compose ORCHESTRATOR_HERMES_URL must be localhost")
+    if service_environment.get("ORCHESTRATOR_APPLY_TRANSITIONS") != "${ORCHESTRATOR_APPLY_TRANSITIONS:-false}":
+        errors.append(f"{role}: compose ORCHESTRATOR_APPLY_TRANSITIONS must be mapped from .env with false default")
+    if service_environment.get("ORCHESTRATOR_TRANSITION_COMMENT_ONLY") != "${ORCHESTRATOR_TRANSITION_COMMENT_ONLY:-true}":
+        errors.append(f"{role}: compose ORCHESTRATOR_TRANSITION_COMMENT_ONLY must be mapped from .env with true default")
     if "API_SERVER_KEY" in service_environment:
         errors.append(f"{role}: API_SERVER_KEY must come only from the role env_file")
     if "GITHUB_PROVIDER_TOKEN" in service_environment:

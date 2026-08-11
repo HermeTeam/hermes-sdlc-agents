@@ -21,7 +21,7 @@
 6. Включайте cron для builder/reviewer только после отдельных positive и negative canaries.
 7. Release, incident и learning держите отключёнными, пока их safety policy и retry rules не проверены отдельно.
 
-Transition mutations включайте отдельно от запуска runs: сначала оставьте `ORCHESTRATOR_APPLY_TRANSITIONS=false` и проверьте strict JSON reconciliation, затем включите `ORCHESTRATOR_APPLY_TRANSITIONS=true` вместе с `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=true`, и только после audit включайте label changes через `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=false`.
+Transition mutations включайте отдельно от запуска runs: сначала оставьте `ORCHESTRATOR_APPLY_TRANSITIONS=false` и проверьте strict JSON reconciliation, затем включите `ORCHESTRATOR_APPLY_TRANSITIONS=true` вместе с `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=true`, и только после audit включайте label changes через `ORCHESTRATOR_TRANSITION_COMMENT_ONLY=false`. Comment-only canary создаёт provider comments, но не меняет labels и поэтому не запускает downstream roles, которые матчятся по label-based routing.
 
 Для emergency stop достаточно остановить конкретный role container/Pod и отозвать его `API_SERVER_KEY`, GitHub MCP token и orchestrator read-only token. Не запускайте две replicas одной роли на одном `/opt/data`: local SQLite dedupe не является distributed lock.
 

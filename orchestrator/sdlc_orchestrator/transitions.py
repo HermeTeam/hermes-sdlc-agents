@@ -111,6 +111,70 @@ def apply_transition(
     )
 
 
+def apply_failure_transition(
+    conn: sqlite3.Connection,
+    *,
+    item: WorkItem,
+    assignment_key: str,
+    role: str,
+    failure_status: str,
+    summary: str,
+    config: Config,
+    provider_adapter: ProviderTransitionAdapter | None,
+) -> None:
+    comment = _render_failure_comment(assignment_key, failure_status, summary)
+    if not config.apply_transitions:
+        db.record_transition(
+            conn,
+            assignment_key=assignment_key,
+            from_role=role,
+            final_status=failure_status,
+            next_role=None,
+            provider_applied=False,
+            provider_result=json.dumps({"mode": "disabled", "comment": comment}, ensure_ascii=False, sort_keys=True),
+        )
+        return
+    if provider_adapter is None:
+        db.record_transition(
+            conn,
+            assignment_key=assignment_key,
+            from_role=role,
+            final_status=failure_status,
+            next_role=None,
+            provider_applied=False,
+            error="provider transition adapter unavailable",
+        )
+        return
+    try:
+        result = provider_adapter.apply_issue_transition(
+            item,
+            add_labels=set() if config.transition_comment_only else {"hermes:blocked"},
+            remove_labels=set(),
+            comment=comment,
+            idempotency_key=f"transition:{assignment_key}:{failure_status}",
+        )
+    except Exception as exc:
+        db.record_transition(
+            conn,
+            assignment_key=assignment_key,
+            from_role=role,
+            final_status=failure_status,
+            next_role=None,
+            provider_applied=False,
+            error=str(exc),
+        )
+        return
+    db.record_transition(
+        conn,
+        assignment_key=assignment_key,
+        from_role=role,
+        final_status=failure_status,
+        next_role=None,
+        provider_applied=result.applied,
+        provider_result=json.dumps(result.details, ensure_ascii=False, sort_keys=True),
+    )
+
+
 def _render_comment(spec: TransitionSpec, final_response: FinalResponse) -> str:
     lines = [
         spec.comment_template,
@@ -124,3 +188,14 @@ def _render_comment(spec: TransitionSpec, final_response: FinalResponse) -> str:
     if final_response.evidence:
         lines.append(f"Evidence items: {len(final_response.evidence)}")
     return "\n".join(lines)
+
+
+def _render_failure_comment(assignment_key: str, failure_status: str, summary: str) -> str:
+    return "\n".join(
+        [
+            f"Hermes orchestration failure: {failure_status}.",
+            "",
+            f"Assignment: {assignment_key}",
+            f"Summary: {summary}",
+        ]
+    )

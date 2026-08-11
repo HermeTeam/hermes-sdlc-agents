@@ -84,6 +84,8 @@ spec:
             - {name: ORCHESTRATOR_HERMES_URL, value: http://127.0.0.1:8642}
             - {name: ORCHESTRATOR_MAX_STARTS_PER_TICK, value: "1"}
             - {name: ORCHESTRATOR_RUN_TIMEOUT_SECONDS, value: "5400"}
+            - {name: ORCHESTRATOR_APPLY_TRANSITIONS, value: "false"}
+            - {name: ORCHESTRATOR_TRANSITION_COMMENT_ONLY, value: "true"}
             - {name: PYTHONPATH, value: /opt/hermes-sdlc-orchestrator}
           ports:
             - {name: api, containerPort: 8642, protocol: TCP}

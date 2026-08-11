@@ -145,18 +145,18 @@ def ensure_assignment(conn: sqlite3.Connection, key: str, work_item_id: int, rol
     return cur.rowcount == 1
 
 
-def pending_assignments(conn: sqlite3.Connection, limit: int) -> list[sqlite3.Row]:
+def pending_assignments(conn: sqlite3.Connection, role: str, limit: int) -> list[sqlite3.Row]:
     return list(
         conn.execute(
             """
             SELECT ra.assignment_key, ra.role, wi.*
             FROM role_assignments ra
             JOIN work_items wi ON wi.id = ra.work_item_id
-            WHERE ra.status = 'PENDING'
+            WHERE ra.status = 'PENDING' AND ra.role = ?
             ORDER BY ra.created_at ASC
             LIMIT ?
             """,
-            (limit,),
+            (role, limit),
         )
     )
 

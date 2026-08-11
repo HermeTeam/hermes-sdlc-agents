@@ -119,6 +119,18 @@ TRANSITIONS: dict[tuple[str, FinalStatus], TransitionSpec] = {
         remove_labels=frozenset({"state:review-needed", "hermes:reviewer"}),
         comment_template="Reviewer requested changes. Returning to builder.",
     ),
+    ("release", FinalStatus.NO_ACTION): TransitionSpec(
+        next_role=None,
+        add_labels=frozenset({"state:done"}),
+        remove_labels=frozenset({"state:ready-for-release", "hermes:release"}),
+        comment_template="Release evidence checked; no action required.",
+    ),
+    ("release", FinalStatus.BLOCKED_NO_ACTION): TransitionSpec(
+        next_role=None,
+        add_labels=frozenset({"hermes:manual-only"}),
+        remove_labels=frozenset({"state:ready-for-release", "hermes:release"}),
+        comment_template="Release action requires manual handling or an external release integration.",
+    ),
 }
 
 

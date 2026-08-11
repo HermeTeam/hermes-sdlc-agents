@@ -81,7 +81,14 @@ def reconcile_only(config: Config) -> dict:
 def status(config: Config) -> dict:
     with db.connect(config.db_path) as conn:
         db.init_db(conn)
-        return {"status": "OK", "role": config.role, "enabled": config.enabled, "counts": db.counts(conn)}
+        return {
+            "status": "OK",
+            "role": config.role,
+            "enabled": config.enabled,
+            "apply_transitions": config.apply_transitions,
+            "transition_comment_only": config.transition_comment_only,
+            "counts": db.counts(conn),
+        }
 
 
 def _fetch_items(config: Config) -> list[WorkItem]:
@@ -104,7 +111,7 @@ def _transition_adapter(config: Config):
 
 def _start_pending(conn, config: Config, client: HermesClient) -> int:
     started = 0
-    for row in db.pending_assignments(conn, config.max_starts_per_tick):
+    for row in db.pending_assignments(conn, config.role, config.max_starts_per_tick):
         item = db.row_to_work_item(row)
         key = row["assignment_key"]
         sid = session_id(item, config.role)

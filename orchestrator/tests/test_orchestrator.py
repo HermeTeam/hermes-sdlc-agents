@@ -12,12 +12,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from sdlc_orchestrator.assignment import assignment_key, matches_role
 from sdlc_orchestrator.config import Config, ConfigError
+from sdlc_orchestrator.cli import status as orchestrator_status
 from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, pending_assignments, upsert_work_item
 from sdlc_orchestrator.final_response import FinalResponseError, parse_final_response
 from sdlc_orchestrator.hermes_client import HermesClient
 from sdlc_orchestrator.locking import LockNotAcquired, nonblocking_lock
 from sdlc_orchestrator.provider_base import WorkItem
-from sdlc_orchestrator.provider_github import normalize_issue as normalize_github_issue
+from sdlc_orchestrator.provider_github import GitHubTransitionAdapter, normalize_issue as normalize_github_issue
 from sdlc_orchestrator.provider_gitlab import fetch_issues as fetch_gitlab_issues
 from sdlc_orchestrator.reconciler import reconcile
 from sdlc_orchestrator.statuses import FinalStatus
@@ -103,6 +104,18 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(loaded.role, "project-manager")
         self.assertEqual(loaded.role_labels, {"hermes:project-manager", "state:custom-pm"})
 
+    def test_status_exposes_transition_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = orchestrator_status(
+                config(
+                    db_path=Path(tmp) / "orchestrator.sqlite",
+                    apply_transitions=True,
+                    transition_comment_only=True,
+                )
+            )
+        self.assertTrue(payload["apply_transitions"])
+        self.assertTrue(payload["transition_comment_only"])
+
 
 class FilteringTests(unittest.TestCase):
     def test_role_filter_ignores_other_roles(self) -> None:
@@ -125,13 +138,27 @@ class DatabaseTests(unittest.TestCase):
                 key = "github:test:issue:123:builder:v1"
                 self.assertTrue(ensure_assignment(conn, key, work_item_id, "builder"))
                 self.assertFalse(ensure_assignment(conn, key, work_item_id, "builder"))
-                self.assertEqual(len(pending_assignments(conn, 10)), 1)
+                self.assertEqual(len(pending_assignments(conn, "builder", 10)), 1)
 
-    def test_assignment_key_is_revision_aware(self) -> None:
+    def test_assignment_key_ignores_updated_at(self) -> None:
         first = item(updated_at="2026-08-08T00:00:00Z")
         changed = item(updated_at="2026-08-09T00:00:00Z")
-        self.assertNotEqual(assignment_key(first, "builder"), assignment_key(changed, "builder"))
+        self.assertEqual(assignment_key(first, "builder"), assignment_key(changed, "builder"))
         self.assertIn(":v2:", assignment_key(first, "builder"))
+
+    def test_assignment_key_changes_when_body_changes(self) -> None:
+        self.assertNotEqual(assignment_key(item(body="A"), "builder"), assignment_key(item(body="B"), "builder"))
+
+    def test_pending_assignments_are_role_filtered(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item_id = upsert_work_item(conn, item(labels=("hermes:builder",)))
+                ensure_assignment(conn, "planner-key", work_item_id, "planner")
+                ensure_assignment(conn, "builder-key", work_item_id, "builder")
+                rows = pending_assignments(conn, "builder", 10)
+                self.assertEqual([row["assignment_key"] for row in rows], ["builder-key"])
 
 
 class LockTests(unittest.TestCase):
@@ -314,9 +341,64 @@ class ReconcilerTests(unittest.TestCase):
                 conn.execute("UPDATE agent_runs SET started_at='2000-01-01 00:00:00' WHERE assignment_key=?", (key,))
                 summary = reconcile(conn, FakeClient({}), config(run_timeout_seconds=60))
                 row = conn.execute("SELECT status, final_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT final_status, provider_applied FROM transitions WHERE assignment_key=?", (key,)).fetchone()
                 self.assertEqual(summary["timeout"], 1)
                 self.assertEqual(row["status"], "TIMEOUT")
                 self.assertEqual(row["final_status"], "BLOCKED")
+                self.assertEqual(transition["final_status"], "TIMEOUT")
+                self.assertEqual(transition["provider_applied"], 0)
+
+    def test_upstream_timeout_records_blocked_transition(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                summary = reconcile(conn, FakeClient({"run_1": {"status": "timeout"}}), config())
+                row = conn.execute("SELECT status, final_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+                self.assertEqual(summary["timeout"], 1)
+                self.assertEqual(row["status"], "TIMEOUT")
+                self.assertEqual(row["final_status"], "BLOCKED")
+                self.assertEqual(transition["final_status"], "TIMEOUT")
+
+    def test_invalid_output_records_failure_transition(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                summary = reconcile(conn, FakeClient({"run_1": {"status": "completed", "output": "Final: PR_READY_FOR_REVIEW"}}), config(apply_transitions=True), adapter)
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+                self.assertEqual(summary["invalid_output"], 1)
+                self.assertEqual(transition["final_status"], "INVALID_OUTPUT")
+                self.assertIn("not valid JSON", adapter.calls[0]["comment"])
+
+    def test_stale_completed_run_does_not_apply_normal_transition(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                original = item(labels=("hermes:builder",), body="old")
+                work_item_id = upsert_work_item(conn, original)
+                key = assignment_key(original, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                upsert_work_item(conn, item(labels=("hermes:builder",), body="new"))
+                reconcile(conn, FakeClient({"run_1": self.completed_payload(role="builder", key=key, final_status="PR_READY_FOR_REVIEW")}), config(apply_transitions=True, transition_comment_only=False), adapter)
+                transition = conn.execute("SELECT final_status FROM transitions WHERE assignment_key=?", (key,)).fetchone()
+                self.assertEqual(transition["final_status"], "STALE_OUTPUT")
+                self.assertEqual(adapter.calls[0]["add_labels"], {"hermes:blocked"})
 
     def test_full_status_cycle_transition_targets(self) -> None:
         cases = [
@@ -324,6 +406,8 @@ class ReconcilerTests(unittest.TestCase):
             ("builder", "PR_READY_FOR_REVIEW", {"state:review-needed", "hermes:reviewer"}),
             ("reviewer", "REQUEST_CHANGES", {"state:ready-for-build", "hermes:builder"}),
             ("reviewer", "APPROVE", {"state:ready-for-release", "hermes:release"}),
+            ("release", "NO_ACTION", {"state:done"}),
+            ("release", "BLOCKED_NO_ACTION", {"hermes:manual-only"}),
         ]
         for role, final_status, expected_labels in cases:
             with self.subTest(role=role, final_status=final_status):
@@ -359,6 +443,54 @@ class ProviderTests(unittest.TestCase):
 
     def test_gitlab_adapter_skips_cleanly_when_disabled(self) -> None:
         self.assertEqual(fetch_gitlab_issues(config(provider="gitlab", gitlab_token=None, gitlab_project=None)), [])
+
+    def test_github_transition_treats_missing_label_as_removed(self) -> None:
+        calls = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                calls.append(("GET", self.path))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b"[]")
+
+            def do_POST(self):  # noqa: N802
+                calls.append(("POST", self.path))
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b"{}")
+
+            def do_DELETE(self):  # noqa: N802
+                calls.append(("DELETE", self.path))
+                self.send_response(404)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"message":"Not Found"}')
+
+            def log_message(self, *_args):
+                return
+
+        server = HTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever)
+        thread.start()
+        try:
+            adapter = GitHubTransitionAdapter(config(github_token="token", github_api_base_url=f"http://127.0.0.1:{server.server_port}"))
+            result = adapter.apply_issue_transition(
+                item(),
+                add_labels=set(),
+                remove_labels={"old-label"},
+                comment="comment",
+                idempotency_key="key",
+            )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+        self.assertTrue(result.applied)
+        self.assertEqual(result.details["removed_labels"], [{"label": "old-label", "status": "already_absent"}])
+        self.assertIn(("POST", "/repos/test-project/test-project/issues/123/comments"), calls)
 
 
 if __name__ == "__main__":

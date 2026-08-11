@@ -22,5 +22,5 @@ class WorkItem:
         return f"{self.provider}:{self.repository_id}:{self.kind}:{self.external_id}:{role}:v2:{self.revision_key()}"
 
     def revision_key(self) -> str:
-        source = f"{self.updated_at or ''}:{self.body_hash}"
+        source = f"{self.title}:{self.body_hash}"
         return hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]

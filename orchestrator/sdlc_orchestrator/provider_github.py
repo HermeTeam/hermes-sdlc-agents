@@ -82,13 +82,14 @@ class GitHubTransitionAdapter:
         if item.kind != "issue":
             raise RuntimeError("GitHub transitions currently support issue work items only")
         issue = quote(item.external_id, safe="")
-        details: dict[str, object] = {"idempotency_key": idempotency_key, "comment": False, "added_labels": [], "removed_labels": []}
-        self._request(
-            f"/repos/{self._repository}/issues/{issue}/comments",
-            method="POST",
-            body={"body": comment},
-        )
-        details["comment"] = True
+        marker = f"<!-- hermes-transition:{idempotency_key} -->"
+        marked_comment = f"{comment}\n\n{marker}"
+        details: dict[str, object] = {
+            "idempotency_key": idempotency_key,
+            "comment": "pending",
+            "added_labels": [],
+            "removed_labels": [],
+        }
         if add_labels:
             self._request(
                 f"/repos/{self._repository}/issues/{issue}/labels",
@@ -97,11 +98,30 @@ class GitHubTransitionAdapter:
             )
             details["added_labels"] = sorted(add_labels)
         for label in sorted(remove_labels):
-            self._request(f"/repos/{self._repository}/issues/{issue}/labels/{quote(label, safe='')}", method="DELETE")
-            details["removed_labels"].append(label)  # type: ignore[attr-defined]
+            result = self._request(
+                f"/repos/{self._repository}/issues/{issue}/labels/{quote(label, safe='')}",
+                method="DELETE",
+                tolerate_404=True,
+            )
+            details["removed_labels"].append({"label": label, "status": "already_absent" if result.get("not_found") else "removed"})  # type: ignore[attr-defined]
+        if self._comment_exists(issue, marker):
+            details["comment"] = "already_exists"
+        else:
+            self._request(
+                f"/repos/{self._repository}/issues/{issue}/comments",
+                method="POST",
+                body={"body": marked_comment},
+            )
+            details["comment"] = "created"
         return ProviderTransitionResult(applied=True, details=details)
 
-    def _request(self, path: str, *, method: str, body: dict | None = None) -> dict:
+    def _comment_exists(self, issue: str, marker: str) -> bool:
+        comments = self._request(f"/repos/{self._repository}/issues/{issue}/comments?per_page=100", method="GET")
+        if not isinstance(comments, list):
+            return False
+        return any(marker in str(comment.get("body") or "") for comment in comments if isinstance(comment, dict))
+
+    def _request(self, path: str, *, method: str, body: dict | None = None, tolerate_404: bool = False):
         data = None if body is None else json.dumps(body).encode("utf-8")
         request = Request(
             f"{self._base_url}{path}",
@@ -119,5 +139,9 @@ class GitHubTransitionAdapter:
                 if response.status == 204:
                     return {}
                 return json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError) as exc:
+        except HTTPError as exc:
+            if tolerate_404 and exc.code == 404:
+                return {"not_found": True}
+            raise RuntimeError(f"GitHub transition failed: HTTP {exc.code}: {exc.read().decode('utf-8', errors='replace')}") from exc
+        except (URLError, TimeoutError) as exc:
             raise RuntimeError(f"GitHub transition failed: {exc}") from exc

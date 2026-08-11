@@ -8,7 +8,7 @@ from . import db
 from .config import Config
 from .final_response import FinalResponseError, parse_final_response
 from .hermes_client import HermesClient
-from .transitions import ProviderTransitionAdapter, apply_transition
+from .transitions import ProviderTransitionAdapter, apply_failure_transition, apply_transition
 
 
 COMPLETED = {"completed", "succeeded", "success", "done"}
@@ -37,6 +37,16 @@ def reconcile(
                 error="Run exceeded ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
                 timed_out=True,
             )
+            apply_failure_transition(
+                conn,
+                item=db.row_to_work_item(run),
+                assignment_key=run["assignment_key"],
+                role=run["role"],
+                failure_status="TIMEOUT",
+                summary="Run exceeded ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
+                config=config,
+                provider_adapter=provider_adapter,
+            )
             summary["timeout"] += 1
             continue
         payload = client.get_run(run["hermes_run_id"])
@@ -47,8 +57,41 @@ def reconcile(
                 final_response = parse_final_response(payload, expected_role=run["role"], expected_assignment_key=run["assignment_key"])
             except FinalResponseError as exc:
                 db.mark_run_finished(conn, run["assignment_key"], "INVALID_OUTPUT", None, raw, error=str(exc))
+                apply_failure_transition(
+                    conn,
+                    item=db.row_to_work_item(run),
+                    assignment_key=run["assignment_key"],
+                    role=run["role"],
+                    failure_status="INVALID_OUTPUT",
+                    summary=str(exc),
+                    config=config,
+                    provider_adapter=provider_adapter,
+                )
                 summary["invalid_output"] += 1
             else:
+                item = db.row_to_work_item(run)
+                if not _assignment_matches_current_revision(run["assignment_key"], item.revision_key()):
+                    db.mark_run_finished(
+                        conn,
+                        run["assignment_key"],
+                        "STALE_OUTPUT",
+                        final_response.final_status.value,
+                        raw,
+                        error="Work item revision changed while run was active",
+                        final_response_json=final_response.to_json(),
+                    )
+                    apply_failure_transition(
+                        conn,
+                        item=item,
+                        assignment_key=run["assignment_key"],
+                        role=run["role"],
+                        failure_status="STALE_OUTPUT",
+                        summary="Work item revision changed while run was active; normal downstream transition was not applied",
+                        config=config,
+                        provider_adapter=provider_adapter,
+                    )
+                    summary["invalid_output"] += 1
+                    continue
                 db.mark_run_finished(
                     conn,
                     run["assignment_key"],
@@ -59,7 +102,7 @@ def reconcile(
                 )
                 apply_transition(
                     conn,
-                    item=db.row_to_work_item(run),
+                    item=item,
                     final_response=final_response,
                     config=config,
                     provider_adapter=provider_adapter,
@@ -72,7 +115,25 @@ def reconcile(
             db.mark_run_finished(conn, run["assignment_key"], "CANCELLED", None, raw)
             summary["cancelled"] += 1
         elif status in TIMEOUT:
-            db.mark_run_finished(conn, run["assignment_key"], "TIMEOUT", None, raw)
+            db.mark_run_finished(
+                conn,
+                run["assignment_key"],
+                "TIMEOUT",
+                "BLOCKED",
+                raw,
+                error="Hermes run reported timeout",
+                timed_out=True,
+            )
+            apply_failure_transition(
+                conn,
+                item=db.row_to_work_item(run),
+                assignment_key=run["assignment_key"],
+                role=run["role"],
+                failure_status="TIMEOUT",
+                summary="Hermes run reported timeout",
+                config=config,
+                provider_adapter=provider_adapter,
+            )
             summary["timeout"] += 1
     return summary
 
@@ -83,3 +144,7 @@ def _timed_out(started_at: str, timeout_seconds: int) -> bool:
     except ValueError:
         return False
     return (datetime.now(timezone.utc) - started).total_seconds() > timeout_seconds
+
+
+def _assignment_matches_current_revision(assignment_key: str, current_revision: str) -> bool:
+    return assignment_key.rsplit(":", 1)[-1] == current_revision
