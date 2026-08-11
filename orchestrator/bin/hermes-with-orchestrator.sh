@@ -8,6 +8,35 @@ LOG_FILE="${ORCHESTRATOR_LOG_FILE:-${DATA_DIR}/orchestrator.log}"
 RUN_ONCE="/opt/hermes-sdlc-orchestrator/bin/orchestrator-run-once.sh"
 SCHEDULE="${ORCHESTRATOR_CRON_SCHEDULE:-*/5 * * * *}"
 
+apply_default_env() {
+  name="$1"
+  default_name="HERMES_DEFAULT_${name}"
+  current_value="$(printenv "$name" 2>/dev/null || true)"
+  default_value="$(printenv "$default_name" 2>/dev/null || true)"
+  if [ -z "${current_value}" ] && [ -n "${default_value}" ]; then
+    export "${name}=${default_value}"
+  fi
+}
+
+for key in \
+  HERMES_MODEL_ID \
+  HERMES_MODEL_BASE_URL \
+  HERMES_MODEL_OPENAI_API_KEY \
+  API_SERVER_KEY \
+  API_SERVER_MODEL_NAME \
+  ORCHESTRATOR_GITHUB_TOKEN \
+  ORCHESTRATOR_GITLAB_TOKEN \
+  BRAVE_API_KEY \
+  CONTEXT7_DEFAULT_MINIMUM_TOKENS \
+  MDB_MCP_CONNECTION_STRING \
+  POSTGRES_MCP_CONNECTION_STRING; do
+  apply_default_env "${key}"
+done
+
+if [ -n "${HERMES_MODEL_OPENAI_API_KEY:-}" ]; then
+  export OPENAI_API_KEY="${HERMES_MODEL_OPENAI_API_KEY}"
+fi
+
 mkdir -p "${DATA_DIR}"
 touch "${LOG_FILE}"
 chmod 0700 "${DATA_DIR}"

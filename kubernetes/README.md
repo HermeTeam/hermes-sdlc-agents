@@ -4,7 +4,7 @@
 
 ## 1. Подготовьте namespace и secrets
 
-Создайте реальные env-файлы через `scripts/bootstrap.sh`, затем замените все `CHANGE_ME`. Repository clone Secret для builder больше не нужен. В Docker Compose role-specific tokens находятся в основном `.env` как `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN` и т.д.; для Kubernetes перенесите соответствующее значение в secret key `GIT_PROVIDER_MCP_TOKEN` каждого `hermes-<role>-env` или подключите External Secrets с таким mapping.
+Kubernetes не читает Docker Compose `.env`: каждый Deployment получает runtime env из собственного Secret `hermes-<role>-env` через `envFrom`. Создайте эти Secrets отдельно, например из локальных `secrets/hermes-${role}.env` файлов, которые содержат Kubernetes keys such as `HERMES_MODEL_ID`, `HERMES_MODEL_BASE_URL`, `API_SERVER_KEY`, `API_SERVER_MODEL_NAME`, `GIT_PROVIDER_MCP_TOKEN`, and role-local orchestrator tokens. Repository clone Secret для builder больше не нужен. В Docker Compose role-specific tokens находятся в основном `.env` как `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN` и т.д.; для Kubernetes перенесите соответствующее значение в secret key `GIT_PROVIDER_MCP_TOKEN` каждого `hermes-<role>-env` или подключите External Secrets с таким mapping.
 
 Создайте Secrets:
 

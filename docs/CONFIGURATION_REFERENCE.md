@@ -11,7 +11,7 @@ model:
   base_url: "${HERMES_MODEL_BASE_URL}"
 ```
 
-Credential берётся из общего `OPENAI_API_KEY` в `.env` и прокидывается в контейнеры через `compose.yaml`. Рекомендуется LLM proxy/OpenRouter token с model allowlist и quota. Если нужны отдельные ключи per role, это должно быть сделано отдельным orchestration profile, а не дублированием в `secrets/hermes-*.env`.
+Credential по умолчанию берётся из общего `OPENAI_API_KEY` в `.env` и прокидывается в контейнеры через `compose.yaml`. Для отдельного model key можно задать `HERMES_MODEL_OPENAI_API_KEY` централизованно или в `secrets/hermes-<role>.env`; wrapper перед запуском Hermes выставит из него `OPENAI_API_KEY`. Рекомендуется LLM proxy/OpenRouter token с model allowlist и quota.
 
 Общие safety settings:
 
@@ -185,11 +185,12 @@ Docker Compose обновляет каталог сервисом `skills-supers
 
 ## Environment files
 
-`.env` содержит общие runtime-параметры и repository target:
+Root `.env` является централизованным источником Docker Compose runtime defaults. Compose использует его для interpolation и явно прокидывает fallback-значения в `HERMES_DEFAULT_*` переменные каждого сервиса. Optional `secrets/hermes-<role>.env` подключается как per-container `env_file`; если он задаёт прямые container-local names, они приоритетнее централизованных defaults для этой роли.
 
 | Variable                         | Назначение                                                     |
 | -------------------------------- | -------------------------------------------------------------- |
 | `OPENAI_API_KEY`                 | общий LLM/OpenRouter token, передаётся всем Hermes containers  |
+| `HERMES_MODEL_OPENAI_API_KEY`    | optional shared model key override; copied to container `OPENAI_API_KEY` by the wrapper when set |
 | `GIT_PROVIDER_MCP_URL`           | official GitHub MCP endpoint, `https://api.githubcopilot.com/mcp/` |
 | `PLANNER_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-planner`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `PROJECT_MANAGER_GITHUB_MCP_TOKEN` | GitHub MCP credential for `hermes-project-manager`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
@@ -198,6 +199,23 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | `RELEASE_GITHUB_MCP_TOKEN`       | GitHub MCP credential for `hermes-release`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `INCIDENT_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-incident`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
 | `LEARNING_GITHUB_MCP_TOKEN`      | GitHub MCP credential for `hermes-learning`; mapped to container `GIT_PROVIDER_MCP_TOKEN` |
+| `HERMES_MODEL_ID`                | общий model ID; mapped to container `HERMES_MODEL_ID` unless a role override is set |
+| `HERMES_MODEL_BASE_URL`          | общий OpenAI-compatible endpoint; mapped to container `HERMES_MODEL_BASE_URL` unless a role override is set |
+| `<ROLE>_HERMES_MODEL_ID`         | optional role override for container `HERMES_MODEL_ID`, e.g. `BUILDER_HERMES_MODEL_ID` |
+| `<ROLE>_HERMES_MODEL_BASE_URL`   | optional role override for container `HERMES_MODEL_BASE_URL` |
+| `<ROLE>_HERMES_MODEL_OPENAI_API_KEY` | optional role model key override; copied to container `OPENAI_API_KEY` by the wrapper when no per-container env file value is set |
+| `<ROLE>_API_SERVER_KEY`          | role inbound Hermes API bearer key; mapped to container `API_SERVER_KEY` |
+| `<ROLE>_API_SERVER_MODEL_NAME`   | stable role model name; mapped to container `API_SERVER_MODEL_NAME` |
+| `ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` | role-local read-only discovery token; mapped to container `ORCHESTRATOR_GITHUB_TOKEN` |
+| `ORCHESTRATOR_<ROLE>_GITLAB_TOKEN` | optional role-local GitLab discovery token; mapped to container `ORCHESTRATOR_GITLAB_TOKEN` |
+| `BRAVE_API_KEY`                  | shared Brave Search key; mapped to container `BRAVE_API_KEY` unless a role override is set |
+| `<ROLE>_BRAVE_API_KEY`           | optional role override for container `BRAVE_API_KEY` |
+| `CONTEXT7_DEFAULT_MINIMUM_TOKENS` | shared Context7 setting; mapped to container `CONTEXT7_DEFAULT_MINIMUM_TOKENS` unless a role override is set |
+| `<ROLE>_CONTEXT7_DEFAULT_MINIMUM_TOKENS` | optional role override for container `CONTEXT7_DEFAULT_MINIMUM_TOKENS` |
+| `MDB_MCP_CONNECTION_STRING`      | shared MongoDB MCP connection string; mapped to container `MDB_MCP_CONNECTION_STRING` unless a role override is set |
+| `<ROLE>_MDB_MCP_CONNECTION_STRING` | optional role override for container `MDB_MCP_CONNECTION_STRING` |
+| `POSTGRES_MCP_CONNECTION_STRING` | shared PostgreSQL MCP connection string; mapped to container `POSTGRES_MCP_CONNECTION_STRING` unless a role override is set |
+| `<ROLE>_POSTGRES_MCP_CONNECTION_STRING` | optional role override for container `POSTGRES_MCP_CONNECTION_STRING` |
 | `HERMES_ORCHESTRATOR_IMAGE`      | derived image with supercronic/wrapper/orchestrator code for Compose |
 | `ORCHESTRATOR_ENABLED`           | глобальный default, должен оставаться `false` до canary rollout       |
 | `ORCHESTRATOR_PROVIDER`          | provider discovery adapter, `github` или `gitlab`                     |
@@ -217,15 +235,8 @@ Docker Compose обновляет каталог сервисом `skills-supers
 | `GITHUB_REPOSITORY_HTML_URL`     | web URL репозитория                                            |
 | `GITHUB_REPOSITORY_API_URL`      | API URL репозитория                                            |
 
-Каждый `secrets/hermes-<role>.env` содержит role-scoped secrets:
+Используйте role prefixes `PLANNER`, `PROJECT_MANAGER`, `BUILDER`, `REVIEWER`, `RELEASE`, `INCIDENT`, `LEARNING`. Например, Compose maps `PLANNER_API_SERVER_KEY` to `HERMES_DEFAULT_API_SERVER_KEY` for `hermes-planner`, and wrapper turns it into container-local `API_SERVER_KEY` only if `secrets/hermes-planner.env` did not already set `API_SERVER_KEY`.
 
-| Variable                | Назначение                                        |
-| ----------------------- | ------------------------------------------------- |
-| `HERMES_MODEL_ID`       | model ID в разрешённом gateway catalog            |
-| `HERMES_MODEL_BASE_URL` | internal OpenAI-compatible endpoint               |
-| `API_SERVER_KEY`        | inbound Hermes API bearer key, минимум 8 символов |
-| `API_SERVER_MODEL_NAME` | стабильное имя роли в `/v1/models`                |
-| `ORCHESTRATOR_GITHUB_TOKEN` | role-local read-only token для issue discovery |
-| `ORCHESTRATOR_GITLAB_TOKEN` | role-local read-only token для GitLab discovery, пусто если не используется |
+`secrets/hermes-<role>.env` files are optional Docker Compose overrides and Kubernetes helper inputs. For Compose, these direct names are supported and win over root `.env` defaults for that specific container: `HERMES_MODEL_ID`, `HERMES_MODEL_BASE_URL`, `HERMES_MODEL_OPENAI_API_KEY`, `API_SERVER_KEY`, `API_SERVER_MODEL_NAME`, `ORCHESTRATOR_GITHUB_TOKEN`, `ORCHESTRATOR_GITLAB_TOKEN`, `BRAVE_API_KEY`, `CONTEXT7_DEFAULT_MINIMUM_TOKENS`, `MDB_MCP_CONNECTION_STRING`, and `POSTGRES_MCP_CONNECTION_STRING`. Kubernetes consumes its own `hermes-<role>-env` Secrets through `envFrom` and does not consume the Compose `.env` directly.
 
-Не добавляйте `OPENAI_API_KEY`, `GIT_PROVIDER_MCP_TOKEN`, `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в role env-файлы. `OPENAI_API_KEY` и role-specific `*_GITHUB_MCP_TOKEN` берутся из `.env` и передаются контейнерам через Compose environment. `ORCHESTRATOR_GITHUB_TOKEN` должен быть read-only для поиска issues и не заменяет GitHub MCP credential агента. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.
+Не добавляйте `GATEWAY_ALLOW_ALL_USERS`, kubeconfig/cloud tokens, admin PAT или broad GitHub PAT в Compose `.env`. `ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` должен быть read-only для поиска issues и не заменяет GitHub MCP credential агента. Для chat platforms задайте явные user allowlists отдельно; bundle рассчитан прежде всего на internal API orchestrator.

@@ -52,7 +52,7 @@ hermes-sdlc-agents/
 │   ├── roles.yaml                # каноническая role/tool/constraint matrix
 │   ├── mcp-policy.rego           # пример server-side OPA decision
 │   └── protected-paths.txt       # quality/CI/prod paths для отдельного gate
-├── secrets/*.env.example         # только шаблоны, без секретов
+├── secrets/*.env.example         # optional per-container overrides для Compose/Kubernetes env
 ├── docs/
 │   ├── REPOSITORY_API_MCP_FLOW_EN.md
 │   ├── REPOSITORY_API_MCP_FLOW_RU.md
@@ -113,16 +113,17 @@ scripts/bootstrap.sh
 
 1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
 2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` для GitHub MVP.
-3. В каждом `secrets/hermes-*.env` замените все `CHANGE_ME`, включая role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` перед включением cron.
-4. Задайте семь разных GitHub MCP tokens в основном `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
-5. Сохраните repository MCP header `X-MCP-Toolsets` равным `repos,issues,pull_requests,actions,git,code_security,dependabot`; role isolation всё равно задаётся `tools.include` и role tokens.
-6. Проверьте конфигурацию:
+3. В `.env` замените все `CHANGE_ME`, включая role API keys, role-local read-only `ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` и role-specific GitHub MCP tokens перед включением cron.
+4. Задайте семь разных GitHub MCP tokens в `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
+5. При необходимости создайте `secrets/hermes-<role>.env` из соответствующего example, чтобы переопределить container-local значения для одной роли. Значения из этого файла приоритетнее централизованного root `.env` для этого контейнера.
+6. Сохраните repository MCP header `X-MCP-Toolsets` равным `repos,issues,pull_requests,actions,git,code_security,dependabot`; role isolation всё равно задаётся `tools.include` и role tokens.
+7. Проверьте конфигурацию:
 
 ```bash
 scripts/validate.sh
 ```
 
-6. Запустите:
+8. Запустите:
 
 ```bash
 docker compose up -d
@@ -147,10 +148,10 @@ Hermes API требует Bearer key и поддерживает `/v1/responses`
 
 ```bash
 set -a
-source secrets/hermes-planner.env
+source .env
 set +a
 curl --fail http://127.0.0.1:18642/v1/responses \
-  -H "Authorization: Bearer ${API_SERVER_KEY}" \
+  -H "Authorization: Bearer ${PLANNER_API_SERVER_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"hermes-planner","input":"Прочитай REQ-123 и создай только черновик spec; не меняй код."}'
 ```

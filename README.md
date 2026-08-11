@@ -52,7 +52,7 @@ hermes-sdlc-agents/
 │   ├── roles.yaml                # canonical role/tool/constraint matrix
 │   ├── mcp-policy.rego           # sample server-side OPA decision
 │   └── protected-paths.txt       # quality/CI/prod paths for a separate gate
-├── secrets/*.env.example         # templates only; no secrets
+├── secrets/*.env.example         # optional per-container Compose/Kubernetes env overrides
 ├── docs/
 │   ├── REPOSITORY_API_MCP_FLOW_EN.md
 │   ├── REPOSITORY_API_MCP_FLOW_RU.md
@@ -113,16 +113,17 @@ Then:
 
 1. Pin `HERMES_IMAGE` to an immutable digest in `.env`.
 2. Keep the `test-project/test-project` GitHub repository target in `.env.example` and keep `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` for the GitHub MVP.
-3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file, including role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` values before enabling cron.
-4. Set seven different GitHub MCP tokens in the main `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
-5. Keep the repository MCP `X-MCP-Toolsets` header at `repos,issues,pull_requests,actions,git,code_security,dependabot`; role isolation is still enforced by `tools.include` and role tokens.
-6. Validate the configuration:
+3. Replace all `CHANGE_ME` values in `.env`, including role API keys, role-local read-only `ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` values, and role-specific GitHub MCP tokens before enabling cron.
+4. Set seven different GitHub MCP tokens in `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
+5. Optionally create `secrets/hermes-<role>.env` from the matching example to override container-local values for one role. Values in that file win over the centralized root `.env` for that container.
+6. Keep the repository MCP `X-MCP-Toolsets` header at `repos,issues,pull_requests,actions,git,code_security,dependabot`; role isolation is still enforced by `tools.include` and role tokens.
+7. Validate the configuration:
 
 ```bash
 scripts/validate.sh
 ```
 
-6. Start the stack:
+8. Start the stack:
 
 ```bash
 docker compose up -d
@@ -147,10 +148,10 @@ Planner canary example:
 
 ```bash
 set -a
-source secrets/hermes-planner.env
+source .env
 set +a
 curl --fail http://127.0.0.1:18642/v1/responses \
-  -H "Authorization: Bearer ${API_SERVER_KEY}" \
+  -H "Authorization: Bearer ${PLANNER_API_SERVER_KEY}" \
   -H 'Content-Type: application/json' \
   -d '{"model":"hermes-planner","input":"Read REQ-123 and create only a draft spec; do not change code."}'
 ```

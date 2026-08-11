@@ -48,6 +48,16 @@ role_github_token_vars = {
     "hermes-learning": "LEARNING_GITHUB_MCP_TOKEN",
 }
 role_short_names = {role: role.removeprefix("hermes-") for role in role_github_token_vars}
+role_env_prefixes = {
+    "hermes-planner": "PLANNER",
+    "hermes-project-manager": "PROJECT_MANAGER",
+    "hermes-builder": "BUILDER",
+    "hermes-reviewer": "REVIEWER",
+    "hermes-release": "RELEASE",
+    "hermes-incident": "INCIDENT",
+    "hermes-learning": "LEARNING",
+}
+role_api_model_names = {role: role for role in role_env_prefixes}
 orchestrator_wrapper = "/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh"
 orchestrator_mount = "./orchestrator:/opt/hermes-sdlc-orchestrator:ro"
 orchestrator_db_path = "/opt/data/sdlc-orchestrator/orchestrator.sqlite"
@@ -75,7 +85,28 @@ required_dotenv_keys = {
     "GITHUB_REPOSITORY_FULL_NAME",
     "GITHUB_REPOSITORY_HTML_URL",
     "GITHUB_REPOSITORY_API_URL",
+    "HERMES_MODEL_ID",
+    "HERMES_MODEL_BASE_URL",
+    "HERMES_MODEL_OPENAI_API_KEY",
+    "BRAVE_API_KEY",
+    "CONTEXT7_DEFAULT_MINIMUM_TOKENS",
+    "MDB_MCP_CONNECTION_STRING",
+    "POSTGRES_MCP_CONNECTION_STRING",
 } | set(role_github_token_vars.values())
+for role, prefix in role_env_prefixes.items():
+    required_dotenv_keys.update({
+        f"{prefix}_API_SERVER_KEY",
+        f"{prefix}_API_SERVER_MODEL_NAME",
+        f"{prefix}_HERMES_MODEL_ID",
+        f"{prefix}_HERMES_MODEL_BASE_URL",
+        f"{prefix}_HERMES_MODEL_OPENAI_API_KEY",
+        f"{prefix}_BRAVE_API_KEY",
+        f"{prefix}_CONTEXT7_DEFAULT_MINIMUM_TOKENS",
+        f"{prefix}_MDB_MCP_CONNECTION_STRING",
+        f"{prefix}_POSTGRES_MCP_CONNECTION_STRING",
+        f"ORCHESTRATOR_{prefix}_GITHUB_TOKEN",
+        f"ORCHESTRATOR_{prefix}_GITLAB_TOKEN",
+    })
 runtime_optional_dotenv_keys = {
     "HERMES_ORCHESTRATOR_IMAGE",
     "ORCHESTRATOR_ENABLED",
@@ -228,15 +259,31 @@ for role in sorted(expected_roles):
 
     for secret_template in [root / "secrets" / f"{role}.env.example", root / "secrets" / f"{role}.env"]:
         if secret_template.is_file():
-            secret_text = secret_template.read_text(encoding="utf-8")
-            if "OPENAI_API_KEY" in secret_text:
+            secret_values = parse_dotenv(secret_template)
+            if "OPENAI_API_KEY" in secret_values:
                 errors.append(f"{secret_template.relative_to(root)}: OPENAI_API_KEY must be supplied from .env, not role secrets")
-            if "GIT_PROVIDER_MCP_TOKEN" in secret_text:
+            if "GIT_PROVIDER_MCP_TOKEN" in secret_values:
                 errors.append(f"{secret_template.relative_to(root)}: GIT_PROVIDER_MCP_TOKEN must be supplied from role-specific .env token, not role secrets")
+            allowed_secret_keys = {
+                "HERMES_MODEL_ID",
+                "HERMES_MODEL_BASE_URL",
+                "HERMES_MODEL_OPENAI_API_KEY",
+                "API_SERVER_KEY",
+                "API_SERVER_MODEL_NAME",
+                "ORCHESTRATOR_GITHUB_TOKEN",
+                "ORCHESTRATOR_GITLAB_TOKEN",
+                "BRAVE_API_KEY",
+                "CONTEXT7_DEFAULT_MINIMUM_TOKENS",
+                "MDB_MCP_CONNECTION_STRING",
+                "POSTGRES_MCP_CONNECTION_STRING",
+            }
+            unknown_secret_keys = sorted(set(secret_values) - allowed_secret_keys)
+            if unknown_secret_keys:
+                errors.append(f"{secret_template.relative_to(root)}: unsupported role env keys: {', '.join(unknown_secret_keys)}")
             if secret_template.name.endswith(".env.example"):
-                secret_values = parse_dotenv(secret_template)
-                if "ORCHESTRATOR_GITHUB_TOKEN" not in secret_values:
-                    errors.append(f"{secret_template.relative_to(root)}: ORCHESTRATOR_GITHUB_TOKEN placeholder missing")
+                missing_secret_keys = sorted(allowed_secret_keys - set(secret_values))
+                if missing_secret_keys:
+                    errors.append(f"{secret_template.relative_to(root)}: missing role env example keys: {', '.join(missing_secret_keys)}")
 
     workload_path = root / "kubernetes" / f"{role}.yaml"
     workload_docs = [doc for doc in yaml.safe_load_all(workload_path.read_text(encoding="utf-8")) if doc]
@@ -319,6 +366,10 @@ for role, service in compose.get("services", {}).items():
     if service.get("init") is not True:
         errors.append(f"{role}: compose init must be true for child reaping")
     service_environment = service.get("environment", {})
+    prefix = role_env_prefixes[role]
+    expected_env_file = [{"path": f"./secrets/{role}.env", "required": False}]
+    if service.get("env_file") != expected_env_file:
+        errors.append(f"{role}: compose service must use optional per-role env_file {expected_env_file}")
     if service_environment.get("ORCHESTRATOR_ROLE") != role_short_names[role]:
         errors.append(f"{role}: compose ORCHESTRATOR_ROLE mismatch")
     if service_environment.get("ORCHESTRATOR_DB_PATH") != orchestrator_db_path:
@@ -331,8 +382,37 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: compose ORCHESTRATOR_APPLY_TRANSITIONS must be mapped from .env with false default")
     if service_environment.get("ORCHESTRATOR_TRANSITION_COMMENT_ONLY") != "${ORCHESTRATOR_TRANSITION_COMMENT_ONLY:-true}":
         errors.append(f"{role}: compose ORCHESTRATOR_TRANSITION_COMMENT_ONLY must be mapped from .env with true default")
-    if "API_SERVER_KEY" in service_environment:
-        errors.append(f"{role}: API_SERVER_KEY must come only from the role env_file")
+    expected_container_env = {
+        "HERMES_DEFAULT_HERMES_MODEL_ID": f"${{{prefix}_HERMES_MODEL_ID:-${{HERMES_MODEL_ID:?Set HERMES_MODEL_ID in .env}}}}",
+        "HERMES_DEFAULT_HERMES_MODEL_BASE_URL": f"${{{prefix}_HERMES_MODEL_BASE_URL:-${{HERMES_MODEL_BASE_URL:?Set HERMES_MODEL_BASE_URL in .env}}}}",
+        "HERMES_DEFAULT_HERMES_MODEL_OPENAI_API_KEY": f"${{{prefix}_HERMES_MODEL_OPENAI_API_KEY:-${{HERMES_MODEL_OPENAI_API_KEY:-}}}}",
+        "HERMES_DEFAULT_API_SERVER_KEY": f"${{{prefix}_API_SERVER_KEY:?Set {prefix}_API_SERVER_KEY in .env}}",
+        "HERMES_DEFAULT_API_SERVER_MODEL_NAME": f"${{{prefix}_API_SERVER_MODEL_NAME:-{role_api_model_names[role]}}}",
+        "HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN": f"${{ORCHESTRATOR_{prefix}_GITHUB_TOKEN:?Set ORCHESTRATOR_{prefix}_GITHUB_TOKEN in .env}}",
+        "HERMES_DEFAULT_ORCHESTRATOR_GITLAB_TOKEN": f"${{ORCHESTRATOR_{prefix}_GITLAB_TOKEN:-}}",
+        "HERMES_DEFAULT_BRAVE_API_KEY": f"${{{prefix}_BRAVE_API_KEY:-${{BRAVE_API_KEY:-}}}}",
+        "HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS": f"${{{prefix}_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${{CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}}}",
+        "HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING": f"${{{prefix}_MDB_MCP_CONNECTION_STRING:-${{MDB_MCP_CONNECTION_STRING:-}}}}",
+        "HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING": f"${{{prefix}_POSTGRES_MCP_CONNECTION_STRING:-${{POSTGRES_MCP_CONNECTION_STRING:-}}}}",
+    }
+    for key, expected_value in expected_container_env.items():
+        if service_environment.get(key) != expected_value:
+            errors.append(f"{role}: compose {key} must be mapped from central .env using {prefix} override")
+    for key in [
+        "HERMES_MODEL_ID",
+        "HERMES_MODEL_BASE_URL",
+        "HERMES_MODEL_OPENAI_API_KEY",
+        "API_SERVER_KEY",
+        "API_SERVER_MODEL_NAME",
+        "ORCHESTRATOR_GITHUB_TOKEN",
+        "ORCHESTRATOR_GITLAB_TOKEN",
+        "BRAVE_API_KEY",
+        "CONTEXT7_DEFAULT_MINIMUM_TOKENS",
+        "MDB_MCP_CONNECTION_STRING",
+        "POSTGRES_MCP_CONNECTION_STRING",
+    ]:
+        if key in service_environment:
+            errors.append(f"{role}: compose {key} must stay overridable through the optional role env_file")
     if "GITHUB_PROVIDER_TOKEN" in service_environment:
         errors.append(f"{role}: legacy GitHub adapter token must not be passed to Hermes agents")
     expected_token_expr = f"${{{role_github_token_vars[role]}:?Set {role_github_token_vars[role]} in .env}}"
@@ -383,11 +463,10 @@ fi
 
 if command -v docker >/dev/null 2>&1 \
   && docker compose version >/dev/null 2>&1 \
-  && [[ -f "${bundle_root}/.env" ]] \
-  && compgen -G "${bundle_root}/secrets/*.env" >/dev/null; then
+  && [[ -f "${bundle_root}/.env" ]]; then
   docker compose --project-directory "${bundle_root}" --env-file "${bundle_root}/.env" config --quiet
 else
-  echo "Compose runtime inputs are not complete; skipped docker compose config check."
+  echo "Docker Compose or .env is unavailable; skipped docker compose config check."
 fi
 
 echo "Validation complete."

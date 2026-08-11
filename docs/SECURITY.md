@@ -48,7 +48,9 @@ Kubernetes template реализует default-deny NetworkPolicy. Docker Compos
 
 ## Secrets
 
-Файлы `secrets/*.env` имеют mode 0600 и исключены из Git. Для production замените их External Secrets Operator + OpenBao/Vault/SOPS либо другой workload-secret механизм. Не используйте managed `/etc/hermes/.env` для чувствительных секретов: managed scope v1 может быть world-readable в host deployment.
+Для Docker Compose центральный `.env` имеет mode 0600, исключён из Git и содержит LLM key, role API keys, role MCP credentials, orchestrator discovery tokens, and optional MCP connection strings. Optional `secrets/hermes-<role>.env` files are also excluded from Git and can override container-local values for a single role. Для production замените локальный `.env`/Compose workflow на External Secrets Operator + OpenBao/Vault/SOPS либо другой workload-secret механизм. Не используйте managed `/etc/hermes/.env` для чувствительных секретов: managed scope v1 может быть world-readable в host deployment.
+
+Файлы `secrets/hermes-<role>.env` приоритетнее root `.env` только для своего Compose container. Kubernetes manifests по-прежнему используют собственные `hermes-<role>-env` Secrets через `envFrom`; это отдельный runtime secret mechanism и он не читает Compose `.env` напрямую.
 
 LLM key рекомендуется выдавать к internal proxy с rate/quota/model allowlist, а не напрямую к провайдеру. Даже если Hermes фильтрует инфраструктурные env vars из terminal subprocess, role key всё равно следует считать доступным скомпрометированному agent process.
 
