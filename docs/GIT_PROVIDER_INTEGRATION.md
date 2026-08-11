@@ -8,6 +8,14 @@ GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/
 
 The active repository MCP allowlists use native GitHub MCP tools, not the historical `repo_*`, `ci_*`, `quality_*`, `work_item_*`, `spec_*`, or `plan_*` facade. Exact tool availability must be confirmed with runtime `tools/list` for the configured endpoint, server version, toolsets, and token scopes.
 
+All role profiles call the official GitHub MCP endpoint with this header so the required native tools are discoverable server-side:
+
+```yaml
+X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"
+```
+
+Role isolation still relies on exact `tools.include` entries, role-specific tokens, and provider/OPA enforcement. The toolset header only enables availability on the GitHub MCP server.
+
 GitLab support is out of scope for this MVP and requires a separate tool mapping.
 
 ## Identity And Tokens
@@ -35,12 +43,12 @@ The offline configuration currently uses the GitHub MVP tool shape below. Treat 
 | Role | Native GitHub MCP tools |
 | --- | --- |
 | `hermes-planner` | `get_file_contents`, `get_repository_tree`, `search_code`, `issue_read`, `list_issues` |
-| `hermes-project-manager` | `get_file_contents`, `get_repository_tree`, `search_code`, `issue_read`, `list_issues`, `add_issue_comment`, `create_issue` |
+| `hermes-project-manager` | `get_file_contents`, `get_repository_tree`, `search_code`, `issue_read`, `list_issues`, `add_issue_comment`, `issue_write` |
 | `hermes-builder` | `get_file_contents`, `get_repository_tree`, `search_code`, `create_branch`, `push_files`, `create_pull_request`, `actions_run_trigger`, `actions_get`, `actions_list`, `get_job_logs` |
 | `hermes-reviewer` | `pull_request_read`, `get_file_contents`, `actions_get`, `actions_list`, `get_job_logs`, `add_issue_comment` |
 | `hermes-release` | `actions_get`, `actions_list` |
 | `hermes-incident` | `issue_read`, `list_issues`, `add_issue_comment` |
-| `hermes-learning` | `issue_read`, `list_issues`, `add_issue_comment`, `create_issue` |
+| `hermes-learning` | `issue_read`, `list_issues`, `add_issue_comment`, `issue_write` |
 
 Release, incident, and learning roles are intentionally reduced to GitHub-native read/comment/issue workflows for the MVP. The old deployment, flag, runbook, and proposal facade tools are not exposed unless a separate, policy-enforced MCP integration is added later.
 

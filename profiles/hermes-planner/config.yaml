@@ -131,6 +131,7 @@ mcp_servers:
     url: "${GIT_PROVIDER_MCP_URL}"
     headers:
       Authorization: "Bearer ${GIT_PROVIDER_MCP_TOKEN}"
+      X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"
       X-Hermes-Role: "hermes-planner"
     ssl_verify: true
     enabled: true

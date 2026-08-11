@@ -38,12 +38,12 @@ spec:
         - issue_read
         - list_issues
         - add_issue_comment
-        - create_issue
+        - issue_write
       constraints:
         environments: [none]
         repositoryMode: read-only
         writableArtifactTypes: [charter, roadmap, backlog, status, decision, risk, retrospective]
-        allowedMutations: [add_issue_comment, create_issue]
+        allowedMutations: [add_issue_comment, issue_write]
         denyCodeMutation: true
         denyBranchMutation: true
         denyProduction: true
@@ -120,10 +120,10 @@ spec:
         - issue_read
         - list_issues
         - add_issue_comment
-        - create_issue
+        - issue_write
       constraints:
         dataMode: aggregated-and-redacted
-        allowedMutations: [add_issue_comment, create_issue]
+        allowedMutations: [add_issue_comment, issue_write]
         directDocumentationMutation: deny
         skillActivation: deny
         skillPublication: deny

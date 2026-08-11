@@ -130,6 +130,7 @@ mcp_servers:
     url: "${GIT_PROVIDER_MCP_URL}"
     headers:
       Authorization: "Bearer ${GIT_PROVIDER_MCP_TOKEN}"
+      X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"
       X-Hermes-Role: "hermes-learning"
     ssl_verify: true
     enabled: true
@@ -141,7 +142,7 @@ mcp_servers:
         - issue_read
         - list_issues
         - add_issue_comment
-        - create_issue
+        - issue_write
       resources: false
       prompts: false
     sampling:

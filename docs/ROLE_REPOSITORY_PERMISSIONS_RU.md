@@ -358,14 +358,20 @@ Optional: write_repository for MR proposal branches
 
 ## GitHub MCP toolsets by role
 
-Если используется official GitHub MCP Server, включайте минимальные toolsets или explicit tools.
+Если используется official GitHub MCP Server, каждый role profile отправляет один и тот же discovery header:
+
+```yaml
+X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"
+```
+
+Этот header только делает tools доступными на стороне GitHub MCP server. Role isolation по-прежнему задают exact `tools.include`, отдельные role tokens и provider/OPA enforcement.
 
 Рекомендуемый старт:
 
 | Роль | GitHub MCP toolsets |
 |---|---|
 | `hermes-planner` | `repos`, `issues`, `pull_requests`, `actions` read-only where supported |
-| `hermes-project-manager` | `repos`, `issues`, `pull_requests`, `actions` read-only plus issue comment/create where supported |
+| `hermes-project-manager` | `repos`, `issues`, `pull_requests`, `actions` read-only plus issue comment/write where supported |
 | `hermes-builder` | `repos`, `git`, `pull_requests`, `actions` |
 | `hermes-reviewer` | `repos`, `pull_requests`, `issues`, `actions`, `code_security`, `dependabot` |
 | `hermes-release` | `actions`, optional `repos`/release/deployment tools if exposed |

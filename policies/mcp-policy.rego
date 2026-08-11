@@ -6,10 +6,10 @@ default allow := false
 
 protected_branches := {"main", "master"}
 builder_branch_mutations := {"create_branch", "push_files", "create_pull_request", "actions_run_trigger"}
-project_manager_mutations := {"add_issue_comment", "create_issue"}
+project_manager_mutations := {"add_issue_comment", "issue_write"}
 reviewer_mutations := {"add_issue_comment"}
 incident_mutations := {"add_issue_comment"}
-learning_mutations := {"add_issue_comment", "create_issue"}
+learning_mutations := {"add_issue_comment", "issue_write"}
 denied_admin_tools := {
   "merge_pull_request", "repo_merge_pull_request", "repo_merge_change_request",
   "update_branch_protection", "delete_branch", "delete_repository", "create_repository",
@@ -102,7 +102,7 @@ allow if {
 allow if {
   base_authorized
   input.identity.role == "hermes-project-manager"
-  input.tool == "create_issue"
+  input.tool == "issue_write"
   nonempty(input.args, "title")
   nonempty(input.args, "body")
 }
@@ -205,7 +205,7 @@ allow if {
 allow if {
   base_authorized
   input.identity.role == "hermes-learning"
-  input.tool == "create_issue"
+  input.tool == "issue_write"
   nonempty(input.args, "title")
   nonempty(input.args, "body")
 }

@@ -26,6 +26,8 @@ Hermes role container
 
 The MVP does not use a separate repository gateway. The security boundary moves to the combination of role-scoped provider tokens, exact `tools.include`, provider MCP policy, GitHub/GitLab permissions, branch protection, and trusted CI.
 
+For the official GitHub MCP endpoint, every role profile sends `X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"`. This enables server-side discovery only; Hermes still exposes tools through each role's exact `tools.include` allowlist.
+
 ### What changed from the old flow
 
 Old flow:
@@ -160,6 +162,8 @@ Incident and learning roles do not receive repository write access. In the GitHu
 ### Repository tools
 
 Official GitHub MCP MVP tool surface. Exact names must be confirmed by runtime `tools/list` for the configured endpoint and token scopes.
+
+Issue mutation tools use `issue_write` for issue creation and update workflows.
 
 Planner/read tools:
 

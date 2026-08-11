@@ -35,11 +35,11 @@ test_provider_tool_not_in_allowlist_denied if {
   }
 }
 
-test_project_manager_create_issue_allowed if {
+test_project_manager_issue_write_allowed if {
   repository_mcp.allow with input as {
     "identity": identity("hermes-project-manager"),
     "repository": repo,
-    "tool": "create_issue",
+    "tool": "issue_write",
     "args": scoped_args({"title": "PM status", "body": "Prepared project status"}),
   }
 }
@@ -190,11 +190,11 @@ test_incident_comment_allowed if {
   }
 }
 
-test_learning_create_issue_allowed if {
+test_learning_issue_write_allowed if {
   repository_mcp.allow with input as {
     "identity": identity("hermes-learning"),
     "repository": repo,
-    "tool": "create_issue",
+    "tool": "issue_write",
     "args": scoped_args({"title": "Learning proposal", "body": "Proposal details"}),
   }
 }

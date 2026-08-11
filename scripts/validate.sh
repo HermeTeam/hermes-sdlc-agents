@@ -36,6 +36,8 @@ expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
 legacy_facade_tool_prefixes = ("repo_", "ci_", "quality_", "work_item_", "spec_", "plan_")
 github_mcp_url = "https://api.githubcopilot.com/mcp/"
+github_mcp_toolsets = "repos,issues,pull_requests,actions,git,code_security,dependabot"
+legacy_issue_tool = "create" + "_issue"
 role_github_token_vars = {
     "hermes-planner": "PLANNER_GITHUB_MCP_TOKEN",
     "hermes-project-manager": "PROJECT_MANAGER_GITHUB_MCP_TOKEN",
@@ -84,6 +86,10 @@ runtime_optional_dotenv_keys = {
 errors = []
 if set(policy_roles) != expected_roles:
     errors.append("roles.yaml does not define exactly the seven expected roles")
+
+active_policy_text = (root / "policies/roles.yaml").read_text(encoding="utf-8")
+if legacy_issue_tool in active_policy_text:
+    errors.append("policies/roles.yaml must use issue_write, not the legacy issue creation tool")
 
 dotenv_example = root / ".env.example"
 def parse_dotenv(path):
@@ -137,7 +143,10 @@ for script_name in ["orchestrator/bin/hermes-with-orchestrator.sh", "orchestrato
 
 for role in sorted(expected_roles):
     profile_dir = root / "profiles" / role
-    config = yaml.safe_load((profile_dir / "config.yaml").read_text(encoding="utf-8"))
+    config_text = (profile_dir / "config.yaml").read_text(encoding="utf-8")
+    if legacy_issue_tool in config_text:
+        errors.append(f"{role}: config.yaml must use issue_write, not the legacy issue creation tool")
+    config = yaml.safe_load(config_text)
     manifest = yaml.safe_load((profile_dir / "distribution.yaml").read_text(encoding="utf-8"))
     if manifest.get("name") != role:
         errors.append(f"{role}: distribution name mismatch")
@@ -163,6 +172,9 @@ for role in sorted(expected_roles):
     if "mcp-sdlc" in config.get("toolsets", []):
         errors.append(f"{role}: mcp-sdlc toolset must not be enabled for MVP")
     server = mcp_servers.get("repository", {})
+    headers = server.get("headers", {})
+    if headers.get("X-MCP-Toolsets") != github_mcp_toolsets:
+        errors.append(f"{role}: repository MCP X-MCP-Toolsets must be {github_mcp_toolsets}")
     included = server.get("tools", {}).get("include", [])
     allowed = policy_roles[role].get("allowTools", [])
     if included != allowed:
@@ -345,7 +357,10 @@ PY
 
 if command -v opa >/dev/null 2>&1; then
   opa check "${bundle_root}/policies/mcp-policy.rego"
-  opa test "${bundle_root}/policies"
+  opa test \
+    "${bundle_root}/policies/mcp-policy.rego" \
+    "${bundle_root}/policies/mcp-policy_test.rego" \
+    "${bundle_root}/policies/roles.yaml"
 else
   echo "OPA not found; skipped Rego compile check."
 fi

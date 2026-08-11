@@ -41,6 +41,14 @@ GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/
 
 The active `mcp_servers.repository.tools.include` lists contain native GitHub MCP tools. They must be confirmed against runtime `tools/list`; GitLab requires a separate future mapping. The old abstract `repo_*`, `ci_*`, `quality_*`, `work_item_*`, `spec_*`, and `plan_*` facade tools are not active runtime tools.
 
+Every active role profile sets this repository MCP header:
+
+```yaml
+X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"
+```
+
+The header only enables official GitHub MCP server-side tool discovery. Effective exposure remains the role-specific `mcp_servers.repository.tools.include` allowlist.
+
 ## Container cron orchestrator
 
 Каждый role container содержит один локальный cron-compatible orchestrator, который по умолчанию отключён:

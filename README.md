@@ -76,7 +76,7 @@ This lets agents select relevant skills dynamically through `skills_list` / `ski
 
 ## Repository API/MCP flow
 
-Repositories are not mounted into agent containers. In the GitHub MVP, Hermes agents connect directly to the official GitHub MCP endpoint through `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/`. Hermes sees only narrow allowlisted native GitHub MCP tools discovered with runtime `tools/list`.
+Repositories are not mounted into agent containers. In the GitHub MVP, Hermes agents connect directly to the official GitHub MCP endpoint through `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` and send `X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"`. Hermes sees only narrow allowlisted native GitHub MCP tools discovered with runtime `tools/list`; the header only enables server-side availability.
 
 For the builder this means:
 
@@ -115,7 +115,8 @@ Then:
 2. Keep the `test-project/test-project` GitHub repository target in `.env.example` and keep `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` for the GitHub MVP.
 3. Replace all `CHANGE_ME` values in every `secrets/hermes-*.env` file, including role-local read-only `ORCHESTRATOR_GITHUB_TOKEN` values before enabling cron.
 4. Set seven different GitHub MCP tokens in the main `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN`, and `LEARNING_GITHUB_MCP_TOKEN`. One token must not be reused across roles.
-5. Validate the configuration:
+5. Keep the repository MCP `X-MCP-Toolsets` header at `repos,issues,pull_requests,actions,git,code_security,dependabot`; role isolation is still enforced by `tools.include` and role tokens.
+6. Validate the configuration:
 
 ```bash
 scripts/validate.sh
