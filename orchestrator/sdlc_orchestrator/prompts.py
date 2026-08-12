@@ -26,11 +26,24 @@ def build_prompt(item: WorkItem, role: str, assignment_key: str) -> str:
         "  \"evidence\": [\n"
         "    {\"source\": \"<url/path/id>\", \"detail\": \"<what this proves>\"}\n"
         "  ],\n"
+        "  \"decision_log\": [\n"
+        "    \"<short observable decision or check performed>\"\n"
+        "  ],\n"
+        "  \"risks\": [\n"
+        "    \"<known risk, limitation, or follow-up concern>\"\n"
+        "  ],\n"
+        "  \"assumptions\": [\n"
+        "    \"<assumption relied on while selecting final_status>\"\n"
+        "  ],\n"
         "  \"next_handoff\": null,\n"
         "  \"block_reason\": null\n"
         "}\n\n"
         "The `evidence` field MUST be a list of objects. Never use strings in `evidence`.\n"
         "If there is no evidence, use an empty array: [].\n"
+        "The `decision_log`, `risks`, and `assumptions` fields MUST be lists of strings.\n"
+        "These fields are safe summaries only; do not include hidden chain-of-thought, private reasoning traces, or step-by-step internal deliberation.\n"
+        "If there are no risks or assumptions, use empty arrays.\n"
+        "Do not add fields named chain_of_thought, cot, reasoning_trace, private_reasoning, or internal_monologue.\n"
     )
     assigned_issue_guidance = (
         "The assigned issue title/body are already included below by the orchestrator.\n"
@@ -70,8 +83,10 @@ def _role_instruction(role: str) -> str:
         return (
             "Create a traceable implementation spec/plan only. Do not write repository changes. "
             "Put the full implementation plan in `summary` as plain text inside the JSON string. "
+            "Put short observable checks and final-status rationale in `decision_log`. "
             "Put evidence as objects like {\"source\":\"GitHub issue #123\",\"detail\":\"acceptance criteria source\"}. "
-            "Do not return Markdown outside JSON. Do not create files unless explicitly asked by the orchestrator prompt."
+            "Do not include hidden chain-of-thought. Do not return Markdown outside JSON. "
+            "Do not create files unless explicitly asked by the orchestrator prompt."
         )
     if role == "project-manager":
         return "Manage project state, risks, decisions, and PM artifacts only. Do not mutate code, branches, deployment, budgets, access, or production."

@@ -6,7 +6,7 @@ import sqlite3
 
 from . import db
 from .config import Config
-from .final_response import FinalResponseError, parse_final_response
+from .final_response import FinalResponse, FinalResponseError, parse_final_response
 from .final_response_repair import build_model_repair_prompt, deterministic_repair_payload
 from .hermes_client import HermesClient, HermesRunNotFound
 from .transitions import ProviderTransitionAdapter, apply_failure_transition, apply_transition
@@ -17,6 +17,16 @@ COMPLETED = {"completed", "succeeded", "success", "done"}
 FAILED = {"failed", "error"}
 CANCELLED = {"cancelled", "canceled"}
 TIMEOUT = {"timeout", "timed_out"}
+FINAL_RESPONSE_KEYS = ("final_response", "output", "result", "response", "text")
+FORBIDDEN_REASONING_KEYS = {
+    "chain_of_thought",
+    "chainOfThought",
+    "cot",
+    "reasoning_trace",
+    "reasoning_steps",
+    "private_reasoning",
+    "internal_monologue",
+}
 
 
 def reconcile(
@@ -123,7 +133,7 @@ def reconcile(
             summary["failed_final"] += 1
             continue
         status = str(payload.get("status") or payload.get("state") or "").lower()
-        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
+        raw = json.dumps(_scrub_forbidden_reasoning_fields(payload), ensure_ascii=False, sort_keys=True)
         if status in COMPLETED:
             final_response, repaired_payload, repair_info, parse_error = _parse_or_repair_final_response(payload, run, client, config, summary)
             if final_response is None:
@@ -145,7 +155,8 @@ def reconcile(
                 if repair_info["diagnostics"]:
                     summary["repair_failed"] += 1
             else:
-                completion_raw = _raw_with_repair_info(repaired_payload, repair_info)
+                completion_payload = _canonical_completion_payload(repaired_payload, final_response)
+                completion_raw = _raw_with_repair_info(completion_payload, repair_info)
                 item = db.row_to_work_item(run)
                 if not _assignment_matches_current_revision(run["assignment_key"], item.revision_key()):
                     db.mark_run_finished(
@@ -310,7 +321,7 @@ def _parse_or_repair_final_response(payload: dict, run: sqlite3.Row, client: Her
     if config.final_response_repair_enabled and config.final_response_model_repair_enabled:
         summary["model_repair_attempted"] += 1
         try:
-            prompt = build_model_repair_prompt(payload=payload, parse_error=original_error, max_chars=config.final_response_repair_max_chars)
+            prompt = build_model_repair_prompt(payload=_scrub_forbidden_reasoning_fields(payload), parse_error=original_error, max_chars=config.final_response_repair_max_chars)
             model_payload = client.repair_final_response(
                 model=config.final_response_repair_model,
                 session_id=f"repair:{run['session_id'] or run['assignment_key']}",
@@ -331,11 +342,37 @@ def _parse_or_repair_final_response(payload: dict, run: sqlite3.Row, client: Her
 
 
 def _raw_with_repair_info(payload: dict, repair_info: dict) -> str:
+    payload = _scrub_forbidden_reasoning_fields(payload)
     if repair_info.get("method") is None:
         return json.dumps(payload, ensure_ascii=False, sort_keys=True)
     raw_payload = dict(payload)
     raw_payload["final_response_repair"] = repair_info
     return json.dumps(raw_payload, ensure_ascii=False, sort_keys=True)
+
+
+def _canonical_completion_payload(payload: dict, final_response: FinalResponse) -> dict:
+    safe_payload = _scrub_forbidden_reasoning_fields(payload)
+    if not isinstance(safe_payload, dict):
+        safe_payload = {}
+    canonical = json.loads(final_response.to_json())
+    for key in FINAL_RESPONSE_KEYS:
+        if key in safe_payload:
+            safe_payload[key] = canonical
+            return safe_payload
+    safe_payload["final_response"] = canonical
+    return safe_payload
+
+
+def _scrub_forbidden_reasoning_fields(value):
+    if isinstance(value, dict):
+        return {
+            key: _scrub_forbidden_reasoning_fields(item)
+            for key, item in value.items()
+            if key not in FORBIDDEN_REASONING_KEYS
+        }
+    if isinstance(value, list):
+        return [_scrub_forbidden_reasoning_fields(item) for item in value]
+    return value
 
 
 def _timed_out(started_at: str, timeout_seconds: int) -> bool:
@@ -356,8 +393,8 @@ def _error_text(payload: dict) -> str:
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()
         if isinstance(candidate, dict):
-            return json.dumps(candidate, ensure_ascii=False, sort_keys=True)
-    return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+            return json.dumps(_scrub_forbidden_reasoning_fields(candidate), ensure_ascii=False, sort_keys=True)
+    return json.dumps(_scrub_forbidden_reasoning_fields(payload), ensure_ascii=False, sort_keys=True)
 
 
 def _is_config_error(payload: dict) -> bool:

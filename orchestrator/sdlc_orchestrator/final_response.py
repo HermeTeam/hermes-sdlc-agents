@@ -18,6 +18,9 @@ class FinalResponse:
     final_status: FinalStatus
     summary: str
     evidence: list[dict[str, Any]]
+    decision_log: list[str]
+    risks: list[str]
+    assumptions: list[str]
     next_handoff: dict[str, Any] | None = None
     block_reason: str | None = None
 
@@ -29,6 +32,9 @@ class FinalResponse:
                 "final_status": self.final_status.value,
                 "summary": self.summary,
                 "evidence": self.evidence,
+                "decision_log": self.decision_log,
+                "risks": self.risks,
+                "assumptions": self.assumptions,
                 "next_handoff": self.next_handoff,
                 "block_reason": self.block_reason,
             },
@@ -48,6 +54,9 @@ def parse_final_response(payload: dict, *, expected_role: str, expected_assignme
         evidence = []
     if not isinstance(evidence, list) or not all(isinstance(item, dict) for item in evidence):
         raise FinalResponseError("evidence must be a list of objects")
+    decision_log = _optional_str_list(data, "decision_log")
+    risks = _optional_str_list(data, "risks")
+    assumptions = _optional_str_list(data, "assumptions")
     if assignment_key != expected_assignment_key:
         raise FinalResponseError("assignment_key mismatch")
     if role != expected_role:
@@ -68,6 +77,9 @@ def parse_final_response(payload: dict, *, expected_role: str, expected_assignme
         final_status=final_status,
         summary=summary,
         evidence=evidence,
+        decision_log=decision_log,
+        risks=risks,
+        assumptions=assumptions,
         next_handoff=next_handoff,
         block_reason=block_reason,
     )
@@ -94,4 +106,13 @@ def _required_str(data: dict, key: str) -> str:
     value = data.get(key)
     if not isinstance(value, str) or not value:
         raise FinalResponseError(f"{key} must be a non-empty string")
+    return value
+
+
+def _optional_str_list(data: dict, key: str) -> list[str]:
+    value = data.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise FinalResponseError(f"{key} must be a list of strings")
     return value

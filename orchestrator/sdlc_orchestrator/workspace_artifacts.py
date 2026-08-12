@@ -44,6 +44,9 @@ def maybe_record_self_evolution_result(*, item: Any, final_response: FinalRespon
             "block_reason": _truncate_text(final_response.block_reason),
             "next_handoff": _bounded_value(final_response.next_handoff),
             "evidence": _bounded_value(final_response.evidence),
+            "decision_log": _bounded_value(final_response.decision_log),
+            "risks": _bounded_value(final_response.risks),
+            "assumptions": _bounded_value(final_response.assumptions),
         }
         line = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         with (workspace / ARTIFACT_FILE_NAME).open("a", encoding="utf-8") as handle:

@@ -17,7 +17,7 @@ from sdlc_orchestrator.config import Config, ConfigError
 from sdlc_orchestrator.cli import requeue as orchestrator_requeue, status as orchestrator_status
 from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, pending_assignments, upsert_work_item
 from sdlc_orchestrator.final_response import FinalResponseError, parse_final_response
-from sdlc_orchestrator.final_response_repair import deterministic_repair_payload
+from sdlc_orchestrator.final_response_repair import build_model_repair_prompt, deterministic_repair_payload
 from sdlc_orchestrator.hermes_client import HermesClient, HermesRunNotFound
 from sdlc_orchestrator.locking import LockNotAcquired, nonblocking_lock
 from sdlc_orchestrator.prompts import build_prompt
@@ -157,11 +157,17 @@ class PromptTests(unittest.TestCase):
         self.assertIn("FINAL RESPONSE CONTRACT - HARD REQUIREMENT", prompt)
         self.assertIn("The first character of the final message must be { and the last character must be }", prompt)
         self.assertIn("The `evidence` field MUST be a list of objects. Never use strings in `evidence`.", prompt)
+        self.assertIn("\"decision_log\"", prompt)
+        self.assertIn("\"risks\"", prompt)
+        self.assertIn("\"assumptions\"", prompt)
+        self.assertIn("safe summaries only", prompt)
+        self.assertIn("Do not add fields named chain_of_thought", prompt)
 
     def test_planner_prompt_discourages_redundant_issue_read(self) -> None:
         prompt = build_prompt(item(), "planner", "assignment-1")
         self.assertIn("Do not call `issue_read` or similar repository issue-read tools for this same issue unless the excerpt is insufficient", prompt)
         self.assertIn("Create a traceable implementation spec/plan only. Do not write repository changes.", prompt)
+        self.assertIn("Put short observable checks and final-status rationale in `decision_log`", prompt)
 
 
 class DatabaseTests(unittest.TestCase):
@@ -374,6 +380,9 @@ class FinalResponseTests(unittest.TestCase):
                     "final_status": status,
                     "summary": "done",
                     "evidence": [],
+                    "decision_log": ["Checked implementation result"],
+                    "risks": [],
+                    "assumptions": [],
                     "next_handoff": None,
                     "block_reason": None,
                 }
@@ -383,6 +392,37 @@ class FinalResponseTests(unittest.TestCase):
     def test_valid_json_final_response_is_accepted(self) -> None:
         parsed = parse_final_response(self.final_payload(), expected_role="builder", expected_assignment_key="key")
         self.assertEqual(parsed.final_status, FinalStatus.PR_READY_FOR_REVIEW)
+        self.assertEqual(parsed.decision_log, ["Checked implementation result"])
+        self.assertEqual(parsed.risks, [])
+        self.assertEqual(parsed.assumptions, [])
+
+    def test_safe_metadata_lists_are_stored_in_canonical_json(self) -> None:
+        parsed = parse_final_response(self.final_payload(), expected_role="builder", expected_assignment_key="key")
+        stored = json.loads(parsed.to_json())
+        self.assertEqual(stored["decision_log"], ["Checked implementation result"])
+        self.assertEqual(stored["risks"], [])
+        self.assertEqual(stored["assumptions"], [])
+        self.assertNotIn("chain_of_thought", stored)
+
+    def test_safe_metadata_rejects_non_array_values(self) -> None:
+        for field in ("decision_log", "risks", "assumptions"):
+            with self.subTest(field=field):
+                payload = self.final_payload()
+                data = json.loads(payload["output"])
+                data[field] = "not a list"
+                payload["output"] = json.dumps(data)
+                with self.assertRaisesRegex(FinalResponseError, f"{field} must be a list of strings"):
+                    parse_final_response(payload, expected_role="builder", expected_assignment_key="key")
+
+    def test_safe_metadata_rejects_non_string_items(self) -> None:
+        for field in ("decision_log", "risks", "assumptions"):
+            with self.subTest(field=field):
+                payload = self.final_payload()
+                data = json.loads(payload["output"])
+                data[field] = ["ok", {"not": "safe"}]
+                payload["output"] = json.dumps(data)
+                with self.assertRaisesRegex(FinalResponseError, f"{field} must be a list of strings"):
+                    parse_final_response(payload, expected_role="builder", expected_assignment_key="key")
 
     def test_free_text_output_is_rejected(self) -> None:
         with self.assertRaises(FinalResponseError):
@@ -433,6 +473,26 @@ class FinalResponseTests(unittest.TestCase):
         parsed = parse_final_response(repaired.payload, expected_role="builder", expected_assignment_key="key")
         self.assertEqual(parsed.evidence, [{"source": "GitHub issue #123", "detail": "provided by agent as evidence text"}])
 
+    def test_deterministic_repair_normalizes_missing_safe_metadata(self) -> None:
+        payload = self.final_payload()
+        data = json.loads(payload["output"])
+        for field in ("decision_log", "risks", "assumptions"):
+            data.pop(field)
+        payload["output"] = json.dumps(data)
+        repaired = deterministic_repair_payload(payload, max_chars=200000)
+        parsed = parse_final_response(repaired.payload, expected_role="builder", expected_assignment_key="key")
+        self.assertTrue(repaired.repaired)
+        self.assertEqual(parsed.decision_log, [])
+        self.assertEqual(parsed.risks, [])
+        self.assertEqual(parsed.assumptions, [])
+
+    def test_model_repair_prompt_includes_safe_metadata_schema(self) -> None:
+        prompt = build_model_repair_prompt(payload={"output": "not json"}, parse_error="bad", max_chars=200000)
+        self.assertIn("decision_log", prompt)
+        self.assertIn("risks", prompt)
+        self.assertIn("assumptions", prompt)
+        self.assertIn("Do not create hidden chain-of-thought", prompt)
+
     def test_deterministic_repair_rejects_multiple_json_objects(self) -> None:
         payload = self.final_payload()
         payload["output"] = f"{payload['output']}\n{payload['output']}"
@@ -461,6 +521,9 @@ class WorkspaceArtifactTests(unittest.TestCase):
                     "final_status": status,
                     "summary": "proposal ready",
                     "evidence": [{"source": "issue-123"}],
+                    "decision_log": ["Prepared human review proposal"],
+                    "risks": ["Needs human review before activation"],
+                    "assumptions": ["Proposal is not auto-applied"],
                     "next_handoff": next_handoff,
                     "block_reason": None,
                 }
@@ -482,6 +545,9 @@ class WorkspaceArtifactTests(unittest.TestCase):
         self.assertEqual(record["final_status"], "PROPOSED_FOR_HUMAN_REVIEW")
         self.assertEqual(record["repository_id"], "test-project/test-project")
         self.assertEqual(record["evidence"], [{"source": "issue-123"}])
+        self.assertEqual(record["decision_log"], ["Prepared human review proposal"])
+        self.assertEqual(record["risks"], ["Needs human review before activation"])
+        self.assertEqual(record["assumptions"], ["Proposal is not auto-applied"])
 
     def test_non_learning_handoff_to_self_evolution_appends_record(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -581,6 +647,9 @@ class ReconcilerTests(unittest.TestCase):
                     "final_status": final_status,
                     "summary": "finished",
                     "evidence": [],
+                    "decision_log": ["Selected final status"],
+                    "risks": [],
+                    "assumptions": [],
                     "next_handoff": next_handoff,
                     "block_reason": None,
                 }
@@ -851,6 +920,46 @@ class ReconcilerTests(unittest.TestCase):
         self.assertEqual(summary["repaired_output"], 1)
         self.assertEqual(row["status"], "COMPLETED")
         self.assertEqual(json.loads(row["raw_status"])["final_response_repair"]["method"], "deterministic")
+
+    def test_reconciler_stores_canonical_success_raw_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                payload = self.completed_payload(role="builder", key=key, final_status="PR_READY_FOR_REVIEW")
+                data = json.loads(payload["output"])
+                data["chain_of_thought"] = "private"
+                payload["output"] = json.dumps(data)
+                reconcile(conn, FakeClient({"run_1": payload}), config())
+                row = conn.execute("SELECT raw_status, final_response_json FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+        raw = json.loads(row["raw_status"])
+        final = json.loads(row["final_response_json"])
+        self.assertIsInstance(raw["output"], dict)
+        self.assertEqual(raw["output"], final)
+        self.assertIn("decision_log", final)
+        self.assertNotIn("chain_of_thought", json.dumps(raw))
+
+    def test_reconciler_scrubs_forbidden_reasoning_keys_from_invalid_raw_status(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                payload = {"status": "completed", "output": "not json", "chain_of_thought": "private", "nested": {"cot": "private"}}
+                reconcile(conn, FakeClient({"run_1": payload}), config(final_response_model_repair_enabled=False))
+                row = conn.execute("SELECT raw_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+        raw_text = row["raw_status"]
+        self.assertNotIn("chain_of_thought", raw_text)
+        self.assertNotIn("cot", raw_text)
 
     def test_reconciler_completes_string_evidence_and_stores_normalized_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

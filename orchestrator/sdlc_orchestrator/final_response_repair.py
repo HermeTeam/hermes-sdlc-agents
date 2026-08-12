@@ -44,11 +44,16 @@ def build_model_repair_prompt(*, payload: dict, parse_error: str, max_chars: int
         "Do not summarize differently.\n"
         "Do not change assignment_key, role, or final_status.\n"
         "Convert evidence strings into objects with source/detail.\n"
+        "Preserve existing decision_log, risks, and assumptions only if they are explicitly present and safe.\n"
+        "Normalize missing decision_log, risks, and assumptions to empty arrays.\n"
+        "Do not create hidden chain-of-thought or invent new rationale.\n"
+        "Remove forbidden reasoning fields if present.\n"
         "If the candidate cannot be safely repaired, return {\"repair_status\":\"UNREPAIRABLE\",\"reason\":\"...\"}.\n"
         "Return only JSON.\n\n"
         "Required schema:\n"
-        "{\"assignment_key\":\"<exact assignment key>\",\"role\":\"<exact role>\",\"final_status\":\"<one allowed status>\","
+        "{\"assignment_key\":\"<exact assignment key>\",\"role\":\"<exact role>\",\"final_status\":\"<one allowed status>\"," 
         "\"summary\":\"<same result>\",\"evidence\":[{\"source\":\"<url/path/id>\",\"detail\":\"<what this proves>\"}],"
+        "\"decision_log\":[\"<short observable decision or check performed>\"],\"risks\":[\"<known risk>\"],\"assumptions\":[\"<explicit assumption>\"],"
         "\"next_handoff\":null,\"block_reason\":null}\n\n"
         f"Strict parser error:\n{parse_error}\n\n"
         f"Candidate agent output:\n{candidate}"
@@ -69,6 +74,11 @@ def _normalize_payload(payload: dict, data: dict[str, Any], key: str, diagnostic
         ]
         diagnostics.append("converted evidence strings to objects")
         repaired = True
+    for field in ("decision_log", "risks", "assumptions"):
+        if normalized.get(field) is None:
+            normalized[field] = []
+            diagnostics.append(f"normalized missing/null {field} to []")
+            repaired = True
     if payload.get(key) != normalized:
         repaired = True
     repaired_payload = dict(payload)
