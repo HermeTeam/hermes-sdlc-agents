@@ -7,6 +7,7 @@ import sqlite3
 from . import db
 from .config import Config
 from .final_response import FinalResponseError, parse_final_response
+from .final_response_repair import build_model_repair_prompt, deterministic_repair_payload
 from .hermes_client import HermesClient, HermesRunNotFound
 from .transitions import ProviderTransitionAdapter, apply_failure_transition, apply_transition
 from .workspace_artifacts import maybe_record_self_evolution_result
@@ -35,6 +36,9 @@ def reconcile(
         "requeued": 0,
         "blocked_config": 0,
         "failed_final": 0,
+        "repaired_output": 0,
+        "repair_failed": 0,
+        "model_repair_attempted": 0,
     }
     for run in db.active_runs(conn):
         summary["active"] += 1
@@ -121,22 +125,27 @@ def reconcile(
         status = str(payload.get("status") or payload.get("state") or "").lower()
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True)
         if status in COMPLETED:
-            try:
-                final_response = parse_final_response(payload, expected_role=run["role"], expected_assignment_key=run["assignment_key"])
-            except FinalResponseError as exc:
-                db.mark_run_finished(conn, run["assignment_key"], "INVALID_OUTPUT", None, raw, assignment_status="FAILED_FINAL", error=str(exc))
+            final_response, repaired_payload, repair_info, parse_error = _parse_or_repair_final_response(payload, run, client, config, summary)
+            if final_response is None:
+                error = parse_error or "final response repair failed"
+                if repair_info["diagnostics"]:
+                    error = f"{error}; repair diagnostics: {'; '.join(repair_info['diagnostics'])}"
+                db.mark_run_finished(conn, run["assignment_key"], "INVALID_OUTPUT", None, raw, assignment_status="FAILED_FINAL", error=error)
                 apply_failure_transition(
                     conn,
                     item=db.row_to_work_item(run),
                     assignment_key=run["assignment_key"],
                     role=run["role"],
                     failure_status="INVALID_OUTPUT",
-                    summary=str(exc),
+                    summary=error,
                     config=config,
                     provider_adapter=provider_adapter,
                 )
                 summary["invalid_output"] += 1
+                if repair_info["diagnostics"]:
+                    summary["repair_failed"] += 1
             else:
+                completion_raw = _raw_with_repair_info(repaired_payload, repair_info)
                 item = db.row_to_work_item(run)
                 if not _assignment_matches_current_revision(run["assignment_key"], item.revision_key()):
                     db.mark_run_finished(
@@ -144,7 +153,7 @@ def reconcile(
                         run["assignment_key"],
                         "STALE_OUTPUT",
                         final_response.final_status.value,
-                        raw,
+                        completion_raw,
                         assignment_status="FAILED_FINAL",
                         error="Work item revision changed while run was active",
                         final_response_json=final_response.to_json(),
@@ -166,14 +175,14 @@ def reconcile(
                     run["assignment_key"],
                     "COMPLETED",
                     final_response.final_status.value,
-                    raw,
+                    completion_raw,
                     assignment_status="COMPLETED",
                     final_response_json=final_response.to_json(),
                 )
                 maybe_record_self_evolution_result(
                     item=item,
                     final_response=final_response,
-                    raw_payload=payload,
+                    raw_payload=repaired_payload,
                 )
                 apply_transition(
                     conn,
@@ -277,6 +286,56 @@ def reconcile(
             )
             summary["timeout"] += 1
     return summary
+
+
+def _parse_or_repair_final_response(payload: dict, run: sqlite3.Row, client: HermesClient, config: Config, summary: dict[str, int]):
+    repair_info = {"method": None, "diagnostics": []}
+    try:
+        return parse_final_response(payload, expected_role=run["role"], expected_assignment_key=run["assignment_key"]), payload, repair_info, None
+    except FinalResponseError as exc:
+        original_error = str(exc)
+
+    if config.final_response_repair_enabled:
+        repair = deterministic_repair_payload(payload, max_chars=config.final_response_repair_max_chars)
+        repair_info["diagnostics"].extend(repair.diagnostics)
+        if repair.repaired:
+            try:
+                parsed = parse_final_response(repair.payload, expected_role=run["role"], expected_assignment_key=run["assignment_key"])
+                repair_info["method"] = repair.method
+                summary["repaired_output"] += 1
+                return parsed, repair.payload, repair_info, None
+            except FinalResponseError as exc:
+                repair_info["diagnostics"].append(f"deterministic parse failed: {exc}")
+
+    if config.final_response_repair_enabled and config.final_response_model_repair_enabled:
+        summary["model_repair_attempted"] += 1
+        try:
+            prompt = build_model_repair_prompt(payload=payload, parse_error=original_error, max_chars=config.final_response_repair_max_chars)
+            model_payload = client.repair_final_response(
+                model=config.final_response_repair_model,
+                session_id=f"repair:{run['session_id'] or run['assignment_key']}",
+                prompt=prompt,
+                idempotency_key=f"repair:{run['assignment_key']}:{run['hermes_run_id']}",
+                timeout_seconds=config.final_response_repair_timeout_seconds,
+            )
+            repair = deterministic_repair_payload(model_payload, max_chars=config.final_response_repair_max_chars)
+            repair_info["diagnostics"].extend(f"model: {diagnostic}" for diagnostic in repair.diagnostics)
+            parsed = parse_final_response(repair.payload, expected_role=run["role"], expected_assignment_key=run["assignment_key"])
+            repair_info["method"] = "model"
+            summary["repaired_output"] += 1
+            return parsed, repair.payload, repair_info, None
+        except Exception as exc:  # noqa: BLE001 - repair failure must not crash reconciliation.
+            repair_info["diagnostics"].append(f"model repair failed: {exc}")
+
+    return None, payload, repair_info, original_error
+
+
+def _raw_with_repair_info(payload: dict, repair_info: dict) -> str:
+    if repair_info.get("method") is None:
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+    raw_payload = dict(payload)
+    raw_payload["final_response_repair"] = repair_info
+    return json.dumps(raw_payload, ensure_ascii=False, sort_keys=True)
 
 
 def _timed_out(started_at: str, timeout_seconds: int) -> bool:

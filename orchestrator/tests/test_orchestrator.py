@@ -17,8 +17,10 @@ from sdlc_orchestrator.config import Config, ConfigError
 from sdlc_orchestrator.cli import requeue as orchestrator_requeue, status as orchestrator_status
 from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, pending_assignments, upsert_work_item
 from sdlc_orchestrator.final_response import FinalResponseError, parse_final_response
+from sdlc_orchestrator.final_response_repair import deterministic_repair_payload
 from sdlc_orchestrator.hermes_client import HermesClient, HermesRunNotFound
 from sdlc_orchestrator.locking import LockNotAcquired, nonblocking_lock
+from sdlc_orchestrator.prompts import build_prompt
 from sdlc_orchestrator.provider_base import WorkItem
 from sdlc_orchestrator.provider_github import GitHubTransitionAdapter, normalize_issue as normalize_github_issue
 from sdlc_orchestrator.provider_gitlab import fetch_issues as fetch_gitlab_issues
@@ -147,6 +149,19 @@ class FilteringTests(unittest.TestCase):
 
     def test_role_assignee_matches(self) -> None:
         self.assertTrue(matches_role(item(assignees=("hermes-builder",)), config()))
+
+
+class PromptTests(unittest.TestCase):
+    def test_build_prompt_includes_hard_final_response_contract(self) -> None:
+        prompt = build_prompt(item(), "planner", "assignment-1")
+        self.assertIn("FINAL RESPONSE CONTRACT - HARD REQUIREMENT", prompt)
+        self.assertIn("The first character of the final message must be { and the last character must be }", prompt)
+        self.assertIn("The `evidence` field MUST be a list of objects. Never use strings in `evidence`.", prompt)
+
+    def test_planner_prompt_discourages_redundant_issue_read(self) -> None:
+        prompt = build_prompt(item(), "planner", "assignment-1")
+        self.assertIn("Do not call `issue_read` or similar repository issue-read tools for this same issue unless the excerpt is insufficient", prompt)
+        self.assertIn("Create a traceable implementation spec/plan only. Do not write repository changes.", prompt)
 
 
 class DatabaseTests(unittest.TestCase):
@@ -393,6 +408,44 @@ class FinalResponseTests(unittest.TestCase):
         parsed = parse_final_response(self.final_payload(status="BLOCKED", role="reviewer"), expected_role="reviewer", expected_assignment_key="key")
         self.assertEqual(parsed.final_status, FinalStatus.BLOCKED)
 
+    def test_deterministic_repair_accepts_prose_before_json(self) -> None:
+        payload = self.final_payload()
+        payload["output"] = f"Completed.\n{payload['output']}"
+        repaired = deterministic_repair_payload(payload, max_chars=200000)
+        parsed = parse_final_response(repaired.payload, expected_role="builder", expected_assignment_key="key")
+        self.assertTrue(repaired.repaired)
+        self.assertEqual(parsed.final_status, FinalStatus.PR_READY_FOR_REVIEW)
+
+    def test_deterministic_repair_accepts_prose_after_json(self) -> None:
+        payload = self.final_payload()
+        payload["output"] = f"{payload['output']}\nDone."
+        repaired = deterministic_repair_payload(payload, max_chars=200000)
+        parsed = parse_final_response(repaired.payload, expected_role="builder", expected_assignment_key="key")
+        self.assertTrue(repaired.repaired)
+        self.assertEqual(parsed.final_status, FinalStatus.PR_READY_FOR_REVIEW)
+
+    def test_deterministic_repair_converts_evidence_strings_to_objects(self) -> None:
+        payload = self.final_payload()
+        data = json.loads(payload["output"])
+        data["evidence"] = ["GitHub issue #123"]
+        payload["output"] = json.dumps(data)
+        repaired = deterministic_repair_payload(payload, max_chars=200000)
+        parsed = parse_final_response(repaired.payload, expected_role="builder", expected_assignment_key="key")
+        self.assertEqual(parsed.evidence, [{"source": "GitHub issue #123", "detail": "provided by agent as evidence text"}])
+
+    def test_deterministic_repair_rejects_multiple_json_objects(self) -> None:
+        payload = self.final_payload()
+        payload["output"] = f"{payload['output']}\n{payload['output']}"
+        repaired = deterministic_repair_payload(payload, max_chars=200000)
+        self.assertFalse(repaired.repaired)
+        self.assertIn("multiple top-level JSON objects found", "; ".join(repaired.diagnostics))
+
+    def test_deterministic_repair_still_rejects_wrong_assignment_key_strictly(self) -> None:
+        payload = self.final_payload(key="other")
+        repaired = deterministic_repair_payload(payload, max_chars=200000)
+        with self.assertRaises(FinalResponseError):
+            parse_final_response(repaired.payload, expected_role="builder", expected_assignment_key="key")
+
     def test_release_blocked_no_action_is_accepted(self) -> None:
         parsed = parse_final_response(self.final_payload(status="BLOCKED_NO_ACTION", role="release"), expected_role="release", expected_assignment_key="key")
         self.assertEqual(parsed.final_status, FinalStatus.BLOCKED_NO_ACTION)
@@ -475,6 +528,20 @@ class FakeClient:
     def get_run(self, run_id: str) -> dict:
         return self.payloads[run_id]
 
+    def repair_final_response(self, **_kwargs) -> dict:
+        raise AssertionError("unexpected repair call")
+
+
+class FakeRepairClient(FakeClient):
+    def __init__(self, payloads: dict[str, dict], repair_payload: dict) -> None:
+        super().__init__(payloads)
+        self.repair_payload = repair_payload
+        self.repair_calls = []
+
+    def repair_final_response(self, **kwargs) -> dict:
+        self.repair_calls.append(kwargs)
+        return self.repair_payload
+
 
 class MissingThenCompletedClient:
     def __init__(self, completed_payload: dict) -> None:
@@ -519,6 +586,13 @@ class ReconcilerTests(unittest.TestCase):
                 }
             ),
         }
+
+    def completed_payload_with_evidence(self, *, role: str, key: str, final_status: str, evidence) -> dict:
+        payload = self.completed_payload(role=role, key=key, final_status=final_status)
+        data = json.loads(payload["output"])
+        data["evidence"] = evidence
+        payload["output"] = json.dumps(data)
+        return payload
 
     def test_completed_run_records_transition_when_disabled(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -758,6 +832,98 @@ class ReconcilerTests(unittest.TestCase):
                 self.assertEqual(summary["invalid_output"], 1)
                 self.assertEqual(transition["final_status"], "INVALID_OUTPUT")
                 self.assertIn("not valid JSON", adapter.calls[0]["comment"])
+
+    def test_reconciler_completes_prose_wrapped_json_and_counts_repair(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                payload = self.completed_payload(role="builder", key=key, final_status="PR_READY_FOR_REVIEW")
+                payload["output"] = f"Here is the final output:\n{payload['output']}"
+                summary = reconcile(conn, FakeClient({"run_1": payload}), config())
+                row = conn.execute("SELECT status, raw_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["completed"], 1)
+        self.assertEqual(summary["repaired_output"], 1)
+        self.assertEqual(row["status"], "COMPLETED")
+        self.assertEqual(json.loads(row["raw_status"])["final_response_repair"]["method"], "deterministic")
+
+    def test_reconciler_completes_string_evidence_and_stores_normalized_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                payload = self.completed_payload_with_evidence(role="builder", key=key, final_status="PR_READY_FOR_REVIEW", evidence=["CI passed"])
+                summary = reconcile(conn, FakeClient({"run_1": payload}), config())
+                row = conn.execute("SELECT final_response_json FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["repaired_output"], 1)
+        self.assertEqual(json.loads(row["final_response_json"])["evidence"], [{"source": "CI passed", "detail": "provided by agent as evidence text"}])
+
+    def test_reconciler_calls_model_repair_after_deterministic_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                bad_payload = {"status": "completed", "output": "not json"}
+                repair_payload = self.completed_payload(role="builder", key=key, final_status="PR_READY_FOR_REVIEW")
+                client = FakeRepairClient({"run_1": bad_payload}, repair_payload)
+                summary = reconcile(conn, client, config())
+                row = conn.execute("SELECT status, raw_status FROM agent_runs WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["completed"], 1)
+        self.assertEqual(summary["model_repair_attempted"], 1)
+        self.assertEqual(summary["repaired_output"], 1)
+        self.assertEqual(row["status"], "COMPLETED")
+        self.assertEqual(json.loads(row["raw_status"])["final_response_repair"]["method"], "model")
+        self.assertEqual(client.repair_calls[0]["model"], "hermes-json-repair")
+
+    def test_reconciler_leaves_unrepairable_output_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            adapter = FakeTransitionAdapter()
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                client = FakeRepairClient({"run_1": {"status": "completed", "output": "not json"}}, {"status": "completed", "output": "also not json"})
+                summary = reconcile(conn, client, config(apply_transitions=True, transition_comment_only=False), adapter)
+                assignment = conn.execute("SELECT status FROM role_assignments WHERE assignment_key=?", (key,)).fetchone()
+        self.assertEqual(summary["invalid_output"], 1)
+        self.assertEqual(summary["repair_failed"], 1)
+        self.assertEqual(assignment["status"], "FAILED_FINAL")
+        self.assertEqual(adapter.calls[0]["add_labels"], {"hermes:blocked"})
+
+    def test_model_repair_disabled_makes_no_repair_client_call(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "orchestrator.sqlite"
+            with connect(path) as conn:
+                init_db(conn)
+                work_item = item(labels=("hermes:builder",))
+                work_item_id = upsert_work_item(conn, work_item)
+                key = assignment_key(work_item, "builder")
+                ensure_assignment(conn, key, work_item_id, "builder")
+                mark_assignment_started(conn, key, "run_1", "session")
+                client = FakeRepairClient({"run_1": {"status": "completed", "output": "not json"}}, self.completed_payload(role="builder", key=key, final_status="PR_READY_FOR_REVIEW"))
+                summary = reconcile(conn, client, config(final_response_model_repair_enabled=False))
+        self.assertEqual(summary["invalid_output"], 1)
+        self.assertEqual(summary["model_repair_attempted"], 0)
+        self.assertEqual(client.repair_calls, [])
 
     def test_stale_completed_run_does_not_apply_normal_transition(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

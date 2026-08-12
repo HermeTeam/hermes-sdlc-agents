@@ -65,6 +65,11 @@ class Config:
     role_assignees: set[str] = field(default_factory=set)
     apply_transitions: bool = False
     transition_comment_only: bool = True
+    final_response_repair_enabled: bool = True
+    final_response_model_repair_enabled: bool = True
+    final_response_repair_model: str = "hermes-json-repair"
+    final_response_repair_timeout_seconds: int = 120
+    final_response_repair_max_chars: int = 200000
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -123,6 +128,11 @@ class Config:
             role_assignees=role_assignees,
             apply_transitions=_bool(os.getenv("ORCHESTRATOR_APPLY_TRANSITIONS"), False),
             transition_comment_only=_bool(os.getenv("ORCHESTRATOR_TRANSITION_COMMENT_ONLY"), True),
+            final_response_repair_enabled=_bool(os.getenv("ORCHESTRATOR_FINAL_RESPONSE_REPAIR_ENABLED"), True),
+            final_response_model_repair_enabled=_bool(os.getenv("ORCHESTRATOR_FINAL_RESPONSE_MODEL_REPAIR_ENABLED"), True),
+            final_response_repair_model=os.getenv("ORCHESTRATOR_FINAL_RESPONSE_REPAIR_MODEL", "hermes-json-repair"),
+            final_response_repair_timeout_seconds=_int_env("ORCHESTRATOR_FINAL_RESPONSE_REPAIR_TIMEOUT_SECONDS", 120, 1),
+            final_response_repair_max_chars=_int_env("ORCHESTRATOR_FINAL_RESPONSE_REPAIR_MAX_CHARS", 200000, 1000),
         )
 
 

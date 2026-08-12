@@ -113,6 +113,12 @@ gateway:
   platforms:
     api_server:
       direct_model_requests: false
+      model_routes:
+        hermes-json-repair:
+          provider: custom
+          model: "${HERMES_JSON_REPAIR_MODEL_ID}"
+          base_url: "${HERMES_JSON_REPAIR_MODEL_BASE_URL}"
+          api_key: "${HERMES_JSON_REPAIR_OPENAI_API_KEY}"
 
 mcp_servers:
   repository:

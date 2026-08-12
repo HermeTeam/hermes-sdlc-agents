@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -39,6 +40,28 @@ class HermesClient:
             headers={"Authorization": f"Bearer {self._api_key}", "Accept": "application/json"},
         )
         return self._json(request, missing_run_id=run_id)
+
+    def repair_final_response(
+        self,
+        *,
+        model: str,
+        session_id: str,
+        prompt: str,
+        idempotency_key: str,
+        timeout_seconds: int,
+    ) -> dict:
+        submitted = self.submit_run(model=model, session_id=session_id, prompt=prompt, idempotency_key=idempotency_key)
+        repair_run_id = extract_run_id(submitted)
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() <= deadline:
+            payload = self.get_run(repair_run_id)
+            status = str(payload.get("status") or payload.get("state") or "").lower()
+            if status in {"completed", "succeeded", "success", "done"}:
+                return payload
+            if status in {"failed", "error", "cancelled", "canceled"}:
+                raise RuntimeError(f"Repair run ended with status {status}: {json.dumps(payload, ensure_ascii=False, sort_keys=True)}")
+            time.sleep(2)
+        raise TimeoutError(f"Repair run timed out after {timeout_seconds} seconds")
 
     def _json(self, request: Request, *, missing_run_id: str | None = None) -> dict:
         try:
