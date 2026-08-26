@@ -1,0 +1,338 @@
+<!doctype html>
+<!--
+  HermeTeam Dashboard v1 — high-fidelity interactive MVP prototype
+  Scope: read-only local agent container and work queue monitoring.
+  Interactions: refresh simulation, queue expansion, status filtering, retry/error state.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HermeTeam Dashboard</title>
+  <style>
+    :root {
+      --canvas: #f4f6fb;
+      --surface: #ffffff;
+      --surface-raised: #ffffff;
+      --ink: #172033;
+      --muted: #667085;
+      --border: #e5e9f1;
+      --border-strong: #d8deea;
+      --brand: #4f46e5;
+      --brand-dark: #3730a3;
+      --brand-soft: #eef2ff;
+      --success: #15803d;
+      --success-soft: #edfdf3;
+      --warning: #a16207;
+      --warning-soft: #fff9e9;
+      --danger: #b42318;
+      --danger-soft: #fff1f0;
+      --neutral: #475467;
+      --neutral-soft: #f2f4f7;
+      --shadow: 0 8px 20px rgba(16, 24, 40, .055);
+      --radius-lg: 16px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+    }
+
+    * { box-sizing: border-box; }
+    html { background: var(--canvas); }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--canvas);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 14px;
+      line-height: 1.45;
+    }
+    button, a { font: inherit; }
+    button { cursor: pointer; }
+    button:focus-visible, a:focus-visible, summary:focus-visible {
+      outline: 3px solid rgba(79, 70, 229, .35);
+      outline-offset: 3px;
+    }
+
+    .app-shell { max-width: 1480px; margin: 0 auto; padding: 28px 32px 48px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+    .brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
+    .logo {
+      display: grid; place-items: center; width: 42px; height: 42px; flex: 0 0 auto;
+      border-radius: 13px; background: linear-gradient(135deg, #5951e9, #312e81);
+      color: white; box-shadow: 0 7px 16px rgba(79, 70, 229, .26);
+    }
+    .brand h1 { margin: 0; font-size: 20px; line-height: 1.1; letter-spacing: -.025em; }
+    .brand p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .topbar-actions { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+    .last-updated { text-align: right; color: var(--muted); font-size: 12px; }
+    .last-updated strong { display: block; color: var(--ink); font-size: 13px; font-weight: 650; }
+    .refresh-button {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px;
+      padding: 0 14px; border: 1px solid var(--border-strong); border-radius: 9px; color: #344054;
+      background: var(--surface); box-shadow: 0 1px 2px rgba(16, 24, 40, .04); font-weight: 600;
+    }
+    .refresh-button:hover { border-color: #bfc7d7; background: #fcfcfd; }
+    .refresh-button svg { width: 16px; height: 16px; }
+    .refresh-button.is-loading svg { animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .notice {
+      display: none; align-items: center; gap: 11px; margin-bottom: 18px; padding: 12px 14px;
+      border: 1px solid #fedf89; border-radius: var(--radius-md); background: var(--warning-soft); color: #854d0e;
+    }
+    .notice.is-visible { display: flex; }
+    .notice svg { flex: 0 0 auto; }
+
+    .hero { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 20px; }
+    .eyebrow { margin: 0 0 5px; color: var(--brand); font-size: 12px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+    .hero h2 { margin: 0; font-size: clamp(24px, 3vw, 32px); letter-spacing: -.035em; line-height: 1.15; }
+    .hero-copy { max-width: 550px; margin: 8px 0 0; color: var(--muted); font-size: 15px; }
+    .poll-status { display: inline-flex; align-items: center; gap: 8px; flex: 0 0 auto; padding: 7px 10px; border-radius: 999px; color: var(--neutral); background: rgba(255,255,255,.7); border: 1px solid var(--border); font-size: 12px; }
+    .pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 4px rgba(21,128,61,.12); }
+
+    .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .metric { min-height: 120px; padding: 17px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow); }
+    .metric-label { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 650; }
+    .metric-label svg { width: 15px; height: 15px; }
+    .metric-value { margin-top: 13px; color: var(--ink); font-size: 28px; line-height: 1; letter-spacing: -.04em; font-weight: 750; }
+    .metric-detail { margin-top: 8px; color: var(--muted); font-size: 12px; }
+    .metric.is-warning .metric-value { color: var(--warning); }
+    .metric.is-danger .metric-value { color: var(--danger); }
+
+    .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 12px; }
+    .section-heading h2 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+    .section-heading p { margin: 3px 0 0; color: var(--muted); font-size: 12px; }
+    .filter-group { display: flex; align-items: center; gap: 6px; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); }
+    .filter-button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 7px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 650; }
+    .filter-button:hover { color: var(--ink); background: var(--neutral-soft); }
+    .filter-button[aria-pressed="true"] { color: var(--brand-dark); background: var(--brand-soft); }
+
+    .roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .role-card {
+      overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow);
+      transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+    }
+    .role-card:hover { transform: translateY(-1px); border-color: #d4d9e5; box-shadow: 0 12px 26px rgba(16,24,40,.08); }
+    .role-card.is-blocked { border-color: #f5c7c3; }
+    .role-card.is-unavailable { border-color: #fedf89; }
+    .role-card[hidden] { display: none; }
+    .role-main { padding: 18px 18px 15px; }
+    .role-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .role-heading { display: flex; align-items: center; gap: 11px; min-width: 0; }
+    .role-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: 0 0 auto; border-radius: 10px; color: var(--brand-dark); background: var(--brand-soft); }
+    .role-icon svg { width: 17px; height: 17px; }
+    .role-name { margin: 0; font-size: 15px; letter-spacing: -.015em; }
+    .role-subtitle { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+    .badges { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+    .badge { display: inline-flex; align-items: center; gap: 5px; min-height: 25px; padding: 3px 8px; border: 1px solid transparent; border-radius: 999px; font-size: 11px; font-weight: 720; white-space: nowrap; }
+    .badge svg { width: 12px; height: 12px; }
+    .badge.success { color: var(--success); background: var(--success-soft); border-color: #abefc6; }
+    .badge.warning { color: var(--warning); background: var(--warning-soft); border-color: #fedf89; }
+    .badge.danger { color: var(--danger); background: var(--danger-soft); border-color: #fecdca; }
+    .badge.neutral { color: var(--neutral); background: var(--neutral-soft); border-color: #e4e7ec; }
+    .work { margin-top: 18px; padding: 12px 13px; border-radius: 10px; background: #fafbff; border: 1px solid #edf0f7; }
+    .work-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .work-label span { display: inline-flex; align-items: center; gap: 6px; }
+    .work-label .work-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
+    .work a { display: block; overflow: hidden; margin-top: 5px; color: var(--ink); text-decoration: none; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+    .work a:hover { color: var(--brand); text-decoration: underline; }
+    .work.empty { background: #fbfcfe; }
+    .work.empty .work-label { justify-content: flex-start; }
+    .work.empty p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
+    .work.blocked { background: var(--danger-soft); border-color: #fecdca; }
+    .work.blocked .work-dot { background: var(--danger); }
+    .work.blocked p { margin: 6px 0 0; color: #7a271a; font-size: 13px; font-weight: 600; }
+    .work.unavailable { background: var(--warning-soft); border-color: #fedf89; }
+    .work.unavailable .work-dot { background: var(--warning); }
+    .work.unavailable p { margin: 6px 0 0; color: #854d0e; font-size: 13px; }
+
+    .queue-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; margin-top: 15px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .queue-stat { padding: 9px 10px; border-right: 1px solid var(--border); }
+    .queue-stat:last-child { border-right: 0; }
+    .queue-stat span { display: block; color: var(--muted); font-size: 10px; line-height: 1.2; font-weight: 700; letter-spacing: .045em; text-transform: uppercase; }
+    .queue-stat strong { display: block; margin-top: 4px; color: var(--ink); font-size: 16px; line-height: 1; }
+    .queue-stat strong.warning { color: var(--warning); }
+    .queue-stat strong.danger { color: var(--danger); }
+    details { border-top: 1px solid var(--border); }
+    summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 18px; list-style: none; color: #344054; font-size: 13px; font-weight: 650; }
+    summary::-webkit-details-marker { display: none; }
+    summary:hover { background: #fcfcfd; }
+    .summary-right { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 600; }
+    .chevron { width: 16px; height: 16px; transition: transform .15s ease; }
+    details[open] .chevron { transform: rotate(180deg); }
+    .queue-list { padding: 0 18px 17px; }
+    .queue-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; padding: 12px 0; border-top: 1px solid #edf0f5; }
+    .queue-row:first-child { border-top: 0; }
+    .queue-row-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .queue-row-title a { overflow: hidden; color: #344054; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 650; }
+    .queue-row-title a:hover { color: var(--brand); text-decoration: underline; }
+    .queue-row-meta { margin-top: 4px; color: var(--muted); font-size: 11px; }
+    .queue-row-side { display: flex; align-items: flex-end; flex-direction: column; gap: 4px; color: var(--muted); font-size: 11px; text-align: right; }
+    .queue-row-side time { white-space: nowrap; }
+    .empty-queue { padding: 16px 0 2px; color: var(--muted); font-size: 13px; }
+
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; padding: 0; margin: -1px; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+    #live-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); }
+
+    @media (max-width: 1100px) { .summary-grid { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 800px) {
+      .app-shell { padding: 20px 16px 36px; }
+      .topbar, .hero { align-items: flex-start; flex-direction: column; }
+      .topbar { gap: 16px; }
+      .topbar-actions { width: 100%; justify-content: space-between; }
+      .last-updated { text-align: left; }
+      .hero { margin-bottom: 18px; }
+      .poll-status { align-self: flex-start; }
+      .section-heading { align-items: flex-start; flex-direction: column; }
+      .roles { grid-template-columns: 1fr; }
+      .summary-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+      .metric:last-child { grid-column: span 2; }
+    }
+    @media (max-width: 430px) {
+      .topbar-actions { align-items: flex-start; flex-direction: column; gap: 10px; }
+      .refresh-button { width: 100%; }
+      .role-top { align-items: flex-start; flex-direction: column; }
+      .badges { justify-content: flex-start; }
+      .queue-summary { grid-template-columns: repeat(2, 1fr); }
+      .queue-stat:nth-child(2) { border-right: 0; }
+      .queue-stat:nth-child(n+3) { border-top: 1px solid var(--border); }
+      .queue-stat:nth-child(3) { border-right: 1px solid var(--border); }
+      .queue-row { grid-template-columns: 1fr; gap: 7px; }
+      .queue-row-side { align-items: flex-start; text-align: left; }
+      .filter-group { width: 100%; overflow-x: auto; }
+    }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3 4.5 7.2v9.6L12 21l7.5-4.2V7.2L12 3Z"/><path d="m4.8 7.4 7.2 4 7.2-4M12 11.4V21"/></svg></div>
+        <div><h1>HermeTeam Dashboard</h1><p>Local runtime overview · read-only MVP</p></div>
+      </div>
+      <div class="topbar-actions">
+        <div class="last-updated"><strong id="updated-at">Updated 09:54:18</strong><span>Source: Docker &amp; role queues</span></div>
+        <button class="refresh-button" id="refresh-button" type="button" aria-describedby="refresh-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg><span>Refresh</span></button>
+        <span id="refresh-hint" class="sr-only">Request the latest Docker and role queue status.</span>
+      </div>
+    </header>
+
+    <div class="notice is-visible" id="partial-notice" role="status">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 9v4m0 4h.01M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <span><strong>Partial data.</strong> Release status endpoint is unavailable; Docker state is still shown.</span>
+    </div>
+
+    <section class="hero" aria-labelledby="overview-title">
+      <div><p class="eyebrow">Team runtime</p><h2 id="overview-title">See agent health before work piles up.</h2><p class="hero-copy">Current container health and role-local work queues. Expand a role only when the team overview needs a closer look.</p></div>
+      <div class="poll-status"><span class="pulse" aria-hidden="true"></span><span>Auto-refresh every 5 seconds</span></div>
+    </section>
+
+    <section class="summary-grid" aria-label="Team summary">
+      <article class="metric"><div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="m7 12 3 3 7-7"/></svg>Containers running</div><div class="metric-value" id="running-count">6<span style="color:#98a2b3;font-weight:500">/7</span></div><div class="metric-detail">1 role needs attention</div></article>
+      <article class="metric"><div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg>Agents working</div><div class="metric-value" id="working-count">2</div><div class="metric-detail">Active assignments now</div></article>
+      <article class="metric is-warning"><div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M7 6v12m10-12v12M5 18h14"/><path d="M9 10h6"/></svg>Pending work</div><div class="metric-value" id="pending-count">8</div><div class="metric-detail">Ready to be picked up</div></article>
+      <article class="metric is-danger"><div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>Blocked work</div><div class="metric-value" id="blocked-count">1</div><div class="metric-detail">Needs investigation</div></article>
+      <article class="metric is-warning"><div class="metric-label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v6m0 8v6M4.9 4.9l4.2 4.2m5.8 5.8 4.2 4.2M2 12h6m8 0h6M4.9 19.1l4.2-4.2m5.8-5.8 4.2-4.2"/></svg>Unavailable roles</div><div class="metric-value" id="unavailable-count">1</div><div class="metric-detail">Queue status cannot be read</div></article>
+    </section>
+
+    <section aria-labelledby="roles-title">
+      <div class="section-heading">
+        <div><h2 id="roles-title">Agent roles</h2><p id="roles-description">Docker condition and queue state are intentionally shown separately.</p></div>
+        <div class="filter-group" aria-label="Filter roles" role="group">
+          <button class="filter-button" type="button" aria-pressed="true" data-filter="all">All <span aria-hidden="true">7</span></button>
+          <button class="filter-button" type="button" aria-pressed="false" data-filter="attention">Attention <span aria-hidden="true">2</span></button>
+          <button class="filter-button" type="button" aria-pressed="false" data-filter="working">Working <span aria-hidden="true">2</span></button>
+          <button class="filter-button" type="button" aria-pressed="false" data-filter="idle">Idle <span aria-hidden="true">2</span></button>
+        </div>
+      </div>
+      <div class="roles" id="roles"></div>
+    </section>
+    <p id="live-status" aria-live="polite"></p>
+  </main>
+
+  <script>
+    const icon = {
+      layers: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3 8 4.5-8 4.5-8-4.5L12 3Z"/><path d="m4 12 8 4.5 8-4.5M4 16.5l8 4.5 8-4.5"/></svg>',
+      task: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="m8 8 1.5 1.5L12 7m2 2h2M8 14l1.5 1.5L12 13m2 2h2"/></svg>',
+      code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m8 9-3 3 3 3m8-6 3 3-3 3M14 6l-4 12"/></svg>',
+      shield: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 3 5 6v5c0 4.7 3 8.5 7 10 4-1.5 7-5.3 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/></svg>',
+      rocket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M14 4c2.4-2 5.2-2 6-2 .1.9.1 3.6-2 6l-4 4-4-4 4-4Z"/><path d="M10 8 6 9l-3 4 5 1m5 0 1 5 4-3 1-4M8 16l-3 3M12 12h.01"/></svg>',
+      pulse: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg>',
+      spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 3-1.6 5.4L5 10l5.4 1.6L12 17l1.6-5.4L19 10l-5.4-1.6L12 3Z"/><path d="m19 16-.7 2.3L16 19l2.3.7L19 22l.7-2.3L22 19l-2.3-.7L19 16Z"/></svg>'
+    };
+
+    const roles = [
+      { role: 'Project Manager', subtitle: 'hermes-project-manager', icon: 'layers', docker: ['RUNNING', 'success'], agent: ['WORKING', 'success'], active: 'Define dashboard MVP acceptance criteria', queue: [0, 2, 0, 0], items: [
+        { title: 'Define dashboard MVP acceptance criteria', state: 'ACTIVE', meta: 'Run 1 · started 3 min ago', time: 'In progress', kind: 'success' },
+        { title: 'Consolidate release risks for iteration 12', state: 'PENDING', meta: 'Issue #184 · ready', time: 'Queued', kind: 'neutral' },
+        { title: 'Refine delivery milestones from stakeholder notes', state: 'PENDING', meta: 'Issue #188 · ready', time: 'Queued', kind: 'neutral' }
+      ] },
+      { role: 'Planner', subtitle: 'hermes-planner', icon: 'task', docker: ['RUNNING', 'success'], agent: ['BLOCKED', 'danger'], block: 'Awaiting architecture decision on agent status schema.', queue: [0, 1, 0, 1], items: [
+        { title: 'Select status schema for role-local endpoint', state: 'BLOCKED', meta: 'Issue #191 · external decision required', time: 'Blocked', kind: 'danger' },
+        { title: 'Draft queue visibility implementation plan', state: 'PENDING', meta: 'Issue #192 · ready', time: 'Queued', kind: 'neutral' }
+      ] },
+      { role: 'Builder', subtitle: 'hermes-builder', icon: 'code', docker: ['RUNNING', 'success'], agent: ['WORKING', 'success'], active: 'Implement read-only role status endpoint', queue: [1, 0, 1, 0], items: [
+        { title: 'Implement read-only role status endpoint', state: 'ACTIVE', meta: 'Run 2 · started 8 min ago', time: 'In progress', kind: 'success' },
+        { title: 'Add Docker labels to role services', state: 'PENDING', meta: 'Issue #193 · ready', time: 'Queued', kind: 'neutral' }
+      ] },
+      { role: 'Reviewer', subtitle: 'hermes-reviewer', icon: 'shield', docker: ['RUNNING', 'success'], agent: ['IDLE', 'neutral'], idle: true, queue: [0, 0, 0, 0], items: [] },
+      { role: 'Release', subtitle: 'hermes-release', icon: 'rocket', docker: ['RUNNING', 'success'], agent: ['UNAVAILABLE', 'warning'], unavailable: 'status endpoint timeout after 2 seconds', queue: [0, 0, 0, 0], items: [] },
+      { role: 'Incident', subtitle: 'hermes-incident', icon: 'pulse', docker: ['STOPPED', 'danger'], agent: ['STOPPED', 'danger'], stopped: true, queue: [0, 0, 0, 0], items: [] },
+      { role: 'Learning', subtitle: 'hermes-learning', icon: 'spark', docker: ['RUNNING', 'success'], agent: ['WAITING', 'warning'], waiting: 'Retry scheduled at 10:15', queue: [0, 0, 1, 0], items: [
+        { title: 'Review recurring test failures for improvement proposal', state: 'DELAYED', meta: 'Issue #180 · retry 10:15', time: 'in 21 min', kind: 'warning' }
+      ] }
+    ];
+
+    const stateIcon = {
+      success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 4 4L19 6"/></svg>',
+      warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+      danger: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4m0 4h.01"/><path d="M10.3 3.9 2.8 17a2 2 0 0 0 1.7 3h15a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>',
+      neutral: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8"/></svg>'
+    };
+    const mockIssue = 'https://github.com/hermeteam/demo/issues/';
+
+    function badge(label, kind) { return `<span class="badge ${kind}">${stateIcon[kind]}${label}</span>`; }
+    function card(role, i) {
+      const [active, pending, delayed, blocked] = role.queue;
+      const cardClass = role.agent[0] === 'BLOCKED' || role.docker[0] === 'STOPPED' ? 'is-blocked' : role.agent[0] === 'UNAVAILABLE' ? 'is-unavailable' : '';
+      let work;
+      if (role.active) work = `<div class="work"><div class="work-label"><span><i class="work-dot"></i>Active work</span><span>Run ${i + 1}</span></div><a href="${mockIssue}${180 + i}" target="_blank" rel="noopener noreferrer">${role.active}</a></div>`;
+      else if (role.block) work = `<div class="work blocked"><div class="work-label"><span><i class="work-dot"></i>Blocked work</span></div><p>${role.block}</p></div>`;
+      else if (role.unavailable) work = `<div class="work unavailable"><div class="work-label"><span><i class="work-dot"></i>Queue status unavailable</span></div><p>${role.unavailable}</p></div>`;
+      else if (role.stopped) work = `<div class="work blocked"><div class="work-label"><span><i class="work-dot"></i>Container stopped</span></div><p>Start the role container to read its queue.</p></div>`;
+      else if (role.waiting) work = `<div class="work"><div class="work-label"><span><i class="work-dot"></i>Delayed retry</span></div><p style="margin:6px 0 0;color:#667085;font-size:13px">${role.waiting}</p></div>`;
+      else work = `<div class="work empty"><div class="work-label"><span><i class="work-dot" style="background:#98a2b3"></i>No current work</span></div><p>Healthy agent, empty queue.</p></div>`;
+      const items = role.items.length ? role.items.map((item, n) => `<div class="queue-row"><div><div class="queue-row-title">${badge(item.state, item.kind)}<a href="${mockIssue}${180 + i + n}" target="_blank" rel="noopener noreferrer">${item.title}</a></div><div class="queue-row-meta">${item.meta}</div></div><div class="queue-row-side"><time>${item.time}</time></div></div>`).join('') : `<p class="empty-queue">No current queue items.</p>`;
+      return `<article class="role-card ${cardClass}" data-state="${role.agent[0].toLowerCase()} ${role.docker[0].toLowerCase()}" aria-labelledby="role-${i}"><div class="role-main"><div class="role-top"><div class="role-heading"><span class="role-icon">${icon[role.icon]}</span><div><h3 class="role-name" id="role-${i}">${role.role}</h3><p class="role-subtitle">${role.subtitle}</p></div></div><div class="badges">${badge(`Docker · ${role.docker[0]}`, role.docker[1])}${badge(`Agent · ${role.agent[0]}`, role.agent[1])}</div></div>${work}<div class="queue-summary" aria-label="${role.role} queue counts"><div class="queue-stat"><span>Active</span><strong>${active}</strong></div><div class="queue-stat"><span>Pending</span><strong class="${pending ? 'warning' : ''}">${pending}</strong></div><div class="queue-stat"><span>Delayed</span><strong class="${delayed ? 'warning' : ''}">${delayed}</strong></div><div class="queue-stat"><span>Blocked</span><strong class="${blocked ? 'danger' : ''}">${blocked}</strong></div></div></div><details><summary><span>View current queue</span><span class="summary-right">${role.items.length} item${role.items.length === 1 ? '' : 's'} <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></summary><div class="queue-list">${items}</div></details></article>`;
+    }
+
+    const rolesEl = document.getElementById('roles');
+    rolesEl.innerHTML = roles.map(card).join('');
+
+    document.querySelectorAll('.filter-button').forEach(button => {
+      button.addEventListener('click', () => {
+        const filter = button.dataset.filter;
+        document.querySelectorAll('.filter-button').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        document.querySelectorAll('.role-card').forEach(card => {
+          const state = card.dataset.state;
+          const visible = filter === 'all' || (filter === 'attention' && /(blocked|unavailable|stopped)/.test(state)) || (filter === 'working' && state.includes('working')) || (filter === 'idle' && state.includes('idle'));
+          card.hidden = !visible;
+        });
+        const label = button.textContent.trim().replace(/\s+\d+$/, '');
+        document.getElementById('live-status').textContent = `${label} role filter applied.`;
+      });
+    });
+
+    const refresh = document.getElementById('refresh-button');
+    refresh.addEventListener('click', () => {
+      refresh.classList.add('is-loading'); refresh.disabled = true;
+      setTimeout(() => {
+        const now = new Date();
+        document.getElementById('updated-at').textContent = `Updated ${now.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}`;
+        refresh.classList.remove('is-loading'); refresh.disabled = false;
+        document.getElementById('live-status').textContent = 'Dashboard data refreshed.';
+      }, 650);
+    });
+  </script>
+</body>
+</html>
