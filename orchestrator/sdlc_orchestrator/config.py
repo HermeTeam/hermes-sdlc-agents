@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import ipaddress
 import os
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,6 +11,25 @@ from .statuses import DEFAULT_ROLE_ASSIGNEES, DEFAULT_ROLE_LABELS, TERMINAL_LABE
 
 class ConfigError(ValueError):
     """Raised when orchestrator configuration is unsafe or incomplete."""
+
+
+@dataclass(frozen=True)
+class StatusServerConfig:
+    """Network configuration for the role-local read-only status server.
+
+    ``0.0.0.0`` is intentionally the default because the endpoint is reachable
+    only on the role container's private network; Compose does not publish this
+    port to the host.  Host network placement remains a later topology concern.
+    """
+
+    bind: str = "0.0.0.0"
+    port: int = 8650
+
+    @classmethod
+    def from_env(cls) -> "StatusServerConfig":
+        bind = os.getenv("ORCHESTRATOR_STATUS_BIND", "0.0.0.0").strip()
+        _validate_status_bind(bind)
+        return cls(bind=bind, port=_int_env("ORCHESTRATOR_STATUS_PORT", 8650, 1))
 
 
 def _bool(value: str | None, default: bool = False) -> bool:
@@ -149,3 +169,12 @@ def _validate_data_path(path: Path, name: str) -> None:
         path.resolve().relative_to(Path("/opt/data/sdlc-orchestrator").resolve())
     except ValueError as exc:
         raise ConfigError(f"{name} must be under /opt/data/sdlc-orchestrator") from exc
+
+
+def _validate_status_bind(bind: str) -> None:
+    """Accept only a literal IPv4/IPv6 bind address, never a hostname."""
+
+    try:
+        ipaddress.ip_address(bind)
+    except ValueError as exc:
+        raise ConfigError("ORCHESTRATOR_STATUS_BIND must be an IP address") from exc
