@@ -9,6 +9,10 @@ runtime/
 __pycache__/
 *.py[cod]
 
+# Dashboard package local install and TypeScript build state.
+dashboard/node_modules/
+dashboard/*.tsbuildinfo
+
 # Hermes runtime state must never enter a distribution.
 auth.json
 state.db*
