@@ -156,14 +156,35 @@ run_startup_orchestrator_once() {
   fi
 }
 
+dashboard_enabled() {
+  case "${HERMES_DASHBOARD:-}" in
+    1|true|TRUE|True|yes|YES|Yes) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+start_dashboard() {
+  if ! dashboard_enabled; then
+    return 0
+  fi
+
+  dashboard_host="${HERMES_DASHBOARD_HOST:-0.0.0.0}"
+  dashboard_port="${HERMES_DASHBOARD_PORT:-9119}"
+  hermes dashboard --host "${dashboard_host}" --port "${dashboard_port}" --no-open &
+  dashboard_pid="$!"
+}
+
 stop_children() {
+  if [ -n "${dashboard_pid:-}" ]; then
+    kill -TERM "${dashboard_pid}" 2>/dev/null || true
+  fi
   if [ -n "${hermes_pid:-}" ]; then
     kill -TERM "${hermes_pid}" 2>/dev/null || true
   fi
-  if [ -n "${startup_run_pid}" ]; then
+  if [ -n "${startup_run_pid:-}" ]; then
     kill -TERM "${startup_run_pid}" 2>/dev/null || true
   fi
-  if [ -n "${cron_pid}" ]; then
+  if [ -n "${cron_pid:-}" ]; then
     kill -TERM "${cron_pid}" 2>/dev/null || true
   fi
 }
@@ -171,6 +192,7 @@ stop_children() {
 trap 'stop_children; wait; exit 143' INT TERM
 
 start_scheduler
+start_dashboard
 hermes gateway run &
 hermes_pid="$!"
 run_startup_orchestrator_once &
@@ -179,12 +201,6 @@ set +e
 wait "${hermes_pid}"
 status="$?"
 set -e
-if [ -n "${startup_run_pid}" ]; then
-  kill -TERM "${startup_run_pid}" 2>/dev/null || true
-  wait "${startup_run_pid}" 2>/dev/null || true
-fi
-if [ -n "${cron_pid}" ]; then
-  kill -TERM "${cron_pid}" 2>/dev/null || true
-  wait "${cron_pid}" 2>/dev/null || true
-fi
+stop_children
+wait 2>/dev/null || true
 exit "${status}"

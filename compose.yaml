@@ -2,7 +2,12 @@ name: hermes-sdlc
 
 x-hermes-environment: &hermes-environment
   HERMES_MANAGED_DIR: /etc/hermes
-  HERMES_DASHBOARD: "0"
+  HERMES_DASHBOARD: "${HERMES_DASHBOARD:-1}"
+  HERMES_DASHBOARD_HOST: "0.0.0.0"
+  HERMES_DASHBOARD_PORT: "9119"
+  HERMES_DASHBOARD_BASIC_AUTH_USERNAME: "${HERMES_DASHBOARD_BASIC_AUTH_USERNAME:-admin}"
+  HERMES_DASHBOARD_BASIC_AUTH_PASSWORD: "${HERMES_DASHBOARD_BASIC_AUTH_PASSWORD:?Set HERMES_DASHBOARD_BASIC_AUTH_PASSWORD in .env}"
+  HERMES_DASHBOARD_BASIC_AUTH_SECRET: "${HERMES_DASHBOARD_BASIC_AUTH_SECRET:-}"
   API_SERVER_ENABLED: "true"
   API_SERVER_HOST: "0.0.0.0"
   API_SERVER_PORT: "8642"
@@ -127,6 +132,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${PLANNER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
+      - "127.0.0.1:${PLANNER_DASHBOARD_PORT:-9119}:9119"
     volumes:
       - planner-data:/opt/data
       - ./workspace/planner:/opt/data/workspace
@@ -158,6 +164,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${PROJECT_MANAGER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${PROJECT_MANAGER_API_PORT:-18648}:8642"
+      - "127.0.0.1:${PROJECT_MANAGER_DASHBOARD_PORT:-9120}:9119"
     volumes:
       - project-manager-data:/opt/data
       - ./workspace/project-manager:/opt/data/workspace
@@ -190,6 +197,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${BUILDER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
+      - "127.0.0.1:${BUILDER_DASHBOARD_PORT:-9121}:9119"
     volumes:
       - builder-data:/opt/data
       - ./workspace/builder:/opt/data/workspace
@@ -221,6 +229,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${REVIEWER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
+      - "127.0.0.1:${REVIEWER_DASHBOARD_PORT:-9122}:9119"
     volumes:
       - reviewer-data:/opt/data
       - ./workspace/reviewer:/opt/data/workspace
@@ -252,6 +261,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${RELEASE_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
+      - "127.0.0.1:${RELEASE_DASHBOARD_PORT:-9123}:9119"
     volumes:
       - release-data:/opt/data
       - ./workspace/release:/opt/data/workspace
@@ -283,6 +293,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${INCIDENT_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
+      - "127.0.0.1:${INCIDENT_DASHBOARD_PORT:-9124}:9119"
     volumes:
       - incident-data:/opt/data
       - ./workspace/incident:/opt/data/workspace
@@ -314,6 +325,7 @@ services:
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${LEARNING_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
     ports:
       - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
+      - "127.0.0.1:${LEARNING_DASHBOARD_PORT:-9125}:9119"
     volumes:
       - learning-data:/opt/data
       - ./workspace/learning:/opt/data/workspace
