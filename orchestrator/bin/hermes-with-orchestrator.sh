@@ -87,6 +87,8 @@ for key in \
   GITHUB_REPOSITORY_FULL_NAME \
   GITLAB_API_BASE_URL \
   GITLAB_PROJECT \
+  ORCHESTRATOR_STATUS_BIND \
+  ORCHESTRATOR_STATUS_PORT \
   PYTHONPATH
 do
   write_env_var "${key}"
@@ -98,6 +100,8 @@ printf '%s %s\n' "${SCHEDULE}" "${RUN_ONCE}" >"${CRONTAB_FILE}"
 
 cron_pid=""
 startup_run_pid=""
+status_server_pid=""
+cleanup_done="false"
 start_scheduler() {
   if command -v supercronic >/dev/null 2>&1; then
     supercronic -passthrough-logs "${CRONTAB_FILE}" >>"${LOG_FILE}" 2>&1 &
@@ -174,23 +178,54 @@ start_dashboard() {
   dashboard_pid="$!"
 }
 
-stop_children() {
-  if [ -n "${dashboard_pid:-}" ]; then
-    kill -TERM "${dashboard_pid}" 2>/dev/null || true
-  fi
-  if [ -n "${hermes_pid:-}" ]; then
-    kill -TERM "${hermes_pid}" 2>/dev/null || true
-  fi
-  if [ -n "${startup_run_pid:-}" ]; then
-    kill -TERM "${startup_run_pid}" 2>/dev/null || true
-  fi
-  if [ -n "${cron_pid:-}" ]; then
-    kill -TERM "${cron_pid}" 2>/dev/null || true
+start_status_server() {
+  python3 -m sdlc_orchestrator.status_server >>"${LOG_FILE}" 2>&1 &
+  status_server_pid="$!"
+
+  # Config and bind failures make the child exit immediately.  Treat a child
+  # that cannot survive this fixed grace period as a role startup failure so
+  # the gateway is never presented as healthy without its MVP status endpoint.
+  sleep 1
+  if ! kill -0 "${status_server_pid}" 2>/dev/null; then
+    set +e
+    wait "${status_server_pid}"
+    status="$?"
+    set -e
+    status_server_pid=""
+    log_message "{\"status\":\"ERROR\",\"reason\":\"status server failed during startup\",\"exit_code\":${status}}"
+    return "${status}"
   fi
 }
 
-trap 'stop_children; wait; exit 143' INT TERM
+stop_child() {
+  child_pid="$1"
+  if [ -n "${child_pid}" ]; then
+    kill -TERM "${child_pid}" 2>/dev/null || true
+    wait "${child_pid}" 2>/dev/null || true
+  fi
+}
 
+stop_children() {
+  if [ "${cleanup_done}" = "true" ]; then
+    return 0
+  fi
+  cleanup_done="true"
+  stop_child "${status_server_pid:-}"
+  status_server_pid=""
+  stop_child "${dashboard_pid:-}"
+  dashboard_pid=""
+  stop_child "${hermes_pid:-}"
+  hermes_pid=""
+  stop_child "${startup_run_pid:-}"
+  startup_run_pid=""
+  stop_child "${cron_pid:-}"
+  cron_pid=""
+}
+
+trap 'stop_children; exit 143' INT TERM
+trap 'stop_children' EXIT
+
+start_status_server
 start_scheduler
 start_dashboard
 hermes gateway run &
@@ -201,6 +236,4 @@ set +e
 wait "${hermes_pid}"
 status="$?"
 set -e
-stop_children
-wait 2>/dev/null || true
 exit "${status}"
