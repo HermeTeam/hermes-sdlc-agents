@@ -1,0 +1,424 @@
+@layer reset, tokens, base, components;
+@layer reset {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+  body,
+  h1,
+  h2,
+  h3,
+  p {
+    margin: 0;
+  }
+  button,
+  a {
+    font: inherit;
+  }
+}
+@layer tokens {
+  :root {
+    --canvas: #f4f6fb;
+    --surface: #fff;
+    --ink: #172033;
+    --muted: #667085;
+    --border: #e5e9f1;
+    --brand: #4f46e5;
+    --success: #15803d;
+    --warning: #a16207;
+    --danger: #b42318;
+    --radius: 16px;
+    --shadow: 0 8px 20px rgba(16, 24, 40, 0.055);
+  }
+}
+@layer base {
+  body {
+    background: var(--canvas);
+    color: var(--ink);
+    font:
+      14px/1.45 system-ui,
+      -apple-system,
+      "Segoe UI",
+      sans-serif;
+  }
+  a {
+    color: inherit;
+  }
+  button {
+    min-height: 44px;
+    padding: 0 16px;
+    border: 1px solid #d8deea;
+    border-radius: 9px;
+    background: #fff;
+    color: #344054;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: wait;
+    opacity: 0.65;
+  }
+  :focus-visible {
+    outline: 3px solid rgba(79, 70, 229, 0.4);
+    outline-offset: 3px;
+  }
+}
+@layer components {
+  .shell {
+    max-width: 1480px;
+    margin: auto;
+    padding: 28px 32px 48px;
+  }
+  .topbar,
+  .actions,
+  .hero,
+  .role-top,
+  .badges,
+  summary {
+    display: flex;
+    align-items: center;
+  }
+  .topbar,
+  .hero {
+    justify-content: space-between;
+    gap: 24px;
+    margin-bottom: 28px;
+  }
+  .actions {
+    gap: 14px;
+    text-align: right;
+  }
+  .actions p {
+    font-size: 12px;
+  }
+  .muted,
+  .hero p {
+    color: var(--muted);
+  }
+  h1 {
+    font-size: 20px;
+    letter-spacing: -0.025em;
+  }
+  h2 {
+    font-size: clamp(24px, 3vw, 32px);
+    letter-spacing: -0.035em;
+  }
+  .hero {
+    align-items: end;
+  }
+  .eyebrow {
+    color: var(--brand) !important;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .poll {
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 7px 10px;
+    font-size: 12px;
+    color: var(--success) !important;
+  }
+  .notice {
+    margin-bottom: 18px;
+    padding: 12px 14px;
+    border: 1px solid #fedf89;
+    border-radius: 12px;
+    background: #fff9e9;
+    color: #854d0e;
+  }
+  .notice.stale {
+    border-color: #fecdca;
+    background: #fff1f0;
+    color: #7a271a;
+  }
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+  .metric,
+  .role-card {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+  }
+  .metric {
+    min-height: 120px;
+    padding: 17px;
+  }
+  .metric span {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .metric strong {
+    display: block;
+    margin-top: 13px;
+    font-size: 28px;
+    letter-spacing: -0.04em;
+  }
+  .roles {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 12px;
+  }
+  .role-card.danger {
+    border-color: #f5c7c3;
+  }
+  .role-card.warning {
+    border-color: #fedf89;
+  }
+  .role-main {
+    padding: 18px;
+  }
+  .role-top {
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .role-top h3 {
+    font-size: 16px;
+  }
+  .badges {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-height: 25px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+  .badge.success {
+    background: #edfdf3;
+    color: var(--success);
+  }
+  .badge.warning {
+    background: #fff9e9;
+    color: var(--warning);
+  }
+  .badge.danger {
+    background: #fff1f0;
+    color: var(--danger);
+  }
+  .badge.neutral {
+    background: #f2f4f7;
+    color: #475467;
+  }
+  .work {
+    margin-top: 18px;
+    padding: 12px 13px;
+    border: 1px solid #edf0f7;
+    border-radius: 10px;
+    background: #fafbff;
+  }
+  .work strong {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .work a {
+    display: block;
+    margin-top: 5px;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .work a:hover,
+  .queue-title a:hover {
+    text-decoration: underline;
+    color: var(--brand);
+  }
+  .work p {
+    margin-top: 6px;
+    color: var(--muted);
+  }
+  .work.attention {
+    background: #fff1f0;
+    border-color: #fecdca;
+  }
+  .queue-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    margin-top: 15px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+  .queue-summary div {
+    padding: 9px 10px;
+    border-right: 1px solid var(--border);
+  }
+  .queue-summary div:last-child {
+    border: 0;
+  }
+  .queue-summary dt {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+  .queue-summary dd {
+    margin: 4px 0 0;
+    font-size: 16px;
+    font-weight: 750;
+  }
+  details {
+    border-top: 1px solid var(--border);
+  }
+  summary {
+    justify-content: space-between;
+    min-height: 48px;
+    padding: 0 18px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .queue-list {
+    list-style: none;
+    padding: 0 18px 17px;
+  }
+  .queue-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 14px;
+    padding: 12px 0;
+    border-top: 1px solid #edf0f5;
+  }
+  .queue-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  .queue-title a {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 700;
+    text-decoration: none;
+  }
+  .queue-row p,
+  .queue-row > span,
+  .empty-queue {
+    margin-top: 4px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .empty-queue {
+    padding: 12px 0;
+  }
+  .skeleton {
+    padding: 48px;
+    border-radius: var(--radius);
+    background: linear-gradient(90deg, #eef1f7, #fff, #eef1f7);
+    color: var(--muted);
+  }
+  .full-error {
+    max-width: 560px;
+    margin: 10vh auto;
+    text-align: center;
+  }
+  .sr-only,
+  .skip {
+    position: absolute;
+    clip: rect(0, 0, 0, 0);
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+  .skip:focus {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1;
+    width: auto;
+    height: auto;
+    clip: auto;
+    padding: 10px;
+    background: white;
+  }
+  @media (max-width: 1100px) {
+    .summary-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  @media (max-width: 800px) {
+    .shell {
+      padding: 20px 16px 36px;
+    }
+    .topbar,
+    .hero {
+      align-items: flex-start;
+      flex-direction: column;
+    }
+    .actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .actions p {
+      text-align: left;
+    }
+    .roles {
+      grid-template-columns: 1fr;
+    }
+    .summary-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .metric:last-child {
+      grid-column: span 2;
+    }
+  }
+  @media (max-width: 430px) {
+    .actions {
+      align-items: stretch;
+      flex-direction: column;
+    }
+    .actions button {
+      width: 100%;
+    }
+    .role-top {
+      flex-direction: column;
+    }
+    .badges {
+      justify-content: flex-start;
+    }
+    .queue-summary {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .queue-summary div:nth-child(2) {
+      border-right: 0;
+    }
+    .queue-summary div:nth-child(n + 3) {
+      border-top: 1px solid var(--border);
+    }
+    .queue-row {
+      grid-template-columns: 1fr;
+    }
+    .queue-row > span {
+      text-align: left;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+}
