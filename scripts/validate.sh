@@ -367,9 +367,58 @@ for resource in kustomization.get("resources", []):
         errors.append(f"kustomization references missing resource: {resource}")
 
 compose = yaml.safe_load((root / "compose.yaml").read_text(encoding="utf-8"))
-expected_services = expected_roles | {"skills-superset-sync"}
+proxy_service_name = "docker-socket-proxy"
+proxy_image = "tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2"
+socket_mount = "/var/run/docker.sock:/var/run/docker.sock:ro"
+proxy_deny_env = {
+    "ALLOW_RESTARTS", "ALLOW_START", "ALLOW_STOP", "AUTH", "BUILD", "COMMIT", "CONFIGS",
+    "DISTRIBUTION", "EVENTS", "EXEC", "GRPC", "IMAGES", "INFO", "NETWORKS", "NODES", "PING",
+    "PLUGINS", "POST", "SECRETS", "SERVICES", "SESSION", "SWARM", "SYSTEM", "TASKS", "VERSION", "VOLUMES",
+}
+expected_services = expected_roles | {"skills-superset-sync", proxy_service_name}
 if set(compose.get("services", {})) != expected_services:
     errors.append("compose.yaml does not define exactly the expected services")
+proxy = compose.get("services", {}).get(proxy_service_name, {})
+if proxy.get("image") != proxy_image:
+    errors.append("docker-socket-proxy: image must be the approved immutable multi-arch digest")
+if proxy.get("container_name") != "hermes-docker-socket-proxy":
+    errors.append("docker-socket-proxy: container_name mismatch")
+if proxy.get("ports"):
+    errors.append("docker-socket-proxy: host ports must not be published")
+if proxy.get("networks") != ["hermes-control"]:
+    errors.append("docker-socket-proxy: must use only the private hermes-control network")
+if proxy.get("volumes") != [socket_mount]:
+    errors.append("docker-socket-proxy: must have exactly one read-only Docker socket mount")
+if proxy.get("read_only") is not True:
+    errors.append("docker-socket-proxy: root filesystem must be read-only")
+if proxy.get("tmpfs") != [
+    "/tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777",
+    "/run:rw,noexec,nosuid,nodev,size=1m,mode=755",
+]:
+    errors.append("docker-socket-proxy: required hardened tmpfs is missing")
+if proxy.get("security_opt") != ["no-new-privileges:true"] or proxy.get("cap_drop") != ["ALL"]:
+    errors.append("docker-socket-proxy: no-new-privileges and all capabilities dropped are required")
+if proxy.get("pids_limit") != 64 or str(proxy.get("cpus")) != "0.25" or str(proxy.get("mem_limit")) != "64m":
+    errors.append("docker-socket-proxy: required resource and PID limits are missing")
+proxy_env = proxy.get("environment", {})
+if proxy_env.get("CONTAINERS") != "1":
+    errors.append("docker-socket-proxy: CONTAINERS must be the only enabled API section")
+if proxy_env.get("DISABLE_IPV6") != "1":
+    errors.append("docker-socket-proxy: IPv6 must be disabled for the hardened private listener")
+for name in sorted(proxy_deny_env):
+    if proxy_env.get(name) != "0":
+        errors.append(f"docker-socket-proxy: {name} must be explicitly disabled")
+if set(proxy_env) != proxy_deny_env | {"CONTAINERS", "DISABLE_IPV6"}:
+    errors.append("docker-socket-proxy: environment must contain only the documented minimal allowlist and explicit denials")
+if proxy.get("entrypoint") != ["/bin/sh", "-ec"] or not any("haproxy" in str(item) for item in proxy.get("command", [])):
+    errors.append("docker-socket-proxy: must generate its listener config in tmpfs before starting HAProxy")
+all_socket_mounts = []
+for name, service in compose.get("services", {}).items():
+    for volume in service.get("volumes", []):
+        if "/var/run/docker.sock" in str(volume):
+            all_socket_mounts.append((name, volume))
+if all_socket_mounts != [(proxy_service_name, socket_mount)]:
+    errors.append("compose: Docker socket must be mounted read-only exactly once and only by docker-socket-proxy")
 role_services_in_order = [name for name in compose.get("services", {}) if name in expected_roles]
 if role_services_in_order != list(canonical_role_labels):
     errors.append(f"compose role service order must be canonical: {list(canonical_role_labels)}")
@@ -380,6 +429,10 @@ agent_labeled_services = [
 if agent_labeled_services != list(canonical_role_labels):
     errors.append("compose must label exactly the seven canonical role services as hermeteam agents")
 for role, service in compose.get("services", {}).items():
+    if role == proxy_service_name:
+        if {"hermeteam.agent", "hermeteam.role"} & set(service.get("labels", {})):
+            errors.append("docker-socket-proxy: must not carry hermeteam role labels")
+        continue
     if role == "skills-superset-sync":
         if "hermeteam.agent" in service.get("labels", {}) or "hermeteam.role" in service.get("labels", {}):
             errors.append("skills-superset-sync: helper service must not carry hermeteam role labels")
@@ -521,6 +574,31 @@ canonical_roles = ["planner", "project-manager", "builder", "reviewer", "release
 expected = {f"hermes-{role}": role for role in canonical_roles}
 config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 services = config.get("services", {})
+proxy_name = "docker-socket-proxy"
+proxy_image = "tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2"
+proxy = services.get(proxy_name, {})
+if proxy.get("image") != proxy_image:
+    errors.append("rendered docker-socket-proxy image is not the approved digest")
+if proxy.get("ports"):
+    errors.append("rendered docker-socket-proxy publishes a host port")
+if set(proxy.get("networks", {})) != {"hermes-control"}:
+    errors.append("rendered docker-socket-proxy is not isolated to hermes-control")
+socket_mounts = [
+    (name, mount)
+    for name, service in services.items()
+    for mount in service.get("volumes", [])
+    if str(mount.get("source")) == "/var/run/docker.sock" or str(mount.get("target")) == "/var/run/docker.sock"
+]
+if len(socket_mounts) != 1:
+    errors.append(f"rendered Compose must contain exactly one Docker socket mount, found {len(socket_mounts)}")
+elif socket_mounts[0][0] != proxy_name or socket_mounts[0][1].get("read_only") is not True:
+    errors.append("rendered Docker socket mount must be read-only and belong only to docker-socket-proxy")
+proxy_env = proxy.get("environment", {})
+if proxy_env.get("CONTAINERS") != "1" or proxy_env.get("POST") != "0":
+    errors.append("rendered docker-socket-proxy must allow CONTAINERS only and deny POST")
+for permission in ("INFO", "EVENTS", "IMAGES", "VOLUMES", "NETWORKS", "EXEC", "BUILD", "ALLOW_START", "ALLOW_STOP", "ALLOW_RESTARTS"):
+    if proxy_env.get(permission) != "0":
+        errors.append(f"rendered docker-socket-proxy leaves {permission} enabled")
 labeled = {
     name: service.get("labels", {}).get("hermeteam.role")
     for name, service in services.items()
