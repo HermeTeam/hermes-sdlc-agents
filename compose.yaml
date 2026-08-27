@@ -33,6 +33,8 @@ x-hermes-environment: &hermes-environment
   ORCHESTRATOR_DB_PATH: /opt/data/sdlc-orchestrator/orchestrator.sqlite
   ORCHESTRATOR_LOCK_PATH: /opt/data/sdlc-orchestrator/run_once.lock
   ORCHESTRATOR_HERMES_URL: http://127.0.0.1:8642
+  ORCHESTRATOR_STATUS_BIND: "${ORCHESTRATOR_STATUS_BIND:-0.0.0.0}"
+  ORCHESTRATOR_STATUS_PORT: "${ORCHESTRATOR_STATUS_PORT:-8650}"
   ORCHESTRATOR_MAX_STARTS_PER_TICK: "${ORCHESTRATOR_MAX_STARTS_PER_TICK:-1}"
   ORCHESTRATOR_RUN_TIMEOUT_SECONDS: "${ORCHESTRATOR_RUN_TIMEOUT_SECONDS:-5400}"
   ORCHESTRATOR_MAX_ATTEMPTS_PER_ASSIGNMENT: "${ORCHESTRATOR_MAX_ATTEMPTS_PER_ASSIGNMENT:-3}"
@@ -112,6 +114,9 @@ services:
   hermes-planner:
     <<: *hermes-common
     container_name: hermes-planner
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: planner
     env_file:
       - path: ./secrets/hermes-planner.env
         required: false
@@ -144,6 +149,9 @@ services:
   hermes-project-manager:
     <<: *hermes-common
     container_name: hermes-project-manager
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: project-manager
     env_file:
       - path: ./secrets/hermes-project-manager.env
         required: false
@@ -176,6 +184,9 @@ services:
   hermes-builder:
     <<: *hermes-common
     container_name: hermes-builder
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: builder
     env_file:
       - path: ./secrets/hermes-builder.env
         required: false
@@ -209,6 +220,9 @@ services:
   hermes-reviewer:
     <<: *hermes-common
     container_name: hermes-reviewer
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: reviewer
     env_file:
       - path: ./secrets/hermes-reviewer.env
         required: false
@@ -241,6 +255,9 @@ services:
   hermes-release:
     <<: *hermes-common
     container_name: hermes-release
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: release
     env_file:
       - path: ./secrets/hermes-release.env
         required: false
@@ -273,6 +290,9 @@ services:
   hermes-incident:
     <<: *hermes-common
     container_name: hermes-incident
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: incident
     env_file:
       - path: ./secrets/hermes-incident.env
         required: false
@@ -305,6 +325,9 @@ services:
   hermes-learning:
     <<: *hermes-common
     container_name: hermes-learning
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: learning
     env_file:
       - path: ./secrets/hermes-learning.env
         required: false

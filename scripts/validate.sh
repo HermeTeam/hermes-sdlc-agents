@@ -31,6 +31,13 @@ expected_roles = {
     "hermes-planner", "hermes-project-manager", "hermes-builder", "hermes-reviewer",
     "hermes-release", "hermes-incident", "hermes-learning",
 }
+canonical_role_order = [
+    "planner", "project-manager", "builder", "reviewer", "release", "incident", "learning",
+]
+canonical_role_labels = {
+    f"hermes-{role}": role
+    for role in canonical_role_order
+}
 expected_skill = "skills/hermes-agent-self-evolution/SKILL.md"
 expected_external_skill_dirs = ["/etc/hermes/skills", "/opt/hermes-shared-skills/current"]
 broad_provider_tool_markers = ["github_request", "gitlab_request", "graphql", "http_request"]
@@ -71,6 +78,8 @@ required_dotenv_keys = {
     "ORCHESTRATOR_CRON_SCHEDULE",
     "ORCHESTRATOR_MAX_STARTS_PER_TICK",
     "ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
+    "ORCHESTRATOR_STATUS_BIND",
+    "ORCHESTRATOR_STATUS_PORT",
     "ORCHESTRATOR_APPLY_TRANSITIONS",
     "ORCHESTRATOR_TRANSITION_COMMENT_ONLY",
     "GIT_PROVIDER_MCP_URL",
@@ -115,6 +124,8 @@ runtime_optional_dotenv_keys = {
     "ORCHESTRATOR_CRON_SCHEDULE",
     "ORCHESTRATOR_MAX_STARTS_PER_TICK",
     "ORCHESTRATOR_RUN_TIMEOUT_SECONDS",
+    "ORCHESTRATOR_STATUS_BIND",
+    "ORCHESTRATOR_STATUS_PORT",
     "ORCHESTRATOR_APPLY_TRANSITIONS",
     "ORCHESTRATOR_TRANSITION_COMMENT_ONLY",
 }
@@ -158,6 +169,10 @@ if dotenv_values.get("ORCHESTRATOR_APPLY_TRANSITIONS") != "false":
     errors.append(".env.example: ORCHESTRATOR_APPLY_TRANSITIONS must default to false")
 if dotenv_values.get("ORCHESTRATOR_TRANSITION_COMMENT_ONLY") != "true":
     errors.append(".env.example: ORCHESTRATOR_TRANSITION_COMMENT_ONLY must default to true")
+if dotenv_values.get("ORCHESTRATOR_STATUS_BIND") != "0.0.0.0":
+    errors.append(".env.example: ORCHESTRATOR_STATUS_BIND must default to 0.0.0.0")
+if dotenv_values.get("ORCHESTRATOR_STATUS_PORT") != "8650":
+    errors.append(".env.example: ORCHESTRATOR_STATUS_PORT must default to 8650")
 if (root / ".env").is_file():
     runtime_dotenv_values = parse_dotenv(root / ".env")
     missing_runtime_dotenv_keys = sorted((required_dotenv_keys - runtime_optional_dotenv_keys) - set(runtime_dotenv_values))
@@ -355,13 +370,29 @@ compose = yaml.safe_load((root / "compose.yaml").read_text(encoding="utf-8"))
 expected_services = expected_roles | {"skills-superset-sync"}
 if set(compose.get("services", {})) != expected_services:
     errors.append("compose.yaml does not define exactly the expected services")
+role_services_in_order = [name for name in compose.get("services", {}) if name in expected_roles]
+if role_services_in_order != list(canonical_role_labels):
+    errors.append(f"compose role service order must be canonical: {list(canonical_role_labels)}")
+agent_labeled_services = [
+    name for name, service in compose.get("services", {}).items()
+    if service.get("labels", {}).get("hermeteam.agent") == "true"
+]
+if agent_labeled_services != list(canonical_role_labels):
+    errors.append("compose must label exactly the seven canonical role services as hermeteam agents")
 for role, service in compose.get("services", {}).items():
     if role == "skills-superset-sync":
+        if "hermeteam.agent" in service.get("labels", {}) or "hermeteam.role" in service.get("labels", {}):
+            errors.append("skills-superset-sync: helper service must not carry hermeteam role labels")
         if "shared-skills:/shared" not in service.get("volumes", []):
             errors.append("skills-superset-sync: shared-skills volume must be writable at /shared")
         continue
     if service.get("container_name") != role:
         errors.append(f"{role}: container_name mismatch")
+    if service.get("labels") != {
+        "hermeteam.agent": "true",
+        "hermeteam.role": canonical_role_labels[role],
+    }:
+        errors.append(f"{role}: compose labels must identify canonical role {canonical_role_labels[role]}")
     if service.get("entrypoint") != [orchestrator_wrapper]:
         errors.append(f"{role}: compose service must start via orchestrator wrapper")
     if service.get("init") is not True:
@@ -379,6 +410,10 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: compose ORCHESTRATOR_LOCK_PATH must be {orchestrator_lock_path}")
     if service_environment.get("ORCHESTRATOR_HERMES_URL") != "http://127.0.0.1:8642":
         errors.append(f"{role}: compose ORCHESTRATOR_HERMES_URL must be localhost")
+    if service_environment.get("ORCHESTRATOR_STATUS_BIND") != "${ORCHESTRATOR_STATUS_BIND:-0.0.0.0}":
+        errors.append(f"{role}: compose ORCHESTRATOR_STATUS_BIND must inherit the private-network default")
+    if service_environment.get("ORCHESTRATOR_STATUS_PORT") != "${ORCHESTRATOR_STATUS_PORT:-8650}":
+        errors.append(f"{role}: compose ORCHESTRATOR_STATUS_PORT must inherit port 8650 by default")
     if service_environment.get("HERMES_WORKSPACE_DIR") != workspace_dir:
         errors.append(f"{role}: compose HERMES_WORKSPACE_DIR must be {workspace_dir}")
     if service_environment.get("ORCHESTRATOR_APPLY_TRANSITIONS") != "${ORCHESTRATOR_APPLY_TRANSITIONS:-false}":
@@ -431,6 +466,12 @@ for role, service in compose.get("services", {}).items():
         errors.append(f"{role}: shared-skills volume must be mounted read-only")
     if orchestrator_mount not in service.get("volumes", []):
         errors.append(f"{role}: orchestrator code must be mounted read-only in compose")
+    if "hermes-control" not in service.get("networks", []):
+        errors.append(f"{role}: compose service must remain on private hermes-control network")
+    for port in service.get("ports", []):
+        target = port.get("target") if isinstance(port, dict) else str(port).rsplit(":", 1)[-1]
+        if str(target) == "8650":
+            errors.append(f"{role}: status port 8650 must not be published to the host")
     depends_on = service.get("depends_on", {})
     if depends_on.get("skills-superset-sync", {}).get("condition") != "service_completed_successfully":
         errors.append(f"{role}: must wait for skills-superset-sync")
@@ -467,7 +508,45 @@ fi
 if command -v docker >/dev/null 2>&1 \
   && docker compose version >/dev/null 2>&1 \
   && [[ -f "${bundle_root}/.env" ]]; then
-  docker compose --project-directory "${bundle_root}" --env-file "${bundle_root}/.env" config --quiet
+  rendered_config="$(mktemp)"
+  trap 'rm -f "${rendered_config}"' EXIT
+  chmod 600 "${rendered_config}"
+  docker compose --project-directory "${bundle_root}" --env-file "${bundle_root}/.env" config --format json >"${rendered_config}"
+  python3 - "${rendered_config}" <<'PY'
+import json
+from pathlib import Path
+import sys
+
+canonical_roles = ["planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"]
+expected = {f"hermes-{role}": role for role in canonical_roles}
+config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+services = config.get("services", {})
+labeled = {
+    name: service.get("labels", {}).get("hermeteam.role")
+    for name, service in services.items()
+    if service.get("labels", {}).get("hermeteam.agent") == "true"
+}
+errors = []
+if labeled != expected:
+    errors.append(f"rendered agent labels differ from canonical registry: {labeled}")
+for name, role in expected.items():
+    service = services.get(name, {})
+    environment = service.get("environment", {})
+    if environment.get("ORCHESTRATOR_STATUS_BIND") != "0.0.0.0":
+        errors.append(f"{name}: rendered status bind is not 0.0.0.0")
+    if str(environment.get("ORCHESTRATOR_STATUS_PORT")) != "8650":
+        errors.append(f"{name}: rendered status port is not 8650")
+    if "hermes-control" not in service.get("networks", {}):
+        errors.append(f"{name}: rendered service is not on hermes-control")
+    if any(str(port.get("target")) == "8650" for port in service.get("ports", [])):
+        errors.append(f"{name}: rendered status port 8650 is published")
+for name, service in services.items():
+    if name not in expected and ({"hermeteam.agent", "hermeteam.role"} & set(service.get("labels", {}))):
+        errors.append(f"{name}: rendered helper service carries hermeteam role labels")
+if errors:
+    raise SystemExit("Rendered Compose validation failed:\n- " + "\n- ".join(errors))
+print("Rendered Compose role topology is structurally consistent.")
+PY
 else
   echo "Docker Compose or .env is unavailable; skipped docker compose config check."
 fi
