@@ -1,0 +1,16 @@
+# Opt-in local diagnostics only: docker compose -f compose.yaml -f compose.debug.yaml up
+services:
+  hermes-planner:
+    ports: ["127.0.0.1:${PLANNER_API_PORT:-18642}:8642", "127.0.0.1:${PLANNER_DASHBOARD_PORT:-9119}:9119"]
+  hermes-project-manager:
+    ports: ["127.0.0.1:${PROJECT_MANAGER_API_PORT:-18648}:8642", "127.0.0.1:${PROJECT_MANAGER_DASHBOARD_PORT:-9120}:9119"]
+  hermes-builder:
+    ports: ["127.0.0.1:${BUILDER_API_PORT:-18643}:8642", "127.0.0.1:${BUILDER_DASHBOARD_PORT:-9121}:9119"]
+  hermes-reviewer:
+    ports: ["127.0.0.1:${REVIEWER_API_PORT:-18644}:8642", "127.0.0.1:${REVIEWER_DASHBOARD_PORT:-9122}:9119"]
+  hermes-release:
+    ports: ["127.0.0.1:${RELEASE_API_PORT:-18645}:8642", "127.0.0.1:${RELEASE_DASHBOARD_PORT:-9123}:9119"]
+  hermes-incident:
+    ports: ["127.0.0.1:${INCIDENT_API_PORT:-18646}:8642", "127.0.0.1:${INCIDENT_DASHBOARD_PORT:-9124}:9119"]
+  hermes-learning:
+    ports: ["127.0.0.1:${LEARNING_API_PORT:-18647}:8642", "127.0.0.1:${LEARNING_DASHBOARD_PORT:-9125}:9119"]

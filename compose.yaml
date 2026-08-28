@@ -139,6 +139,51 @@ services:
     networks:
       - hermes-control
 
+  hermeteam-dashboard:
+    image: "${HERMETEAM_DASHBOARD_IMAGE:-hermeteam-dashboard:local}"
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    user: "node"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    pids_limit: 128
+    cpus: "0.50"
+    mem_limit: 256m
+    environment:
+      DASHBOARD_BIND: "0.0.0.0"
+      DASHBOARD_CONTAINER_MODE: "true"
+      DASHBOARD_PORT: "8080"
+      DOCKER_PROXY_URL: http://docker-socket-proxy:2375
+      ROLE_STATUS_PORT: "8650"
+      ROLE_SERVICES: >-
+        planner=hermes-planner,project-manager=hermes-project-manager,builder=hermes-builder,reviewer=hermes-reviewer,release=hermes-release,incident=hermes-incident,learning=hermes-learning
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+    networks:
+      - hermes-control
+    ports:
+      - "127.0.0.1:${HERMETEAM_DASHBOARD_PORT:-9130}:8080"
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
   skills-superset-sync:
     image: alpine/git:2.49.1
     entrypoint: []
@@ -189,9 +234,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${PLANNER_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${PLANNER_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${PLANNER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${PLANNER_API_PORT:-18642}:8642"
-      - "127.0.0.1:${PLANNER_DASHBOARD_PORT:-9119}:9119"
     volumes:
       - planner-data:/opt/data
       - ./workspace/planner:/opt/data/workspace
@@ -224,9 +266,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${PROJECT_MANAGER_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${PROJECT_MANAGER_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${PROJECT_MANAGER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${PROJECT_MANAGER_API_PORT:-18648}:8642"
-      - "127.0.0.1:${PROJECT_MANAGER_DASHBOARD_PORT:-9120}:9119"
     volumes:
       - project-manager-data:/opt/data
       - ./workspace/project-manager:/opt/data/workspace
@@ -260,9 +299,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${BUILDER_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${BUILDER_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${BUILDER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${BUILDER_API_PORT:-18643}:8642"
-      - "127.0.0.1:${BUILDER_DASHBOARD_PORT:-9121}:9119"
     volumes:
       - builder-data:/opt/data
       - ./workspace/builder:/opt/data/workspace
@@ -295,9 +331,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${REVIEWER_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${REVIEWER_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${REVIEWER_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${REVIEWER_API_PORT:-18644}:8642"
-      - "127.0.0.1:${REVIEWER_DASHBOARD_PORT:-9122}:9119"
     volumes:
       - reviewer-data:/opt/data
       - ./workspace/reviewer:/opt/data/workspace
@@ -330,9 +363,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${RELEASE_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${RELEASE_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${RELEASE_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${RELEASE_API_PORT:-18645}:8642"
-      - "127.0.0.1:${RELEASE_DASHBOARD_PORT:-9123}:9119"
     volumes:
       - release-data:/opt/data
       - ./workspace/release:/opt/data/workspace
@@ -365,9 +395,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${INCIDENT_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${INCIDENT_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${INCIDENT_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${INCIDENT_API_PORT:-18646}:8642"
-      - "127.0.0.1:${INCIDENT_DASHBOARD_PORT:-9124}:9119"
     volumes:
       - incident-data:/opt/data
       - ./workspace/incident:/opt/data/workspace
@@ -400,9 +427,6 @@ services:
       HERMES_DEFAULT_CONTEXT7_DEFAULT_MINIMUM_TOKENS: "${LEARNING_CONTEXT7_DEFAULT_MINIMUM_TOKENS:-${CONTEXT7_DEFAULT_MINIMUM_TOKENS:-}}"
       HERMES_DEFAULT_MDB_MCP_CONNECTION_STRING: "${LEARNING_MDB_MCP_CONNECTION_STRING:-${MDB_MCP_CONNECTION_STRING:-}}"
       HERMES_DEFAULT_POSTGRES_MCP_CONNECTION_STRING: "${LEARNING_POSTGRES_MCP_CONNECTION_STRING:-${POSTGRES_MCP_CONNECTION_STRING:-}}"
-    ports:
-      - "127.0.0.1:${LEARNING_API_PORT:-18647}:8642"
-      - "127.0.0.1:${LEARNING_DASHBOARD_PORT:-9125}:9119"
     volumes:
       - learning-data:/opt/data
       - ./workspace/learning:/opt/data/workspace

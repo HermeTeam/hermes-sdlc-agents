@@ -375,7 +375,8 @@ proxy_deny_env = {
     "DISTRIBUTION", "EVENTS", "EXEC", "GRPC", "IMAGES", "INFO", "NETWORKS", "NODES", "PING",
     "PLUGINS", "POST", "SECRETS", "SERVICES", "SESSION", "SWARM", "SYSTEM", "TASKS", "VERSION", "VOLUMES",
 }
-expected_services = expected_roles | {"skills-superset-sync", proxy_service_name}
+dashboard_service_name = "hermeteam-dashboard"
+expected_services = expected_roles | {"skills-superset-sync", proxy_service_name, dashboard_service_name}
 if set(compose.get("services", {})) != expected_services:
     errors.append("compose.yaml does not define exactly the expected services")
 proxy = compose.get("services", {}).get(proxy_service_name, {})
@@ -432,6 +433,18 @@ for role, service in compose.get("services", {}).items():
     if role == proxy_service_name:
         if {"hermeteam.agent", "hermeteam.role"} & set(service.get("labels", {})):
             errors.append("docker-socket-proxy: must not carry hermeteam role labels")
+        continue
+    if role == dashboard_service_name:
+        if {"hermeteam.agent", "hermeteam.role"} & set(service.get("labels", {})):
+            errors.append("hermeteam-dashboard: must not carry hermeteam role labels")
+        if service.get("ports") != ["127.0.0.1:${HERMETEAM_DASHBOARD_PORT:-9130}:8080"]:
+            errors.append("hermeteam-dashboard: must publish only the fixed loopback port")
+        if service.get("read_only") is not True or service.get("cap_drop") != ["ALL"]:
+            errors.append("hermeteam-dashboard: must be read-only with all capabilities dropped")
+        if service.get("volumes") or service.get("secrets"):
+            errors.append("hermeteam-dashboard: must not mount volumes or secrets")
+        if service.get("environment", {}).get("DASHBOARD_BIND") != "0.0.0.0":
+            errors.append("hermeteam-dashboard: container bind must be explicitly 0.0.0.0")
         continue
     if role == "skills-superset-sync":
         if "hermeteam.agent" in service.get("labels", {}) or "hermeteam.role" in service.get("labels", {}):
@@ -576,6 +589,7 @@ config = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 services = config.get("services", {})
 proxy_name = "docker-socket-proxy"
 proxy_image = "tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2"
+errors = []
 proxy = services.get(proxy_name, {})
 if proxy.get("image") != proxy_image:
     errors.append("rendered docker-socket-proxy image is not the approved digest")
@@ -596,6 +610,21 @@ elif socket_mounts[0][0] != proxy_name or socket_mounts[0][1].get("read_only") i
 proxy_env = proxy.get("environment", {})
 if proxy_env.get("CONTAINERS") != "1" or proxy_env.get("POST") != "0":
     errors.append("rendered docker-socket-proxy must allow CONTAINERS only and deny POST")
+dashboard = services.get("hermeteam-dashboard", {})
+if set(dashboard.get("networks", {})) != {"hermes-control"}:
+    errors.append("rendered hermeteam-dashboard is not isolated to hermes-control")
+if dashboard.get("volumes") or dashboard.get("secrets"):
+    errors.append("rendered hermeteam-dashboard must not mount volumes or secrets")
+if dashboard.get("user") not in {"node", "1000", "1000:1000"}:
+    errors.append("rendered hermeteam-dashboard must run as non-root node user")
+if dashboard.get("read_only") is not True:
+    errors.append("rendered hermeteam-dashboard root filesystem must be read-only")
+dashboard_ports = dashboard.get("ports", [])
+if len(dashboard_ports) != 1 or dashboard_ports[0].get("host_ip") not in {"127.0.0.1", "::1"} or str(dashboard_ports[0].get("target")) != "8080":
+    errors.append("rendered hermeteam-dashboard must publish exactly one loopback port to 8080")
+for name, service in services.items():
+    if name != "hermeteam-dashboard" and service.get("ports"):
+        errors.append(f"rendered {name} must not publish a default host port")
 for permission in ("INFO", "EVENTS", "IMAGES", "VOLUMES", "NETWORKS", "EXEC", "BUILD", "ALLOW_START", "ALLOW_STOP", "ALLOW_RESTARTS"):
     if proxy_env.get(permission) != "0":
         errors.append(f"rendered docker-socket-proxy leaves {permission} enabled")
@@ -604,7 +633,6 @@ labeled = {
     for name, service in services.items()
     if service.get("labels", {}).get("hermeteam.agent") == "true"
 }
-errors = []
 if labeled != expected:
     errors.append(f"rendered agent labels differ from canonical registry: {labeled}")
 for name, role in expected.items():
