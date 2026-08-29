@@ -1,5 +1,7 @@
 # Operations runbook
 
+Dashboard startup, status semantics, troubleshooting, secure remote access, shutdown, and release checks are maintained in the focused [English dashboard runbook](DASHBOARD.md) and [Russian dashboard runbook](DASHBOARD_RU.md). The dashboard is a local-only, no-authentication observational surface; do not expose it on LAN/public interfaces.
+
 ## Initial rollout
 
 1. Разверните и проверьте LLM gateway с role quotas и model allowlist.

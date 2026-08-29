@@ -1,4 +1,4 @@
-#  HermeTeam - Hermes-based SDLC AI Agents Team
+# HermeTeam - Hermes-based SDLC AI Agents Team
 
 Готовый набор из семи изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MVP на официальном GitHub MCP Server, bootstrap, structural validation и smoke tests.
 
@@ -22,15 +22,15 @@ English version: [README.md](README.md).
 
 ## Роли
 
-| Роль              | Разрешено                                                                                          | Жёстко исключено                                                                                                      |
-| ----------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `hermes-planner`  | GitHub repository/file/tree/search и issue reads                                                    | code write, branch/PR creation, deployment, production, skill mutation                                                |
+| Роль                     | Разрешено                                                                                                                                                             | Жёстко исключено                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `hermes-planner`         | GitHub repository/file/tree/search и issue reads                                                                                                                      | code write, branch/PR creation, deployment, production, skill mutation                                                           |
 | `hermes-project-manager` | GitHub repository/file/tree/search и issue read/comment/create для BRD/PRD-aligned PM-артефактов, weekly decision reports, flow metrics и Funnel/Discovery governance | code write, branch/PR creation, merge, deployment, production, budget/access mutation, technical micromanagement, skill mutation |
-| `hermes-builder`  | GitHub repository read, создание `agent/*` branch, `push_files`, PR creation, Actions evidence      | local checkout, broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation  |
-| `hermes-reviewer` | PR/file/Actions reads и issue/PR comments                                                           | author-branch mutation, merge, production, skill mutation                                                             |
-| `hermes-release`  | GitHub Actions read-only evidence для MVP                                                           | deployment mutation, пока native release/deployment tools не обнаружены и не ограничены                              |
-| `hermes-incident` | GitHub issue read/comment для MVP                                                                   | flags, runbooks, infrastructure operations, code, skill mutation                                                      |
-| `hermes-learning` | GitHub issue read/comment/create для human-reviewed improvement proposals                            | independent activation/publication, direct docs/code/production write                                                 |
+| `hermes-builder`         | GitHub repository read, создание `agent/*` branch, `push_files`, PR creation, Actions evidence                                                                        | local checkout, broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation             |
+| `hermes-reviewer`        | PR/file/Actions reads и issue/PR comments                                                                                                                             | author-branch mutation, merge, production, skill mutation                                                                        |
+| `hermes-release`         | GitHub Actions read-only evidence для MVP                                                                                                                             | deployment mutation, пока native release/deployment tools не обнаружены и не ограничены                                          |
+| `hermes-incident`        | GitHub issue read/comment для MVP                                                                                                                                     | flags, runbooks, infrastructure operations, code, skill mutation                                                                 |
+| `hermes-learning`        | GitHub issue read/comment/create для human-reviewed improvement proposals                                                                                             | independent activation/publication, direct docs/code/production write                                                            |
 
 Точные разрешённые имена инструментов находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если списки разойдутся.
 
@@ -39,6 +39,8 @@ English version: [README.md](README.md).
 ```text
 hermes-sdlc-agents/
 ├── compose.yaml                  # один контейнер на роль
+├── compose.debug.yaml            # opt-in loopback role diagnostics
+├── dashboard/                    # stateless read-only local overview
 ├── kustomization.yaml            # Kubernetes deployment через Kustomize
 ├── profiles/
 │   └── hermes-*/
@@ -58,7 +60,9 @@ hermes-sdlc-agents/
 │   ├── REPOSITORY_API_MCP_FLOW_RU.md
 │   ├── GIT_PROVIDER_INTEGRATION.md
 │   ├── SECURITY.md
-│   └── OPERATIONS.md
+│   ├── OPERATIONS.md
+│   ├── DASHBOARD.md
+│   └── DASHBOARD_RU.md
 ├── kubernetes/
 └── scripts/
 ```
@@ -130,19 +134,30 @@ docker compose up -d
 scripts/smoke-test.sh
 ```
 
-API по умолчанию доступен только на loopback хоста:
+Secure default Compose публикует только unauthenticated read-only central dashboard: <http://127.0.0.1:9130>. Локальный порт меняется через `HERMETEAM_DASHBOARD_PORT`; host address остаётся loopback. Role APIs, native role dashboards, restricted Docker proxy и role status port `8650` не публикуются.
 
-| Роль     | URL                         |
-| -------- | --------------------------- |
-| planner  | `http://127.0.0.1:18642/v1` |
+Для локальной диагностики явно добавьте loopback-only debug override:
+
+```bash
+docker compose -f compose.yaml -f compose.debug.yaml up -d
+scripts/smoke-test.sh
+```
+
+Override публикует следующие authenticated role APIs:
+
+| Роль            | URL                         |
+| --------------- | --------------------------- |
+| planner         | `http://127.0.0.1:18642/v1` |
 | project-manager | `http://127.0.0.1:18648/v1` |
-| builder  | `http://127.0.0.1:18643/v1` |
-| reviewer | `http://127.0.0.1:18644/v1` |
-| release  | `http://127.0.0.1:18645/v1` |
-| incident | `http://127.0.0.1:18646/v1` |
-| learning | `http://127.0.0.1:18647/v1` |
+| builder         | `http://127.0.0.1:18643/v1` |
+| reviewer        | `http://127.0.0.1:18644/v1` |
+| release         | `http://127.0.0.1:18645/v1` |
+| incident        | `http://127.0.0.1:18646/v1` |
+| learning        | `http://127.0.0.1:18647/v1` |
 
 Hermes API требует Bearer key и поддерживает `/v1/responses`, `/v1/runs`, `/health` и authenticated `/health/detailed`; см. [официальный API Server reference](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server/).
+
+Central dashboard не имеет authentication: его запрещено публиковать в LAN/Internet или на `0.0.0.0`. Для внешнего доступа используйте SSH tunnel или trusted VPN. Dashboard не имеет собственной database, history, controls, logs/transcripts и proxy к native Hermes dashboard. State semantics, troubleshooting, secure access, shutdown/recovery, development checks и E2E commands описаны в [руководстве по dashboard](docs/DASHBOARD_RU.md).
 
 Пример canary-вызова planner:
 
@@ -212,4 +227,6 @@ Compose и Kubernetes устанавливают `HERMES_MANAGED_DIR=/etc/hermes
 - [Git provider integration contract](docs/GIT_PROVIDER_INTEGRATION.md)
 - [Security model](docs/SECURITY.md)
 - [Operations runbook](docs/OPERATIONS.md)
+- [Dashboard operations — English](docs/DASHBOARD.md)
+- [Dashboard operations — Russian](docs/DASHBOARD_RU.md)
 - [Official sources](docs/SOURCES.md)
