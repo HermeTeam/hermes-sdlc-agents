@@ -1,0 +1,109 @@
+name: hermes-dashboard-e2e
+
+x-role-fixture: &role-fixture
+  build:
+    context: ./dashboard/tests/e2e
+    dockerfile: Dockerfile.fixture
+  read_only: true
+  tmpfs:
+    - "/tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777"
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  networks: [control]
+  healthcheck:
+    test:
+      [
+        CMD,
+        node,
+        -e,
+        "fetch('http://127.0.0.1:8650/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+      ]
+    interval: 1s
+    timeout: 1s
+    retries: 10
+
+services:
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777
+      - /run:rw,noexec,nosuid,nodev,size=1m,mode=755
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      CONTAINERS: "1"
+      POST: "0"
+      ALLOW_START: "0"
+      ALLOW_STOP: "0"
+      ALLOW_RESTARTS: "0"
+      IMAGES: "0"
+      INFO: "0"
+      EVENTS: "0"
+      NETWORKS: "0"
+      VOLUMES: "0"
+      DISABLE_IPV6: "1"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      [
+        "sed 's/$${BIND_CONFIG}/:2375/g' /usr/local/etc/haproxy/haproxy.cfg.template > /tmp/haproxy.cfg && exec haproxy -W -db -f /tmp/haproxy.cfg",
+      ]
+    volumes: [/var/run/docker.sock:/var/run/docker.sock:ro]
+    networks: [control]
+
+  hermeteam-dashboard:
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    image: hermeteam-dashboard-e2e:local
+    user: node
+    read_only: true
+    tmpfs:
+      - "/tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777"
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    environment:
+      DASHBOARD_BIND: 0.0.0.0
+      DASHBOARD_CONTAINER_MODE: "true"
+      DASHBOARD_PORT: "8080"
+      DOCKER_PROXY_URL: http://docker-socket-proxy:2375
+      ROLE_STATUS_PORT: "8650"
+      DEPENDENCY_TIMEOUT_MS: "300"
+      OVERVIEW_TIMEOUT_MS: "800"
+      ROLE_SERVICES: planner=hermes-planner,project-manager=hermes-project-manager,builder=hermes-builder,reviewer=hermes-reviewer,release=hermes-release,incident=hermes-incident,learning=hermes-learning
+    depends_on: [docker-socket-proxy]
+    ports: ["127.0.0.1:${DASHBOARD_E2E_PORT}:8080"]
+    networks: [control]
+
+  hermes-planner:
+    <<: *role-fixture
+    environment: { ROLE: planner, SCENARIO: working }
+    labels: { hermeteam.agent: "true", hermeteam.role: planner }
+  hermes-project-manager:
+    <<: *role-fixture
+    environment: { ROLE: project-manager, SCENARIO: queued }
+    labels: { hermeteam.agent: "true", hermeteam.role: project-manager }
+  hermes-builder:
+    <<: *role-fixture
+    environment: { ROLE: builder, SCENARIO: waiting }
+    labels: { hermeteam.agent: "true", hermeteam.role: builder }
+  hermes-reviewer:
+    <<: *role-fixture
+    environment: { ROLE: reviewer, SCENARIO: blocked }
+    labels: { hermeteam.agent: "true", hermeteam.role: reviewer }
+  hermes-release:
+    <<: *role-fixture
+    environment: { ROLE: release, SCENARIO: idle }
+    labels: { hermeteam.agent: "true", hermeteam.role: release }
+  hermes-incident:
+    <<: *role-fixture
+    environment: { ROLE: incident, SCENARIO: malformed }
+    labels: { hermeteam.agent: "true", hermeteam.role: incident }
+  hermes-learning:
+    <<: *role-fixture
+    environment: { ROLE: learning, SCENARIO: timeout }
+    labels: { hermeteam.agent: "true", hermeteam.role: learning }
+
+networks:
+  control:
+    name: hermes-dashboard-e2e-${E2E_PROJECT}-control

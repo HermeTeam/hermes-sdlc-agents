@@ -1,0 +1,6 @@
+FROM node:22.18.0-alpine
+WORKDIR /fixture
+COPY role-status-fixture.mjs .
+USER node
+EXPOSE 8650
+CMD ["node", "role-status-fixture.mjs"]

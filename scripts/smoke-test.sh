@@ -2,6 +2,11 @@
 set -euo pipefail
 
 bundle_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+if [[ "${DASHBOARD_E2E:-false}" == "true" ]]; then
+  exec "${bundle_root}/scripts/dashboard-e2e-smoke.sh"
+fi
+
 set -a
 source "${bundle_root}/.env"
 set +a
