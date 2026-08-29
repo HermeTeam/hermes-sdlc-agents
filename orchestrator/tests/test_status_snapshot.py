@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sdlc_orchestrator.config import Config
 from sdlc_orchestrator.db import connect, ensure_assignment, init_db, mark_assignment_started, upsert_work_item
 from sdlc_orchestrator.provider_base import WorkItem
-from sdlc_orchestrator.status_snapshot import StatusSnapshotError, read_role_status_snapshot
+from sdlc_orchestrator.status_snapshot import StatusSnapshotError, _open_read_only, read_role_status_snapshot
 
 
 def make_config(path: Path, *, role: str = "builder", enabled: bool = True) -> Config:
@@ -81,27 +81,39 @@ class RoleStatusSnapshotTests(unittest.TestCase):
             self.assertFalse(path.exists())
             self.assertFalse(path.parent.joinpath("missing.sqlite-journal").exists())
 
-    def test_read_path_does_not_mutate_database_or_create_sidecars(self) -> None:
+    def test_read_path_is_read_only_and_preserves_main_database(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:
             path = Path(temporary_directory) / "orchestrator.sqlite"
             with connect(path) as conn:
                 init_db(conn)
                 add_assignment(conn, "read-only", index=1)
             before = path.read_bytes()
-            sidecars_before = {
-                suffix: path.with_name(path.name + suffix).read_bytes()
-                for suffix in ("-journal", "-wal", "-shm")
-                if path.with_name(path.name + suffix).exists()
-            }
             snapshot = read_role_status_snapshot(make_config(path))
             self.assertEqual(snapshot["queue"], {"pendingDue": 1, "pendingDelayed": 0, "active": 0, "blocked": 0})
             self.assertEqual(path.read_bytes(), before)
-            sidecars_after = {
-                suffix: path.with_name(path.name + suffix).read_bytes()
-                for suffix in ("-journal", "-wal", "-shm")
-                if path.with_name(path.name + suffix).exists()
-            }
-            self.assertEqual(sidecars_after, sidecars_before)
+            with _open_read_only(path) as reader:
+                with self.assertRaisesRegex(sqlite3.OperationalError, "readonly|read-only"):
+                    reader.execute("CREATE TABLE denied (id INTEGER)")
+
+    def test_active_wal_writer_snapshot_reads_committed_wal_schema_and_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            path = Path(temporary_directory) / "orchestrator.sqlite"
+            writer = sqlite3.connect(path, isolation_level=None)
+            try:
+                writer.row_factory = sqlite3.Row
+                self.assertEqual(writer.execute("PRAGMA journal_mode=WAL").fetchone()[0], "wal")
+                init_db(writer)
+                writer.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                add_assignment(writer, "wal-current", index=1)
+                self.assertTrue(path.with_name(path.name + "-wal").exists())
+                self.assertTrue(path.with_name(path.name + "-shm").exists())
+
+                snapshot = read_role_status_snapshot(make_config(path))
+
+                self.assertEqual(snapshot["queue"], {"pendingDue": 1, "pendingDelayed": 0, "active": 0, "blocked": 0})
+                self.assertEqual([item["assignmentKey"] for item in snapshot["items"]], ["wal-current"])
+            finally:
+                writer.close()
 
     def test_role_isolation_and_all_queue_counters(self) -> None:
         with tempfile.TemporaryDirectory() as temporary_directory:

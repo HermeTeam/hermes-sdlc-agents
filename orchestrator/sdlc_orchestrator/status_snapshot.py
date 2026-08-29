@@ -2,10 +2,11 @@
 
 This module deliberately bypasses :mod:`sdlc_orchestrator.db` because its normal
 ``connect`` path creates parent directories and commits.  The snapshot reader
-opens an already-existing SQLite file using ``mode=ro&immutable=1`` and issues
-only static ``SELECT``/``PRAGMA table_info`` statements.  Immutable mode avoids
-creating SQLite WAL/shared-memory sidecars; it is safe here because each role
-has one local writer and a snapshot may safely retry on a later poll. It neither
+opens an already-existing SQLite file using ``mode=ro`` and issues only static
+``SELECT``/``PRAGMA table_info`` statements.  Normal read-only mode participates
+in SQLite WAL shared-memory coordination so it observes committed WAL content.
+SQLite may read an existing ``-shm`` sidecar for that coordination; this is not a
+write privilege and is required for current WAL visibility.  It neither
 initializes nor migrates the role database.
 
 SQLite stores its default timestamps without an offset.  Those values are
@@ -159,14 +160,15 @@ def read_role_status_snapshot(config: Config, *, limit: int = MAX_QUEUE_ITEMS) -
 
 
 def _open_read_only(path: Path) -> sqlite3.Connection:
-    """Open an existing database in SQLite read-only mode without transactions."""
+    """Open an existing WAL-compatible SQLite database without write privileges."""
 
     connection = sqlite3.connect(
-        f"{path.as_uri()}?mode=ro&immutable=1",
+        f"{path.as_uri()}?mode=ro",
         uri=True,
         timeout=SQLITE_READ_TIMEOUT_SECONDS,
         isolation_level=None,
     )
+    connection.execute("PRAGMA query_only=ON")
     connection.row_factory = sqlite3.Row
     return connection
 
