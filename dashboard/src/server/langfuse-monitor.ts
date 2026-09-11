@@ -40,6 +40,7 @@ const DEFAULT_WINDOW_MINUTES = 60;
 const DEFAULT_TIMEOUT_MS = 3_000;
 const MAX_WINDOW_MINUTES = 24 * 60;
 const MAX_TIMEOUT_MS = 15_000;
+const MAX_MODEL_NAME_CHARS = 256;
 
 export class LangfuseMonitor {
   private readonly fetchImpl: typeof fetch;
@@ -98,7 +99,7 @@ export class LangfuseMonitor {
         models: Object.freeze(
           modelRows
             .map((row) => ({
-              model: metricString(row, "providedModelName") ?? "unknown",
+              model: boundedMetricString(row, "providedModelName") ?? "unknown",
               observations: metricNumber(row, "count_count") ?? 0,
               totalCostUsd: metricNumber(row, "sum_totalCost"),
             }))
@@ -273,7 +274,8 @@ function metricNumber(row: Record<string, unknown>, key: string): number | null 
   return null;
 }
 
-function metricString(row: Record<string, unknown>, key: string): string | null {
+function boundedMetricString(row: Record<string, unknown>, key: string): string | null {
   const value = row[key];
-  return typeof value === "string" && value.trim() !== "" ? value : null;
+  if (typeof value !== "string" || value.trim() === "") return null;
+  return value.slice(0, MAX_MODEL_NAME_CHARS);
 }
