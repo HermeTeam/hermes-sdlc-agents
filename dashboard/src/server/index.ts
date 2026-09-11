@@ -6,6 +6,11 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
 import { loadDashboardConfig } from "./config.ts";
 import { DockerClient } from "./docker-client.ts";
+import {
+  createLangfuseMonitorFromEnvironment,
+  unconfiguredLangfuseSnapshot,
+} from "./langfuse-monitor.ts";
+import type { LangfuseMonitor } from "./langfuse-monitor.ts";
 import { OverviewCoordinator } from "./overview.ts";
 import { RoleClient } from "./role-client.ts";
 
@@ -42,6 +47,7 @@ export interface DashboardApplication {
 
 export interface DashboardApplicationOptions {
   readonly overview: Pick<OverviewCoordinator, "getOverview">;
+  readonly langfuseMonitor?: Pick<LangfuseMonitor, "getSnapshot">;
   readonly staticRoot?: string;
 }
 
@@ -120,6 +126,18 @@ async function handleRequest(
     } catch {
       return sendJson(response, 503, {
         error: { code: "overview_unavailable" },
+      });
+    }
+  }
+  if (pathname === "/api/langfuse-monitor" && requestUrl === "/api/langfuse-monitor") {
+    if (options.langfuseMonitor === undefined) {
+      return sendJson(response, 200, unconfiguredLangfuseSnapshot());
+    }
+    try {
+      return sendJson(response, 200, await options.langfuseMonitor.getSnapshot());
+    } catch {
+      return sendJson(response, 503, {
+        error: { code: "langfuse_monitor_unavailable" },
       });
     }
   }
@@ -239,8 +257,10 @@ async function main(): Promise<void> {
     timeoutMs: config.overviewTimeoutMs,
     cacheTtlMs: 2_000,
   });
+  const langfuseMonitor = createLangfuseMonitorFromEnvironment();
   const app = createDashboardApplication({
     overview,
+    ...(langfuseMonitor === null ? {} : { langfuseMonitor }),
     staticRoot: process.env.DASHBOARD_STATIC_ROOT ?? "dist/web",
   });
   await listenDashboard(
