@@ -17,23 +17,11 @@ SCHEMA = "hermeteam.intent-action.v1"
 VERSION = "0.1.0"
 RISK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 READ_PREFIXES = ("get_", "list_", "read_", "search_", "query_", "fetch_", "inspect_", "view_")
-WRITE_WORDS = (
-    "create", "update", "push", "write", "edit", "delete", "remove", "merge", "close",
-    "trigger", "run", "execute", "apply", "deploy", "release", "publish", "set", "modify",
-    "upload", "commit",
-)
-CRITICAL_WORDS = (
-    "merge", "deploy", "release", "destroy", "delete_repository", "secret", "permission",
-    "ruleset", "branch_protection", "admin",
-)
-PROTECTED_RE = re.compile(
-    r"(^|[/\\])(?:\.github[/\\](?:workflows|actions)|policies|kubernetes|secrets?)(?:[/\\]|$)", re.I
-)
+WRITE_WORDS = ("create", "update", "push", "write", "edit", "delete", "remove", "merge", "close", "trigger", "run", "execute", "apply", "deploy", "release", "publish", "set", "modify", "upload", "commit")
+CRITICAL_WORDS = ("merge", "deploy", "release", "destroy", "delete_repository", "secret", "permission", "ruleset", "branch_protection", "admin")
+PROTECTED_RE = re.compile(r"(^|[/\\])(?:\.github[/\\](?:workflows|actions)|policies|kubernetes|secrets?)(?:[/\\]|$)", re.I)
 PROD_RE = re.compile(r"\b(prod|production|main|master)\b", re.I)
-SENSITIVE_KEYS = {
-    "authorization", "api_key", "apikey", "token", "secret", "password", "content", "contents",
-    "file_content", "private_key",
-}
+SENSITIVE_KEYS = {"authorization", "api_key", "apikey", "token", "secret", "password", "content", "contents", "file_content", "private_key"}
 
 STATE_LOCK = threading.Lock()
 FILE_LOCK = threading.Lock()
@@ -60,7 +48,6 @@ def stable_hash(value: Any) -> str:
 
 
 def bounded(value: Any, depth: int = 0) -> Any:
-    """Return a bounded telemetry value without source bodies, credentials or long raw text."""
     if depth > 4:
         return {"omitted": True, "type": type(value).__name__}
     if value is None or isinstance(value, (bool, int, float)):
@@ -68,22 +55,14 @@ def bounded(value: Any, depth: int = 0) -> Any:
     if isinstance(value, str):
         if len(value) <= 256:
             return value
-        return {
-            "type": "text",
-            "chars": len(value),
-            "sha256": hashlib.sha256(value.encode()).hexdigest(),
-        }
+        return {"type": "text", "chars": len(value), "sha256": hashlib.sha256(value.encode()).hexdigest()}
     if isinstance(value, (list, tuple)):
         return [bounded(item, depth + 1) for item in list(value)[:25]]
     if isinstance(value, dict):
         result: dict[str, Any] = {}
         for key, item in list(value.items())[:50]:
             name = str(key)
-            result[name] = (
-                {"omitted": True, "sha256": stable_hash(item)}
-                if name.lower() in SENSITIVE_KEYS
-                else bounded(item, depth + 1)
-            )
+            result[name] = {"omitted": True, "sha256": stable_hash(item)} if name.lower() in SENSITIVE_KEYS else bounded(item, depth + 1)
         return result
     return {"type": type(value).__name__, "repr_hash": hashlib.sha256(repr(value).encode()).hexdigest()}
 
@@ -109,7 +88,6 @@ def flatten_text(value: Any) -> str:
 
 
 def classify_action(tool_name: str, args: Any) -> tuple[str, str, tuple[str, ...]]:
-    """Conservative deterministic first-pass classifier used before an LLM risk controller exists."""
     name = (tool_name or "").strip().lower()
     text = f"{name} {flatten_text(args)}"
     reasons: list[str] = []
@@ -148,19 +126,11 @@ def normalize_tool_call(call: dict[str, Any]) -> dict[str, Any]:
         try:
             args = json.loads(args)
         except Exception:
-            args = {
-                "raw_arguments_hash": hashlib.sha256(args.encode()).hexdigest(),
-                "chars": len(args),
-            }
-    return {
-        "tool_call_id": str(call.get("id") or call.get("call_id") or ""),
-        "tool_name": str(name or ""),
-        "args": args if isinstance(args, (dict, list)) else {"value": args},
-    }
+            args = {"raw_arguments_hash": hashlib.sha256(args.encode()).hexdigest(), "chars": len(args)}
+    return {"tool_call_id": str(call.get("id") or call.get("call_id") or ""), "tool_name": str(name or ""), "args": args if isinstance(args, (dict, list)) else {"value": args}}
 
 
 def extract_tool_calls(value: Any) -> list[dict[str, Any]]:
-    """Find tool/function proposals in OpenAI-compatible chat and Responses-style payloads."""
     found: list[dict[str, Any]] = []
 
     def visit(item: Any, depth: int = 0) -> None:
@@ -186,21 +156,12 @@ def extract_tool_calls(value: Any) -> list[dict[str, Any]]:
 
 
 def event(event_type: str, **fields: Any) -> dict[str, Any]:
-    return {
-        "schema": SCHEMA,
-        "plugin_version": VERSION,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "event_type": event_type,
-        "role": env("ORCHESTRATOR_ROLE"),
-        "repository": env("GITHUB_REPOSITORY_FULL_NAME") or env("REPOSITORY_ID"),
-        **fields,
-    }
+    return {"schema": SCHEMA, "plugin_version": VERSION, "timestamp": datetime.now(timezone.utc).isoformat(), "event_type": event_type, "role": env("ORCHESTRATOR_ROLE"), "repository": env("GITHUB_REPOSITORY_FULL_NAME") or env("REPOSITORY_ID"), **fields}
 
 
 def emit(payload: dict[str, Any]) -> None:
-    """Write the same structured event to Docker logs and a role-persistent JSONL file."""
     line = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str)
-    logger.info("HERMETEAM_EVENT %s", line)
+    print(f"HERMETEAM_EVENT {line}", flush=True)
     path = env("HERMETEAM_GATE_LOG_PATH", "/opt/data/hermeteam/intent-action-events.jsonl")
     if not path:
         return
@@ -210,7 +171,6 @@ def emit(payload: dict[str, Any]) -> None:
         with FILE_LOCK, target.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
     except Exception as exc:
-        # This first canary remains fail-open. Secure Corridor moves enforcement to an external gateway.
         logger.warning("HermeTeam gate event append failed: %s", exc)
 
 
@@ -219,9 +179,7 @@ def remember(session_id: str, proposal: dict[str, Any]) -> None:
         PROPOSALS[session_id].append(proposal)
 
 
-def match_proposal(
-    session_id: str, tool_call_id: str, tool_name: str, args_hash: str
-) -> dict[str, Any] | None:
+def match_proposal(session_id: str, tool_call_id: str, tool_name: str, args_hash: str) -> dict[str, Any] | None:
     with STATE_LOCK:
         proposals = list(PROPOSALS.get(session_id, ()))
     if tool_call_id:
@@ -271,29 +229,9 @@ def on_post_api_request(**kwargs: Any) -> None:
     session_id = str(kwargs.get("session_id") or "")
     for call in extract_tool_calls(response):
         risk, category, reasons = classify_action(call["tool_name"], call["args"])
-        proposal = {
-            "tool_call_id": call["tool_call_id"],
-            "tool_name": call["tool_name"],
-            "args_hash": stable_hash(call["args"]),
-            "risk": risk,
-            "category": category,
-            "reasons": reasons,
-        }
+        proposal = {"tool_call_id": call["tool_call_id"], "tool_name": call["tool_name"], "args_hash": stable_hash(call["args"]), "risk": risk, "category": category, "reasons": reasons}
         remember(session_id, proposal)
-        emit(event(
-            "intent.proposed_action",
-            mode=mode(),
-            session_id=session_id,
-            turn_id=str(kwargs.get("turn_id") or ""),
-            api_request_id=str(kwargs.get("api_request_id") or ""),
-            tool_call_id=proposal["tool_call_id"],
-            tool_name=proposal["tool_name"],
-            args_hash=proposal["args_hash"],
-            args=bounded(call["args"]),
-            risk=risk,
-            category=category,
-            reasons=list(reasons),
-        ))
+        emit(event("intent.proposed_action", mode=mode(), session_id=session_id, turn_id=str(kwargs.get("turn_id") or ""), api_request_id=str(kwargs.get("api_request_id") or ""), tool_call_id=proposal["tool_call_id"], tool_name=proposal["tool_name"], args_hash=proposal["args_hash"], args=bounded(call["args"]), risk=risk, category=category, reasons=list(reasons)))
 
 
 def on_pre_tool_call(**kwargs: Any) -> dict[str, Any] | None:
@@ -307,53 +245,18 @@ def on_pre_tool_call(**kwargs: Any) -> dict[str, Any] | None:
     mismatch = proposal is None or proposal["args_hash"] != args_hash
     if mismatch:
         risk = max((risk, "high"), key=RISK.get)
-        reasons = tuple(dict.fromkeys((
-            *reasons,
-            "no_matching_model_proposal" if proposal is None else "intent_action_mismatch",
-        )))
+        reasons = tuple(dict.fromkeys((*reasons, "no_matching_model_proposal" if proposal is None else "intent_action_mismatch")))
     current_mode = mode()
     blocked = current_mode == "enforce" and RISK[risk] >= RISK[block_level()]
-    emit(event(
-        "action.requested",
-        mode=current_mode,
-        session_id=session_id,
-        turn_id=str(kwargs.get("turn_id") or ""),
-        api_request_id=str(kwargs.get("api_request_id") or ""),
-        tool_call_id=tool_call_id,
-        tool_name=tool_name,
-        args_hash=args_hash,
-        args=bounded(args),
-        risk=risk,
-        category=category,
-        reasons=list(reasons),
-        matched_model_proposal=proposal is not None,
-        proposal_mismatch=mismatch,
-        decision="DENY" if blocked else ("ALLOW" if current_mode == "enforce" else "ALLOW_SHADOW"),
-    ))
+    emit(event("action.requested", mode=current_mode, session_id=session_id, turn_id=str(kwargs.get("turn_id") or ""), api_request_id=str(kwargs.get("api_request_id") or ""), tool_call_id=tool_call_id, tool_name=tool_name, args_hash=args_hash, args=bounded(args), risk=risk, category=category, reasons=list(reasons), matched_model_proposal=proposal is not None, proposal_mismatch=mismatch, decision="DENY" if blocked else ("ALLOW" if current_mode == "enforce" else "ALLOW_SHADOW")))
     if blocked:
-        return {
-            "action": "block",
-            "message": f"HermeTeam blocked {tool_name!r}: risk={risk}; reasons={','.join(reasons) or 'threshold'}.",
-        }
+        return {"action": "block", "message": f"HermeTeam blocked {tool_name!r}: risk={risk}; reasons={','.join(reasons) or 'threshold'}."}
     return None
 
 
 def on_post_tool_call(**kwargs: Any) -> None:
     result = kwargs.get("result")
-    emit(event(
-        "action.completed",
-        mode=mode(),
-        session_id=str(kwargs.get("session_id") or ""),
-        turn_id=str(kwargs.get("turn_id") or ""),
-        api_request_id=str(kwargs.get("api_request_id") or ""),
-        tool_call_id=str(kwargs.get("tool_call_id") or ""),
-        tool_name=str(kwargs.get("tool_name") or ""),
-        status=str(kwargs.get("status") or ""),
-        duration_ms=kwargs.get("duration_ms"),
-        error_type=str(kwargs.get("error_type") or ""),
-        result=bounded(result),
-        result_hash=stable_hash(result),
-    ))
+    emit(event("action.completed", mode=mode(), session_id=str(kwargs.get("session_id") or ""), turn_id=str(kwargs.get("turn_id") or ""), api_request_id=str(kwargs.get("api_request_id") or ""), tool_call_id=str(kwargs.get("tool_call_id") or ""), tool_name=str(kwargs.get("tool_name") or ""), status=str(kwargs.get("status") or ""), duration_ms=kwargs.get("duration_ms"), error_type=str(kwargs.get("error_type") or ""), result=bounded(result), result_hash=stable_hash(result)))
 
 
 def register(ctx: Any) -> None:
