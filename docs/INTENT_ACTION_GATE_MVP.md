@@ -61,20 +61,11 @@ Captures response metadata, usage, finish reason and a bounded response represen
 
 Extracted from model `tool_calls` / function-call output before Hermes dispatches the tool.
 
-Fields include:
-
-- `session_id`, `turn_id`, `api_request_id`, `tool_call_id`;
-- tool name;
-- argument hash plus bounded arguments;
-- category;
-- risk (`low`, `medium`, `high`, `critical`);
-- deterministic reason codes.
+Fields include `session_id`, `turn_id`, `api_request_id`, `tool_call_id`, tool name, argument hash plus bounded arguments, category, risk (`low`, `medium`, `high`, `critical`) and deterministic reason codes.
 
 ### `action.requested`
 
-Emitted immediately before the actual Hermes tool dispatch. The plugin compares the actual tool name and argument hash with the last model proposal.
-
-A mutation with no matching proposal, or changed arguments, is raised to at least `high` risk.
+Emitted immediately before the actual Hermes tool dispatch. The plugin compares the actual tool name and argument hash with the last model proposal. A mutation with no matching proposal, or changed arguments, is raised to at least `high` risk.
 
 ### `action.completed`
 
@@ -82,9 +73,9 @@ Emitted after tool completion with status, duration and a bounded/hash represent
 
 ## Modes
 
-Configure the builder through `secrets/hermes-builder.env`:
+The plugin itself defaults to safe canary settings even without extra environment variables:
 
-```dotenv
+```text
 HERMETEAM_GATE_MODE=shadow
 HERMETEAM_GATE_BLOCK_LEVEL=critical
 HERMETEAM_GATE_LOG_PATH=/opt/data/hermeteam/intent-action-events.jsonl
@@ -102,8 +93,6 @@ Do not treat `enforce` as the final security perimeter. A plugin/hook failure is
 
 The MVP deliberately does not add a second LLM controller yet. It establishes the data path first.
 
-Typical classification:
-
 | Action | Initial risk |
 | --- | --- |
 | `get_*`, `list_*`, `search_*`, `read_*` | low |
@@ -116,11 +105,15 @@ Once real traces exist, an LLM intent/risk controller can be evaluated in **shad
 
 ## Langfuse
 
-The builder profile enables Hermes' built-in `observability/langfuse` plugin. The managed image installs the optional `langfuse` SDK.
+The builder profile enables Hermes' built-in `observability/langfuse` plugin. The managed image installs the optional `langfuse` SDK into Hermes' `/opt/hermes/.venv`.
 
-Configure optional export in `secrets/hermes-builder.env`:
+For the canary, runtime observability variables are kept out of the validated role-secret contract. Put them in the project `.env` and start the builder with `compose.observability.yaml`:
 
 ```dotenv
+HERMETEAM_GATE_MODE=shadow
+HERMETEAM_GATE_BLOCK_LEVEL=critical
+HERMETEAM_GATE_LOG_PATH=/opt/data/hermeteam/intent-action-events.jsonl
+
 HERMES_LANGFUSE_PUBLIC_KEY=pk-lf-...
 HERMES_LANGFUSE_SECRET_KEY=sk-lf-...
 HERMES_LANGFUSE_BASE_URL=https://cloud.langfuse.com
@@ -130,23 +123,34 @@ HERMES_LANGFUSE_SAMPLE_RATE=1.0
 HERMES_LANGFUSE_CAPTURE=sanitized
 ```
 
-Without keys, Langfuse export is inert; the HermeTeam JSONL recorder still works.
+Without Langfuse keys, export is inert; the HermeTeam JSONL recorder still works.
 
 Langfuse is the detailed LLM/agent observability layer. The local HermeTeam event stream is intentionally smaller and oriented around intent/action matching. Neither layer assumes that a provider exposes private chain-of-thought; reasoning content is recorded only when the provider/Hermes observability surface actually provides it.
 
 ## Privacy and secrets
 
-The local event recorder does **not** persist raw source bodies or common credential fields. Keys such as `content`, `token`, `authorization`, `password`, `secret` and `private_key` are omitted and hashed. Long strings are represented by size and SHA-256.
+The local event recorder does **not** persist raw source bodies or common credential fields. Keys such as `content`, `token`, `authorization`, `password`, `secret` and `private_key` are omitted and hashed. Long strings are represented by size and SHA-256. Hermes' own observer payload is already sanitized before this plugin sees it.
 
-This is defense in depth; normal Hermes secret/PII redaction remains enabled in the builder profile.
+Normal Hermes secret/PII redaction remains enabled in the builder profile.
 
 ## Run
 
-Rebuild the managed image after pulling the change:
+Rebuild the managed image:
 
 ```bash
 docker compose build hermes-builder
+```
+
+Start the normal builder canary; the local recorder works with its internal defaults:
+
+```bash
 docker compose up -d hermes-builder
+```
+
+To pass Langfuse and explicit gate settings from `.env`, use the observability override:
+
+```bash
+docker compose -f compose.yaml -f compose.observability.yaml up -d hermes-builder
 ```
 
 Watch structured events:
@@ -155,7 +159,7 @@ Watch structured events:
 docker logs -f hermes-builder | grep HERMETEAM_EVENT
 ```
 
-Or inspect the persistent role volume from inside the container:
+Or inspect the persistent role volume:
 
 ```bash
 docker exec hermes-builder tail -f /opt/data/hermeteam/intent-action-events.jsonl
