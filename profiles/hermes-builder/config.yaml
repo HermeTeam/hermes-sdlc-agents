@@ -3,6 +3,11 @@ model:
   default: "${HERMES_MODEL_ID}"
   base_url: "${HERMES_MODEL_BASE_URL}"
 
+plugins:
+  enabled:
+    - hermeteam-intent-action-gate
+    - observability/langfuse
+
 toolsets:
   - file
   - skills
