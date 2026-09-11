@@ -12,6 +12,8 @@ services:
       HERMES_LANGFUSE_SAMPLE_RATE: "${HERMES_LANGFUSE_SAMPLE_RATE:-1.0}"
       HERMES_LANGFUSE_CAPTURE: "${HERMES_LANGFUSE_CAPTURE:-sanitized}"
 
+  # Server-side monitoring only. Credentials are consumed by the dashboard
+  # backend and are never returned by /api/langfuse-monitor to the browser.
   hermeteam-dashboard:
     environment:
       LANGFUSE_MONITOR_PUBLIC_KEY: "${HERMES_LANGFUSE_PUBLIC_KEY:-}"
