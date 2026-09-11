@@ -133,7 +133,7 @@ LANGFUSE_MONITOR_WINDOW_MINUTES=60
 LANGFUSE_MONITOR_TIMEOUT_MS=3000
 ```
 
-`HERMES_LANGFUSE_BASE_URL` can point either to Langfuse Cloud or to a self-hosted Langfuse v4 deployment. The dashboard monitor uses Metrics API v2 (`/api/public/v2/metrics`), so self-hosted v3 is not supported by this monitor path.
+`HERMES_LANGFUSE_BASE_URL` can point either to Langfuse Cloud or to a self-hosted Langfuse v4 deployment. The dashboard monitor uses Metrics API v2 (`/api/public/v2/metrics`), so self-hosted v3 is not supported by this monitor path. For near-real-time monitoring, use a current Langfuse SDK compatible with v4 ingestion; older SDK ingestion may appear in Metrics API v2 with delay.
 
 Without Langfuse keys, trace export is inert and the dashboard reports the Langfuse monitor as `unconfigured`; the HermeTeam JSONL recorder still works.
 
