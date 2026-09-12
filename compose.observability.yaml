@@ -1,0 +1,23 @@
+services:
+  hermes-builder:
+    environment:
+      HERMETEAM_GATE_MODE: "${HERMETEAM_GATE_MODE:-shadow}"
+      HERMETEAM_GATE_BLOCK_LEVEL: "${HERMETEAM_GATE_BLOCK_LEVEL:-critical}"
+      HERMETEAM_GATE_LOG_PATH: "${HERMETEAM_GATE_LOG_PATH:-/opt/data/hermeteam/intent-action-events.jsonl}"
+      HERMES_LANGFUSE_PUBLIC_KEY: "${HERMES_LANGFUSE_PUBLIC_KEY:-}"
+      HERMES_LANGFUSE_SECRET_KEY: "${HERMES_LANGFUSE_SECRET_KEY:-}"
+      HERMES_LANGFUSE_BASE_URL: "${HERMES_LANGFUSE_BASE_URL:-https://cloud.langfuse.com}"
+      HERMES_LANGFUSE_ENV: "${HERMES_LANGFUSE_ENV:-development}"
+      HERMES_LANGFUSE_RELEASE: "${HERMES_LANGFUSE_RELEASE:-}"
+      HERMES_LANGFUSE_SAMPLE_RATE: "${HERMES_LANGFUSE_SAMPLE_RATE:-1.0}"
+      HERMES_LANGFUSE_CAPTURE: "${HERMES_LANGFUSE_CAPTURE:-sanitized}"
+
+  # Server-side monitoring only. Credentials are consumed by the dashboard
+  # backend and are never returned by /api/langfuse-monitor to the browser.
+  hermeteam-dashboard:
+    environment:
+      LANGFUSE_MONITOR_PUBLIC_KEY: "${HERMES_LANGFUSE_PUBLIC_KEY:-}"
+      LANGFUSE_MONITOR_SECRET_KEY: "${HERMES_LANGFUSE_SECRET_KEY:-}"
+      LANGFUSE_MONITOR_BASE_URL: "${HERMES_LANGFUSE_BASE_URL:-https://cloud.langfuse.com}"
+      LANGFUSE_MONITOR_WINDOW_MINUTES: "${LANGFUSE_MONITOR_WINDOW_MINUTES:-60}"
+      LANGFUSE_MONITOR_TIMEOUT_MS: "${LANGFUSE_MONITOR_TIMEOUT_MS:-3000}"

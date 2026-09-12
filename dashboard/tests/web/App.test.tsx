@@ -83,6 +83,41 @@ function overview(partial = false) {
     })),
   };
 }
+function langfuse(configured = false) {
+  return configured
+    ? {
+        configured: true,
+        status: "ok",
+        generatedAt: "2026-09-11T15:00:00Z",
+        baseUrl: "https://cloud.langfuse.com",
+        windowMinutes: 60,
+        metrics: {
+          observations: 42,
+          p95LatencyMs: 1234,
+          totalTokens: 98765,
+          totalCostUsd: 1.2345,
+        },
+        models: [
+          { model: "qwen/qwen3-coder", observations: 40, totalCostUsd: 1.2 },
+        ],
+        errorCode: null,
+      }
+    : {
+        configured: false,
+        status: "unconfigured",
+        generatedAt: "2026-09-11T15:00:00Z",
+        baseUrl: null,
+        windowMinutes: 60,
+        metrics: {
+          observations: null,
+          p95LatencyMs: null,
+          totalTokens: null,
+          totalCostUsd: null,
+        },
+        models: [],
+        errorCode: null,
+      };
+}
 function response(data: unknown, status = 200) {
   return Promise.resolve(
     new Response(JSON.stringify(data), {
@@ -90,6 +125,10 @@ function response(data: unknown, status = 200) {
       headers: { "Content-Type": "application/json" },
     }),
   );
+}
+function requestPath(input: RequestInfo | URL): string {
+  const value = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+  return new URL(value, "http://dashboard.test").pathname;
 }
 function renderApp() {
   const client = new QueryClient({
@@ -109,10 +148,12 @@ afterEach(() => {
 
 describe("dashboard SPA", () => {
   it("shows first-load state, full error, and retry", async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(await response({}, 503))
-      .mockResolvedValueOnce(await response(overview()));
+    let overviewCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (requestPath(input) === "/api/langfuse-monitor") return response(langfuse());
+      overviewCalls += 1;
+      return overviewCalls === 1 ? response({}, 503) : response(overview());
+    });
     renderApp();
     expect(
       screen.getByText(/Loading local runtime overview/),
@@ -124,10 +165,14 @@ describe("dashboard SPA", () => {
     expect(
       await screen.findByRole("heading", { name: "Agent roles" }),
     ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(overviewCalls).toBe(2);
   });
   it("renders seven roles, metrics, escaped text, and safe provider links", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(await response(overview()));
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      requestPath(input) === "/api/langfuse-monitor"
+        ? response(langfuse())
+        : response(overview()),
+    );
     renderApp();
     expect(await screen.findByText("Planner")).toBeInTheDocument();
     expect(screen.getAllByRole("article")).toHaveLength(12);
@@ -149,10 +194,28 @@ describe("dashboard SPA", () => {
       }),
     ).toBeNull();
   });
+  it("renders server-side Langfuse metrics without exposing credentials", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      requestPath(input) === "/api/langfuse-monitor"
+        ? response(langfuse(true))
+        : response(overview()),
+    );
+    renderApp();
+    expect(await screen.findByRole("heading", { name: "LLM monitoring · Langfuse" })).toBeInTheDocument();
+    expect(screen.getByText("Observations").parentElement).toHaveTextContent("42");
+    expect(screen.getByText("p95 latency").parentElement).toHaveTextContent("1,234 ms");
+    expect(screen.getByText("qwen/qwen3-coder")).toBeInTheDocument();
+    const link = screen.getByRole("link", { name: /Open Langfuse/ });
+    expect(link).toHaveAttribute("href", "https://cloud.langfuse.com");
+    expect(document.body.textContent).not.toMatch(/pk-lf-|sk-lf-/);
+  });
   it("keeps prior data and marks it stale when a manual refresh fails", async () => {
-    vi.spyOn(globalThis, "fetch")
-      .mockResolvedValueOnce(await response(overview()))
-      .mockResolvedValueOnce(await response({}, 503));
+    let overviewCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (requestPath(input) === "/api/langfuse-monitor") return response(langfuse());
+      overviewCalls += 1;
+      return overviewCalls === 1 ? response(overview()) : response({}, 503);
+    });
     renderApp();
     expect(await screen.findByText("Planner")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
@@ -162,8 +225,10 @@ describe("dashboard SPA", () => {
     expect(screen.getByText("Planner")).toBeInTheDocument();
   });
   it("localizes partial trouble and has a keyboard disclosure", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      await response(overview(true)),
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      requestPath(input) === "/api/langfuse-monitor"
+        ? response(langfuse())
+        : response(overview(true)),
     );
     renderApp();
     expect(await screen.findByText(/Partial data/)).toBeInTheDocument();
@@ -175,11 +240,14 @@ describe("dashboard SPA", () => {
     fireEvent.click(summary);
     expect(summary.closest("details")).toHaveProperty("open", true);
   });
-  it("polls every five seconds only while visible and refetches on resume", async () => {
+  it("polls runtime every five seconds only while visible and refetches on resume", async () => {
     vi.useFakeTimers();
-    const fetchMock = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(await response(overview()));
+    let overviewCalls = 0;
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) => {
+      if (requestPath(input) === "/api/langfuse-monitor") return response(langfuse());
+      overviewCalls += 1;
+      return response(overview());
+    });
     renderApp();
     await vi.advanceTimersByTimeAsync(0);
     await act(async () => {
@@ -188,7 +256,7 @@ describe("dashboard SPA", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(overviewCalls).toBe(2);
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "hidden",
@@ -197,7 +265,7 @@ describe("dashboard SPA", () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(5_000);
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(overviewCalls).toBe(2);
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
       value: "visible",
@@ -206,6 +274,6 @@ describe("dashboard SPA", () => {
     await act(async () => {
       await Promise.resolve();
     });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(overviewCalls).toBe(3);
   });
 });

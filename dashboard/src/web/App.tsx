@@ -7,18 +7,23 @@ import type {
   RoleOverview,
   SanitizedRoleStatusItem,
 } from "../shared/contracts.ts";
-import { fetchOverview } from "./api.ts";
+import {
+  fetchLangfuseMonitor,
+  fetchOverview,
+} from "./api.ts";
+import type { LangfuseMonitorSnapshot } from "./api.ts";
 
 const POLL_MS = 5_000;
+const LANGFUSE_POLL_MS = 15_000;
 const stateTone = (
   state: string,
 ): "success" | "warning" | "danger" | "neutral" => {
   const normalized = state.toUpperCase();
-  return ["RUNNING", "HEALTHY", "WORKING", "IDLE"].includes(normalized)
+  return ["RUNNING", "HEALTHY", "WORKING", "IDLE", "OK"].includes(normalized)
     ? "success"
-    : ["BLOCKED", "STOPPED", "UNHEALTHY"].includes(normalized)
+    : ["BLOCKED", "STOPPED", "UNHEALTHY", "DEGRADED"].includes(normalized)
       ? "danger"
-      : ["UNAVAILABLE", "WAITING", "QUEUED", "STARTING", "RESTARTING"].includes(
+      : ["UNAVAILABLE", "UNCONFIGURED", "WAITING", "QUEUED", "STARTING", "RESTARTING"].includes(
             normalized,
           )
         ? "warning"
@@ -195,6 +200,113 @@ function Summary({ overview }: { overview: OverviewResponse }) {
   );
 }
 
+function LangfuseMonitoring({
+  snapshot,
+  loading,
+  stale,
+}: {
+  snapshot: LangfuseMonitorSnapshot | undefined;
+  loading: boolean;
+  stale: boolean;
+}) {
+  if (!snapshot) {
+    return (
+      <section aria-labelledby="langfuse-title">
+        <h2 id="langfuse-title">LLM monitoring · Langfuse</h2>
+        <p className="muted">
+          {loading ? "Loading Langfuse metrics…" : "Langfuse monitor is unavailable."}
+        </p>
+      </section>
+    );
+  }
+  if (!snapshot.configured) {
+    return (
+      <section aria-labelledby="langfuse-title">
+        <h2 id="langfuse-title">LLM monitoring · Langfuse</h2>
+        <aside className="notice" role="status">
+          <strong>Not configured.</strong> Add Langfuse monitor credentials through
+          the observability Compose overlay to enable server-side metrics.
+        </aside>
+      </section>
+    );
+  }
+  const metrics = [
+    ["Observations", formatNumber(snapshot.metrics.observations)],
+    ["p95 latency", formatLatency(snapshot.metrics.p95LatencyMs)],
+    ["Tokens", formatNumber(snapshot.metrics.totalTokens)],
+    ["Cost", formatCost(snapshot.metrics.totalCostUsd)],
+  ];
+  return (
+    <section aria-labelledby="langfuse-title">
+      <div className="role-top">
+        <div>
+          <h2 id="langfuse-title">LLM monitoring · Langfuse</h2>
+          <p className="muted">
+            Last {snapshot.windowMinutes} minutes · refreshed {new Date(snapshot.generatedAt).toLocaleTimeString()}
+          </p>
+        </div>
+        <div className="badges">
+          <StatusBadge label="Langfuse" value={snapshot.status} />
+          {snapshot.baseUrl && (
+            <a href={snapshot.baseUrl} target="_blank" rel="noopener noreferrer">
+              Open Langfuse ↗
+            </a>
+          )}
+        </div>
+      </div>
+      {(snapshot.status === "degraded" || stale) && (
+        <aside className="notice stale" role="status">
+          <strong>{snapshot.status === "degraded" ? "Langfuse query failed." : "Showing last successful Langfuse data."}</strong>{" "}
+          The agent runtime dashboard remains available independently.
+        </aside>
+      )}
+      <div className="summary-grid" aria-label="Langfuse metrics">
+        {metrics.map(([label, value]) => (
+          <article className="metric" key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </article>
+        ))}
+      </div>
+      {snapshot.models.length > 0 && (
+        <details>
+          <summary>
+            Top models <span>{snapshot.models.length} shown ▾</span>
+          </summary>
+          <ul className="queue-list">
+            {snapshot.models.map((model) => (
+              <li className="queue-row" key={model.model}>
+                <div>
+                  <strong>{model.model}</strong>
+                  <p>{model.observations.toLocaleString()} observations</p>
+                </div>
+                <span>{formatCost(model.totalCostUsd)}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function formatNumber(value: number | null): string {
+  return value === null ? "—" : Math.round(value).toLocaleString();
+}
+
+function formatLatency(value: number | null): string {
+  return value === null ? "—" : `${Math.round(value).toLocaleString()} ms`;
+}
+
+function formatCost(value: number | null): string {
+  if (value === null) return "—";
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: value < 1 ? 4 : 2,
+  }).format(value);
+}
+
 export function App() {
   const query = useQuery({
     queryKey: ["overview"],
@@ -204,13 +316,24 @@ export function App() {
     refetchOnWindowFocus: false,
     staleTime: 0,
   });
+  const langfuseQuery = useQuery({
+    queryKey: ["langfuse-monitor"],
+    queryFn: ({ signal }) => fetchLangfuseMonitor(signal),
+    refetchInterval: LANGFUSE_POLL_MS,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    staleTime: 0,
+  });
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "visible") void query.refetch();
+      if (document.visibilityState === "visible") {
+        void query.refetch();
+        void langfuseQuery.refetch();
+      }
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [query.refetch]);
+  }, [query.refetch, langfuseQuery.refetch]);
   if (query.isPending && !query.data)
     return (
       <main className="shell" aria-busy="true">
@@ -242,24 +365,27 @@ export function App() {
       <header className="topbar">
         <div>
           <h1>HermeTeam Dashboard</h1>
-          <p className="muted">Local runtime overview · read-only MVP</p>
+          <p className="muted">Local runtime + LLM monitoring · read-only</p>
         </div>
         <div className="actions">
           <p>
             <strong>Updated {refreshed}</strong>
             <br />
-            <span className="muted">Docker &amp; role queues</span>
+            <span className="muted">Docker, role queues &amp; Langfuse</span>
           </p>
           <button
             type="button"
-            disabled={query.isFetching}
+            disabled={query.isFetching || langfuseQuery.isFetching}
             aria-describedby="refresh-note"
-            onClick={() => void query.refetch()}
+            onClick={() => {
+              void query.refetch();
+              void langfuseQuery.refetch();
+            }}
           >
-            {query.isFetching ? "Refreshing…" : "Refresh"}
+            {query.isFetching || langfuseQuery.isFetching ? "Refreshing…" : "Refresh"}
           </button>
           <span id="refresh-note" className="sr-only">
-            Request the latest Docker and role queue status.
+            Request the latest runtime and Langfuse monitoring status.
           </span>
         </div>
       </header>
@@ -279,11 +405,16 @@ export function App() {
         <div>
           <p className="eyebrow">Team runtime</p>
           <h2>See agent health before work piles up.</h2>
-          <p>Current container health and role-local work queues.</p>
+          <p>Current container health, role-local queues and LLM telemetry.</p>
         </div>
-        <p className="poll">● Auto-refresh every 5 seconds</p>
+        <p className="poll">● Runtime 5s · Langfuse 15s</p>
       </section>
       <Summary overview={query.data} />
+      <LangfuseMonitoring
+        snapshot={langfuseQuery.data}
+        loading={langfuseQuery.isPending}
+        stale={langfuseQuery.isRefetchError}
+      />
       <section id="roles" aria-labelledby="roles-title">
         <h2 id="roles-title">Agent roles</h2>
         <p className="muted">

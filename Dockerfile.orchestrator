@@ -9,5 +9,12 @@ ARG TARGETARCH
 RUN set -eux; \
     python3 -c 'import os, stat, urllib.request; version=os.environ.get("SUPERCRONIC_VERSION", "v0.2.34"); arch=os.environ.get("TARGETARCH", "amd64"); suffix="linux-arm64" if arch == "arm64" else "linux-amd64"; target="/usr/local/bin/supercronic"; urllib.request.urlretrieve(f"https://github.com/aptible/supercronic/releases/download/{version}/supercronic-{suffix}", target); mode=os.stat(target).st_mode; os.chmod(target, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)'
 
+# Hermes runs from /opt/hermes/.venv. Install the optional Langfuse SDK into
+# that exact environment rather than into the system Python.
+RUN uv pip install --python /opt/hermes/.venv/bin/python langfuse
+
 COPY orchestrator /opt/hermes-sdlc-orchestrator
+# Add the HermeTeam plugin beside Hermes' bundled plugins so discovery does
+# not depend on the container user's HOME or the /opt/data volume.
+COPY hermes-plugins/hermeteam-intent-action-gate /opt/hermes/plugins/hermeteam-intent-action-gate
 ENV PYTHONPATH=/opt/hermes-sdlc-orchestrator
