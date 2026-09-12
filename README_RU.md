@@ -1,112 +1,199 @@
-# HermeTeam - Hermes-based SDLC AI Agents Team
+# HermeTeam — Safe AI SDLC на базе Hermes Agents
 
-Готовый набор из семи изолированных Hermes Agent ролей для управляемого SDLC. В комплект входят реальные `config.yaml` и `SOUL.md`, Hermes profile distributions, Docker Compose, Kubernetes/Kustomize-шаблон, общий read-only superset skills, server-side policy для MVP на официальном GitHub MCP Server, bootstrap, structural validation и smoke tests.
+**HermeTeam — reference implementation подхода Safe AI SDLC: security-first архитектуры автономной разработки ПО, в которой AI-агенты могут планировать, писать код, ревьюить и участвовать в эксплуатации, но их identity, authority и consequential actions остаются независимо контролируемыми.**
+
+Проект начинался как практическая multi-agent SDLC-команда на базе Hermes Agent. Эта основа сохраняется: Planner, Project Manager, Builder, Reviewer, Release, Incident и Learning выполняют реальную работу через раздельные profiles, containers, credentials и tool surfaces. По мере роста автономности HermeTeam добавляет control plane, который делает эту автономность наблюдаемой, ограниченной и управляемой.
+
+> **Больше автономности требует больше контроля, а не больше доверия.**
 
 English version: [README.md](README.md).
 
-## Главное архитектурное решение
+## Safe AI SDLC
 
-`SOUL.md` управляет поведением модели, но не является границей безопасности. `tools.include` уменьшает видимую поверхность official GitHub MCP, однако окончательное решение обязаны повторно принимать GitHub token scopes, branch protection, GitHub rulesets, CI rules и provider-side OPA layer. Поэтому полномочия фиксируются сразу в нескольких независимых слоях:
+Обычная AI-assisted разработка часто развивается так:
+
+```text
+более способная модель
+        ↓
+больше tools
+        ↓
+больше permissions
+        ↓
+больше autonomy
+```
+
+HermeTeam использует другую модель:
+
+```text
+больше capability
+       +
+больше observability
+       +
+более узкая authority
+       +
+независимая verification
+       ↓
+больше safe autonomy
+```
+
+Подход строится вокруг шести принципов:
+
+1. **Identity и authority разделяются по ролям.** Planner, Builder, Reviewer, Release и другие роли не должны использовать одну human identity или broad credential.
+2. **Intent не равен execution.** То, что модель предлагает сделать, и то, какой tool call реально выполняет runtime, рассматриваются как разные security-relevant события.
+3. **Сначала observe, потом enforce.** Сначала собираются evidence и shadow-mode сигналы, затем blocking включается только там, где реальный риск это оправдывает.
+4. **Агент не авторизует сам себя.** Prompt и `SOUL.md` формируют поведение; credentials, provider controls и policy определяют полномочия.
+5. **Автоматизируются reversible actions, consequential transitions контролируются отдельно.** Human approval нужен около merge, production, permission escalation и других high-impact границ, а не на каждом низкорисковом шаге.
+6. **Проверяется outcome, а не только intent.** Зрелая Safe AI SDLC система проверяет состояние, возникшее после execution, а не только model response или `success=true` от tool.
+
+## Направление архитектуры
+
+HermeTeam развивается от реального AI SDLC runtime к control plane для governed autonomy:
+
+```text
+GitHub Issue / Requirement
+          │
+          ▼
+┌─────────────────────────────┐
+│ AI SDLC Team                │
+│ Planner · PM · Builder      │
+│ Reviewer · Release          │
+│ Incident · Learning         │
+└─────────────┬───────────────┘
+              │
+              ▼
+        Flight Recorder
+   что агент видел и делал?
+              │
+              ▼
+          Intent Risk
+     что он намерен сделать?
+              │
+              ▼
+          Action Gate
+ что он реально пытается вызвать?
+              │
+              ▼
+       Authority Policy
+      разрешено ли действие?
+              │
+              ▼
+          GitHub / CI
+              │
+              ▼
+        Verify Outcome
+      что реально изменилось?
+```
+
+Текущий `master` реализует **AI SDLC foundation и defense-in-depth role controls**. Flight Recorder, intent/action correlation, runtime risk assessment и более жёсткий inline enforcement — следующие control-plane слои, которые должны вводиться и проверяться инкрементально, а не считаться уже полностью готовыми.
+
+## Что реализовано сейчас
+
+Репозиторий содержит готовую GitHub-first Hermes SDLC среду с:
+
+- семью изолированными Hermes Agent ролями;
+- отдельным profile/state для каждой роли;
+- отдельными containers или Kubernetes Pods и отдельными inbound API keys;
+- role-specific GitHub credentials;
+- точными allowlists native GitHub MCP tools;
+- каноническими role/tool constraints в `policies/roles.yaml`;
+- примерами server-side OPA policy в `policies/mcp-policy.rego`;
+- protected-path и branch-boundary controls;
+- role-local orchestrator с SQLite workflow state;
+- Docker Compose и Kubernetes/Kustomize deployment;
+- общим read-only superset skills;
+- structural validation и smoke tests;
+- локальным read-only dashboard для operational visibility.
+
+В GitHub MVP репозитории не монтируются внутрь agent containers. Агенты работают через scoped provider API/MCP operations, а Builder намеренно ограничен `agent/*` branches и созданием pull request — без merge и production authority.
+
+## Главное security-решение
+
+`SOUL.md` управляет поведением модели, но **не является границей безопасности**. `tools.include` уменьшает видимую поверхность official GitHub MCP, однако final authorization должен дополнительно обеспечиваться upstream credentials, branch protection, GitHub rulesets, CI rules и provider-side policy.
+
+Поэтому полномочия распределены по независимым слоям:
 
 1. Отдельный Hermes profile/state для каждой роли.
-2. Отдельный контейнер или Pod и отдельный входной API key.
-3. Отдельный GitHub credential, принимаемый official GitHub MCP Server, для каждой роли.
+2. Отдельный container или Pod и отдельный inbound API key.
+3. Отдельный GitHub credential для каждой роли.
 4. Exact allowlist native GitHub MCP tools в `config.yaml`.
-5. Та же allowlist и argument constraints на сервере через OPA/эквивалент.
-6. Отдельные upstream GitHub identities/scopes для ролей.
+5. Та же allowlist и argument constraints на серверной стороне через OPA или эквивалент.
+6. Отдельные upstream GitHub identities/scopes.
 7. Server-side branch protection, protected paths, approvals и immutable release candidates.
 8. Отсутствие Kubernetes service-account token у самих агентов.
-9. Общий каталог skills монтируется read-only и используется через `skills.external_dirs`; skill writes остаются gated human approval.
+9. Shared skills монтируются read-only; skill writes остаются gated human approval.
 
-Официальная документация Hermes прямо разделяет profile и sandbox: profile изолирует состояние, но сам по себе не ограничивает файловую систему. Отдельные контейнеры рекомендованы, когда нужны разные credentials, network segmentation и меньший blast radius. См. [Profiles](https://hermes-agent.nousresearch.com/docs/user-guide/profiles/) и [Docker](https://hermes-agent.nousresearch.com/docs/user-guide/docker/).
+Hermes разделяет profile isolation и sandboxing: profile изолирует состояние, но сам по себе не ограничивает filesystem. Для разных credentials, network segmentation и меньшего blast radius используются отдельные containers/Pods. См. [Profiles](https://hermes-agent.nousresearch.com/docs/user-guide/profiles/) и [Docker](https://hermes-agent.nousresearch.com/docs/user-guide/docker/).
 
 ## Роли
 
-| Роль                     | Разрешено                                                                                                                                                             | Жёстко исключено                                                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `hermes-planner`         | GitHub repository/file/tree/search и issue reads                                                                                                                      | code write, branch/PR creation, deployment, production, skill mutation                                                           |
-| `hermes-project-manager` | GitHub repository/file/tree/search и issue read/comment/create для BRD/PRD-aligned PM-артефактов, weekly decision reports, flow metrics и Funnel/Discovery governance | code write, branch/PR creation, merge, deployment, production, budget/access mutation, technical micromanagement, skill mutation |
-| `hermes-builder`         | GitHub repository read, создание `agent/*` branch, `push_files`, PR creation, Actions evidence                                                                        | local checkout, broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation             |
-| `hermes-reviewer`        | PR/file/Actions reads и issue/PR comments                                                                                                                             | author-branch mutation, merge, production, skill mutation                                                                        |
-| `hermes-release`         | GitHub Actions read-only evidence для MVP                                                                                                                             | deployment mutation, пока native release/deployment tools не обнаружены и не ограничены                                          |
-| `hermes-incident`        | GitHub issue read/comment для MVP                                                                                                                                     | flags, runbooks, infrastructure operations, code, skill mutation                                                                 |
-| `hermes-learning`        | GitHub issue read/comment/create для human-reviewed improvement proposals                                                                                             | independent activation/publication, direct docs/code/production write                                                            |
+| Роль | Разрешено | Жёстко исключено |
+| --- | --- | --- |
+| `hermes-planner` | GitHub repository/file/tree/search и issue reads | code write, branch/PR creation, deployment, production, skill mutation |
+| `hermes-project-manager` | repository/file/tree/search и issue read/comment/create для PM artifacts, reports и flow governance | code write, branch/PR creation, merge, deployment, production, budget/access mutation, skill mutation |
+| `hermes-builder` | repository read, создание `agent/*` branch, `push_files`, PR creation, Actions evidence | broad GitHub credentials, merge, protected branch, production, quality-gate mutation, skill mutation |
+| `hermes-reviewer` | PR/file/Actions reads и issue/PR comments | author-branch mutation, merge, production, skill mutation |
+| `hermes-release` | GitHub Actions read-only evidence для MVP | deployment mutation, пока native release/deployment tools явно не ограничены |
+| `hermes-incident` | GitHub issue read/comment для MVP | flags, runbooks, infrastructure operations, code, skill mutation |
+| `hermes-learning` | issue read/comment/create для human-reviewed improvement proposals | independent activation/publication, direct docs/code/production write |
 
-Точные разрешённые имена инструментов находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если списки разойдутся.
+Точные allowed tool names находятся одновременно в `profiles/*/config.yaml` и `policies/roles.yaml`. `scripts/validate.sh` завершится ошибкой, если эти списки разойдутся.
 
-## Структура
+## Граница safe autonomy
+
+Проект намеренно не строится вокруг идеи «доверять prompt». Полезная автономная работа отделяется от consequential authority.
+
+Например Builder может:
 
 ```text
-hermes-sdlc-agents/
-├── compose.yaml                  # один контейнер на роль
-├── compose.debug.yaml            # opt-in loopback role diagnostics
-├── dashboard/                    # stateless read-only local overview
-├── kustomization.yaml            # Kubernetes deployment через Kustomize
-├── profiles/
-│   └── hermes-*/
-│       ├── .gitignore            # исключает credentials и runtime state
-│       ├── distribution.yaml     # Hermes profile distribution manifest
-│       ├── config.yaml           # managed role config
-│       ├── SOUL.md               # identity, process, stop conditions
-│       └── skills/               # role-safe shared skills, including self-evolution
-├── orchestrator/                  # role-local cron discovery issues и submitter в /v1/runs
-├── policies/
-│   ├── roles.yaml                # каноническая role/tool/constraint matrix
-│   ├── mcp-policy.rego           # пример server-side OPA decision
-│   └── protected-paths.txt       # quality/CI/prod paths для отдельного gate
-├── secrets/*.env.example         # optional per-container overrides для Compose/Kubernetes env
-├── docs/
-│   ├── REPOSITORY_API_MCP_FLOW_EN.md
-│   ├── REPOSITORY_API_MCP_FLOW_RU.md
-│   ├── GIT_PROVIDER_INTEGRATION.md
-│   ├── SECURITY.md
-│   ├── OPERATIONS.md
-│   ├── DASHBOARD.md
-│   └── DASHBOARD_RU.md
-├── kubernetes/
-└── scripts/
+читать repository context
+создавать agent/* branch
+писать bounded changes
+читать CI evidence
+открывать pull request
 ```
 
-## Общий superset skills
+но не должен владеть irreversible transition:
 
-Каждая роль имеет включённый Hermes toolset `skills` и два external skill directories:
+```text
+писать в main/master/release/*
+merge-ить pull request
+изменять protected security/CI paths без independent gate
+использовать Kubernetes/cloud production credentials
+```
 
-- `/etc/hermes/skills` — skills, поставляемые вместе с конкретным role profile;
-- `/opt/hermes-shared-skills/current` — общий read-only superset из `https://github.com/stanta/skills_superset/tree/main/skills`.
+Базовое правило Safe AI SDLC:
 
-В Docker Compose сервис `skills-superset-sync` перед запуском агентов обновляет named volume `shared-skills` из `SKILLS_SUPERSET_REPO_URL`/`SKILLS_SUPERSET_REF`; агенты ждут его успешного завершения и монтируют volume read-only. В Kubernetes каждый Pod использует initContainer `sync-shared-skills`, который клонирует тот же репозиторий в `emptyDir`, после чего основной контейнер видит каталог read-only.
-
-Это даёт агентам динамический выбор релевантных skills через `skills_list`/`skill_view`, но не расширяет Git provider API/MCP allowlist. Мутации skills по-прежнему требуют `skills.write_approval: true`; роли, кроме `hermes-learning`, должны оформлять улучшения skills как handoff/proposal, а не менять их напрямую.
+> **Агент может предложить действие. Агент не должен сам решать, имеет ли он право его выполнить.**
 
 ## Repository API/MCP flow
 
-Репозитории не монтируются в agent containers. В GitHub MVP Hermes agents напрямую подключаются к official GitHub MCP endpoint `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` и отправляют `X-MCP-Toolsets: "repos,issues,pull_requests,actions,git,code_security,dependabot"`. Hermes видит только узкие allowlisted native GitHub MCP tools, подтверждённые runtime `tools/list`; header только включает server-side availability.
+В GitHub MVP Hermes agents подключаются к official GitHub MCP endpoint через role-specific credentials и узкие allowlists native tools, обнаруженные через runtime `tools/list`.
 
-Для builder это означает:
+Для Builder:
 
-- нет `REPO_DIR` и `/workspace/repo`;
-- нет broad GitHub token в контейнере агента; Compose маппит role-specific token из `.env`, например `BUILDER_GITHUB_MCP_TOKEN`, во внутренний `GIT_PROVIDER_MCP_TOKEN` контейнера;
-- изменения передаются через native GitHub MCP tools, например `create_branch`, `push_files` и `create_pull_request`;
-- task branch всегда имеет prefix `agent/<work-item-id>-`;
-- GitHub Pull Requests являются MVP-механизмом change request;
-- `PR_READY_FOR_REVIEW` допустим только после CI/workspace evidence.
+- нет `REPO_DIR` и writable `/workspace/repo`;
+- нет shared human PAT;
+- изменения выполняются через native tools вроде `create_branch`, `push_files` и `create_pull_request`;
+- task branches используют prefix `agent/<work-item-id>-`;
+- GitHub Pull Request является MVP change-request boundary;
+- `PR_READY_FOR_REVIEW` допустим только после необходимых CI/workspace evidence.
 
-Если для проекта нужны локальные проверки до открытия change request, запускайте их в отдельном ephemeral workspace worker или trusted CI с теми же repository scopes. Worker может клонировать репозиторий, применить patch, выполнить allowlisted checks и push-нуть task branch через role-scoped credentials, но Hermes получает только typed status/evidence.
+Если до открытия change request нужны локальные проверки, их следует выполнять в отдельном ephemeral workspace worker или trusted CI с теми же repository scopes. Hermes должен получать typed status/evidence, а не broad shell или production credential.
 
-Подробное описание флоу:
+Подробный flow:
 
 - [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
-- [Флоу доступа к репозиториям через API/MCP — Русский](docs/REPOSITORY_API_MCP_FLOW_RU.md)
+- [Repository API/MCP Flow — Русский](docs/REPOSITORY_API_MCP_FLOW_RU.md)
 
-## Role-local cron orchestrator
+## Role-local orchestrator
 
-В bundle добавлен отключённый по умолчанию cron orchestrator в `orchestrator/`. Каждый role container запускает один и тот же wrapper, пишет минимальный cron env file в `/opt/data/sdlc-orchestrator/`, ищет provider issues своим read-only `ORCHESTRATOR_GITHUB_TOKEN`, дедуплицирует назначения в локальном SQLite и отправляет runs только в `http://127.0.0.1:8642/v1/runs` с собственным `API_SERVER_KEY` контейнера.
+В репозитории есть отключённый по умолчанию cron orchestrator в `orchestrator/`. Каждый role container запускает одинаковый wrapper, обнаруживает provider issues своим read-only orchestrator token, дедуплицирует назначения в локальном SQLite и отправляет runs только в локальный Hermes API своего контейнера.
 
-Compose собирает `Dockerfile.orchestrator` от зафиксированного `HERMES_IMAGE`, добавляет `supercronic` и монтирует `./orchestrator` read-only для локальной итерации. Kubernetes ожидает тот же код внутри image `hermes-sdlc-agent-orchestrator`. Держите `ORCHESTRATOR_ENABLED=false`, пока canary не пройдёт отдельно для каждой роли.
+Держите `ORCHESTRATOR_ENABLED=false`, пока canary не пройдёт отдельно для каждой роли.
 
-## Быстрый запуск через Docker Compose
+## Быстрый запуск
 
-Требования: Docker Engine с Compose v2, OpenAI-совместимый LLM gateway и GitHub credentials, принимаемые official GitHub MCP Server. Compose предназначен для локального/single-host запуска; production egress ограничьте firewall/egress proxy или используйте Kubernetes NetworkPolicy из bundle.
+Требования: Docker Engine с Compose v2, OpenAI-compatible LLM gateway и GitHub credentials, принимаемые official GitHub MCP Server.
 
 ```bash
 cd hermes-sdlc-agents
@@ -115,118 +202,91 @@ scripts/bootstrap.sh
 
 Затем:
 
-1. В `.env` зафиксируйте `HERMES_IMAGE` по immutable digest.
-2. Оставьте GitHub repository target `test-project/test-project` в `.env.example` и `GIT_PROVIDER_MCP_URL=https://api.githubcopilot.com/mcp/` для GitHub MVP.
-3. В `.env` замените все `CHANGE_ME`, включая role API keys, role-local read-only `ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` и role-specific GitHub MCP tokens перед включением cron.
-4. Задайте семь разных GitHub MCP tokens в `.env`: `PLANNER_GITHUB_MCP_TOKEN`, `PROJECT_MANAGER_GITHUB_MCP_TOKEN`, `BUILDER_GITHUB_MCP_TOKEN`, `REVIEWER_GITHUB_MCP_TOKEN`, `RELEASE_GITHUB_MCP_TOKEN`, `INCIDENT_GITHUB_MCP_TOKEN` и `LEARNING_GITHUB_MCP_TOKEN`. Один token нельзя использовать для двух ролей.
-5. При необходимости создайте `secrets/hermes-<role>.env` из соответствующего example, чтобы переопределить container-local значения для одной роли. Значения из этого файла приоритетнее централизованного root `.env` для этого контейнера.
-6. Сохраните repository MCP header `X-MCP-Toolsets` равным `repos,issues,pull_requests,actions,git,code_security,dependabot`; role isolation всё равно задаётся `tools.include` и role tokens.
-7. Проверьте конфигурацию:
+1. Зафиксируйте `HERMES_IMAGE` по immutable digest в `.env`.
+2. Замените все `CHANGE_ME`.
+3. Настройте разные role-specific GitHub MCP tokens. Не используйте один token для нескольких ролей.
+4. Держите repository MCP toolsets узкими, а каждой роли показывайте только её exact allowlist.
+5. Проверьте конфигурацию:
 
 ```bash
 scripts/validate.sh
 ```
 
-8. Запустите:
+6. Запустите:
 
 ```bash
 docker compose up -d
 scripts/smoke-test.sh
 ```
 
-Secure default Compose публикует только unauthenticated read-only central dashboard: <http://127.0.0.1:9130>. Локальный порт меняется через `HERMETEAM_DASHBOARD_PORT`; host address остаётся loopback. Role APIs, native role dashboards, restricted Docker proxy и role status port `8650` не публикуются.
-
-Для локальной диагностики явно добавьте loopback-only debug override:
+Secure default Compose публикует только локальный read-only central dashboard на loopback. Role APIs наружу не публикуются. Для диагностики используйте explicit loopback-only debug override:
 
 ```bash
 docker compose -f compose.yaml -f compose.debug.yaml up -d
 scripts/smoke-test.sh
 ```
 
-Override публикует следующие authenticated role APIs:
+## Структура репозитория
 
-| Роль            | URL                         |
-| --------------- | --------------------------- |
-| planner         | `http://127.0.0.1:18642/v1` |
-| project-manager | `http://127.0.0.1:18648/v1` |
-| builder         | `http://127.0.0.1:18643/v1` |
-| reviewer        | `http://127.0.0.1:18644/v1` |
-| release         | `http://127.0.0.1:18645/v1` |
-| incident        | `http://127.0.0.1:18646/v1` |
-| learning        | `http://127.0.0.1:18647/v1` |
-
-Hermes API требует Bearer key и поддерживает `/v1/responses`, `/v1/runs`, `/health` и authenticated `/health/detailed`; см. [официальный API Server reference](https://hermes-agent.nousresearch.com/docs/user-guide/features/api-server/).
-
-Central dashboard не имеет authentication: его запрещено публиковать в LAN/Internet или на `0.0.0.0`. Для внешнего доступа используйте SSH tunnel или trusted VPN. Dashboard не имеет собственной database, history, controls, logs/transcripts и proxy к native Hermes dashboard. State semantics, troubleshooting, secure access, shutdown/recovery, development checks и E2E commands описаны в [руководстве по dashboard](docs/DASHBOARD_RU.md).
-
-Пример canary-вызова planner:
-
-```bash
-set -a
-source .env
-set +a
-curl --fail http://127.0.0.1:18642/v1/responses \
-  -H "Authorization: Bearer ${PLANNER_API_SERVER_KEY}" \
-  -H 'Content-Type: application/json' \
-  -d '{"model":"hermes-planner","input":"Прочитай REQ-123 и создай только черновик spec; не меняй код."}'
+```text
+hermes-sdlc-agents/
+├── compose.yaml
+├── compose.debug.yaml
+├── dashboard/
+├── orchestrator/
+├── profiles/
+│   └── hermes-*/
+│       ├── distribution.yaml
+│       ├── config.yaml
+│       ├── SOUL.md
+│       └── skills/
+├── policies/
+│   ├── roles.yaml
+│   ├── mcp-policy.rego
+│   └── protected-paths.txt
+├── secrets/*.env.example
+├── kubernetes/
+├── kustomization.yaml
+├── scripts/
+└── docs/
 ```
 
-Не передавайте через внешний request поле `provider`: в конфигурациях отключён `direct_model_requests`, чтобы клиент не мог выбрать иной provider/model route.
+## Roadmap: от AI SDLC к governed autonomy
 
-## Установка как локальных Hermes profiles
+Развитие должно идти инкрементально:
 
-Каждая директория в `profiles/` является Hermes profile distribution. Для разработки их можно установить в уже существующий Hermes:
-
-```bash
-scripts/install-profiles.sh
+```text
+01 OBSERVE  → Flight Recorder
+02 ASSESS   → Intent / target / risk classification
+03 CONTROL  → Intent ↔ actual action comparison и policy gate
+04 VERIFY   → Наблюдение resulting repository/production state
+05 GOVERN   → Управление agent authority, grants, revoke и drift
 ```
 
-Или одну роль:
-
-```bash
-hermes profile install ./profiles/hermes-reviewer --alias --yes
-```
-
-Такой режим удобен, но не даёт жёсткой OS/network isolation. Для production используйте отдельные контейнеры/Pods. Формат distributions описан в [Hermes Profile Distributions](https://hermes-agent.nousresearch.com/docs/user-guide/profile-distributions).
-
-## Почему конфиг монтируется в `/etc/hermes`
-
-Compose и Kubernetes устанавливают `HERMES_MANAGED_DIR=/etc/hermes` и монтируют role config read-only. Managed scope имеет приоритет над пользовательским `config.yaml`, поэтому агент не может включить terminal или расширить MCP allowlist через обычный `hermes config set`. Это дополнительный control plane, но не самостоятельный sandbox; окончательные запреты остаются на MCP/upstream сторонах. См. [Managed Scope](https://hermes-agent.nousresearch.com/docs/user-guide/managed-scope).
-
-## Необходимый open-source control plane
-
-В GitHub MVP отдельный repository gateway не используется. Hermes roles подключаются напрямую к official GitHub MCP Server. GitLab support является future work и требует отдельного tool mapping. Возможности вне GitHub repository, issue, PR и Actions tools остаются отдельными integrations или blocked для MVP:
-
-- GitHub для repository/Pull Request/review и branch protection через official GitHub MCP endpoint;
-- OpenProject для work items/requirements;
-- Backstage Catalog для сервисов, владельцев и зависимостей;
-- Woodpecker CI, Tekton или Jenkins для CI evidence;
-- Semgrep, Gitleaks, Trivy, OSV-Scanner, OpenSSF Scorecard, SonarQube Community Build и mutation tools для quality findings;
-- Argo CD + Argo Rollouts для immutable candidate status, promote и abort;
-- Prometheus, Loki, Tempo и OpenTelemetry для bounded telemetry queries;
-- Unleash для feature flags через отдельную future integration, не через GitHub MCP allowlist;
-- AWX или Rundeck Community для approved, versioned runbooks через отдельную future integration;
-- OPA для authorisation и argument-level policy;
-- OpenBao/SOPS/External Secrets Operator для выдачи и ротации секретов.
-
-Не выдавайте Hermes broad GitHub token, Kubernetes kubeconfig, Argo admin token, cloud credential или shell на runner. В MVP допустим только role-specific GitHub credential, ограниченный allowlisted repository operations.
+Проект не должен сразу превращаться в giant governance platform. Предпочтительный путь — сначала наблюдать реальное поведение агентов, проверять controls в shadow/canary mode и только затем помещать consequential mutations за mandatory enforcement.
 
 ## Перед включением автоматики
 
-- Проведите negative canary для каждой роли: попросите planner изменить код, builder merge-нуть main, release выполнить `kubectl`, incident включить flag, learning активировать skill. Каждый запрос должен завершиться без изменяющей операции.
-- Проверьте denial не только по ответу модели, но и по audit log provider MCP/upstream.
-- Убедитесь, что `hermes-builder` не может изменить файл из `policies/protected-paths.txt` через `push_files` без отдельного server-side CI gate и human approval.
-- Убедитесь, что tokens имеют разные `sub`, `role`, `jti`, TTL ≤ 1 час и аудит связывает tool call с Hermes run/session/work item.
-- Зафиксируйте image digest; `latest` оставлен только как удобное значение для первого локального запуска.
+- Проведите negative canary для каждой роли: попросите Planner изменить код, Builder merge-нуть `main`, Release выполнить `kubectl`, Incident включить flag, Learning активировать skill. Каждый request должен завершиться без запрещённой mutation.
+- Проверяйте denial через provider/upstream evidence, а не только по model response.
+- Убедитесь, что `hermes-builder` не может менять protected paths без отдельного server-side gate и human approval.
+- Держите role credentials раздельными и short-lived там, где это поддерживает provider.
+- Для production фиксируйте image digests.
 
-Подробности:
+## Документация
 
-- [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
-- [Флоу доступа к репозиториям через API/MCP — Русский](docs/REPOSITORY_API_MCP_FLOW_RU.md)
 - [Configuration reference](docs/CONFIGURATION_REFERENCE.md)
 - [Git provider integration contract](docs/GIT_PROVIDER_INTEGRATION.md)
 - [Security model](docs/SECURITY.md)
 - [Operations runbook](docs/OPERATIONS.md)
 - [Dashboard operations — English](docs/DASHBOARD.md)
-- [Dashboard operations — Russian](docs/DASHBOARD_RU.md)
+- [Dashboard operations — Русский](docs/DASHBOARD_RU.md)
+- [Repository API/MCP Flow — English](docs/REPOSITORY_API_MCP_FLOW_EN.md)
+- [Repository API/MCP Flow — Русский](docs/REPOSITORY_API_MCP_FLOW_RU.md)
 - [Official sources](docs/SOURCES.md)
+
+## Позиционирование
+
+HermeTeam — не ещё одна coding model и не просто multi-agent demo. Это попытка определить и реализовать **как должна быть устроена автономная AI-разработка ПО, когда агенты получают реальные tools и реальные полномочия**.
+
+AI SDLC Team — execution foundation. Safe AI SDLC — подход. Flight Recorder, Intent Risk, Action Gate и authority governance — control layers, которые позволяют постепенно увеличивать автономность, не отдавая контроль самому агенту.
