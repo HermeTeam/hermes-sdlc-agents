@@ -39,7 +39,13 @@ class CapabilityGateway:
             query = _optional_text(body.get("catalog_query"), 300) or intent
             tools = discover_tools(query)
         if not tools:
-            return {"intent": intent, "selected": None, "visible_tools": [], "filtered_tools": [], "status": "no_tools"}
+            return {
+                "intent": intent,
+                "selected": None,
+                "visible_tools": [],
+                "filtered_tools": [],
+                "status": "no_tools",
+            }
         if len(tools) > MAX_TOOLS:
             tools = tools[:MAX_TOOLS]
 
@@ -80,6 +86,18 @@ class CapabilityGateway:
                     capability_overrides=snapshot.capability_overrides,
                     emergency_stop=snapshot.emergency_stop,
                 )
+                # Conservative MVP semantics: the one-shot authority is spent when the
+                # gateway exposes the approved risky tool for this resolution. If the
+                # downstream executor fails, a new human approval is required.
+                if resolution.selected and resolution.selected.tool.tool_id == request.requested_tool_id:
+                    if not self.store.consume_once(request.request_id, request.requested_tool_id):
+                        return {
+                            "intent": intent,
+                            "selected": None,
+                            "visible_tools": [],
+                            "filtered_tools": [],
+                            "status": "one_shot_grant_already_consumed",
+                        }
 
         return _resolution_json(resolution)
 
