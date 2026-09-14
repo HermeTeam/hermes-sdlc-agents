@@ -75,6 +75,9 @@ class CapabilityGateway:
 
         if resolution.approval_required is not None:
             request = resolution.approval_required
+            requested = next(
+                item for item in ranked if item.tool.tool_id == request.requested_tool_id
+            )
             if self.store.has_unconsumed_once(request.request_id, request.requested_tool_id):
                 resolution = resolve(
                     intent=intent,
@@ -98,6 +101,17 @@ class CapabilityGateway:
                             "filtered_tools": [],
                             "status": "one_shot_grant_already_consumed",
                         }
+            else:
+                self.store.record_pending_approval(
+                    request_id=request.request_id,
+                    intent=request.intent,
+                    tool_id=request.requested_tool_id,
+                    capability=requested.assessment.canonical_capability,
+                    requested_category=request.requested_category,
+                    allowed_category=request.allowed_category,
+                    recommended_tool_id=request.recommended_tool_id,
+                    reason=request.reason,
+                )
 
         return _resolution_json(resolution)
 
@@ -110,6 +124,20 @@ class CapabilityGateway:
             "capability_overrides": {
                 key: value.name for key, value in sorted(snapshot.capability_overrides.items())
             },
+            "pending_approvals": [
+                {
+                    "request_id": item.request_id,
+                    "intent": item.intent,
+                    "tool_id": item.tool_id,
+                    "capability": item.capability,
+                    "requested_category": item.requested_category.name,
+                    "allowed_category": item.allowed_category.name,
+                    "recommended_tool_id": item.recommended_tool_id,
+                    "reason": item.reason,
+                    "created_at": item.created_at,
+                }
+                for item in snapshot.pending_approvals
+            ],
         }
 
 
@@ -145,7 +173,7 @@ def make_handler(gateway: CapabilityGateway):
                     request_id = _text(body.get("request_id"), "request_id", 100)
                     tool_id = _text(body.get("tool_id"), "tool_id", 300)
                     gateway.store.grant_once(request_id, tool_id)
-                    return self._json(200, {"status": "granted_once"})
+                    return self._json(200, gateway.governance_state())
                 if self.path == "/v1/governance/tool-exception":
                     tool_id = _text(body.get("tool_id"), "tool_id", 300)
                     gateway.store.add_tool_exception(tool_id)
