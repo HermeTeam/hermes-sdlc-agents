@@ -1,0 +1,124 @@
+.governance-shell {
+  padding-top: 0;
+}
+
+.risk-governance {
+  margin-top: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 1rem;
+  padding: 1.25rem;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.governance-unlock {
+  display: flex;
+  gap: 0.75rem;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.governance-unlock label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: min(34rem, 100%);
+}
+
+.governance-unlock input {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.55rem;
+  padding: 0.7rem 0.8rem;
+  background: rgba(15, 23, 42, 0.8);
+  color: inherit;
+}
+
+.risk-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(16rem, 1fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.approval-list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.approval-card,
+.governance-summary {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 0.8rem;
+  padding: 1rem;
+  background: rgba(2, 6, 23, 0.35);
+}
+
+.approval-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.risk-pill {
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  background: rgba(239, 68, 68, 0.14);
+  color: #fecaca;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.safer-alternative {
+  border-left: 3px solid rgba(34, 197, 94, 0.65);
+  padding-left: 0.75rem;
+}
+
+.approval-actions,
+.emergency-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.risk-governance button.secondary {
+  background: transparent;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.emergency-stop {
+  background: #b91c1c !important;
+  border-color: #ef4444 !important;
+  color: white !important;
+  font-weight: 800;
+}
+
+.emergency-resume {
+  background: #166534 !important;
+  border-color: #22c55e !important;
+  color: white !important;
+  font-weight: 700;
+}
+
+.emergency-banner {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid rgba(239, 68, 68, 0.6);
+  background: rgba(127, 29, 29, 0.32);
+}
+
+.governance-error {
+  color: #fecaca;
+  margin-top: 0.75rem;
+}
+
+.governance-summary code,
+.approval-card code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 850px) {
+  .risk-grid {
+    grid-template-columns: 1fr;
+  }
+}
