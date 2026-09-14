@@ -75,7 +75,7 @@ class ResolverTests(unittest.TestCase):
         self.assertIsNotNone(result.approval_required)
         self.assertEqual(result.approval_required.recommended_tool_id, safe.tool.tool_id)
 
-    def test_tool_exception_does_not_restore_dominated_tool(self) -> None:
+    def test_tool_exception_without_explicit_request_does_not_restore_dominated_tool(self) -> None:
         safe = candidate("read_file", "repository.file.read", fit=0.95, read=True)
         shell = candidate(
             "shell_exec",
@@ -94,6 +94,28 @@ class ResolverTests(unittest.TestCase):
         )
         self.assertEqual(result.selected.tool.tool_id, safe.tool.tool_id)
         self.assertTrue(any(item.tool.tool_id == shell.tool.tool_id for item in result.filtered_tools))
+
+    def test_one_shot_human_override_selects_exact_requested_tool(self) -> None:
+        safe = candidate("read_file", "repository.file.read", fit=0.95, read=True)
+        shell = candidate(
+            "shell_exec",
+            "shell.execute",
+            fit=0.99,
+            read=True,
+            write=True,
+            destructive=True,
+            egress=True,
+            arbitrary_execution=True,
+        )
+        result = resolve(
+            intent="read the README",
+            candidates=(safe, shell),
+            max_auto_category=RiskCategory.MEDIUM,
+            requested_tool_id=shell.tool.tool_id,
+            allowed_once=frozenset({shell.tool.tool_id}),
+        )
+        self.assertIsNone(result.approval_required)
+        self.assertEqual(result.selected.tool.tool_id, shell.tool.tool_id)
 
     def test_emergency_stop_hides_every_tool(self) -> None:
         safe = candidate("read_file", "repository.file.read", fit=1.0, read=True)
