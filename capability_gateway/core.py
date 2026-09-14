@@ -125,7 +125,7 @@ def mark_dominated(candidates: Sequence[RankedTool]) -> tuple[RankedTool, ...]:
     return tuple(output)
 
 
-def _request_id(intent: str, tool_id: str) -> str:
+def request_id(intent: str, tool_id: str) -> str:
     return sha256(f"{intent}\0{tool_id}".encode("utf-8")).hexdigest()[:24]
 
 
@@ -140,18 +140,19 @@ def resolve(
     capability_overrides: dict[str, RiskCategory] | None = None,
     emergency_stop: bool = False,
 ) -> Resolution:
+    candidates_tuple = tuple(candidates)
     if emergency_stop:
         return Resolution(
             intent=intent,
             selected=None,
             visible_tools=(),
-            filtered_tools=tuple(candidates),
+            filtered_tools=candidates_tuple,
             approval_required=None,
             emergency_stop=True,
         )
 
     capability_overrides = capability_overrides or {}
-    marked = mark_dominated(tuple(candidates))
+    marked = mark_dominated(candidates_tuple)
 
     def effective_category(candidate: RankedTool) -> RiskCategory:
         return capability_overrides.get(
@@ -163,8 +164,12 @@ def resolve(
     filtered: list[RankedTool] = []
     for candidate in marked:
         exempt = candidate.tool.tool_id in exception_tools
+        one_shot = candidate.tool.tool_id in allowed_once
+        explicitly_requested_override = (
+            candidate.tool.tool_id == requested_tool_id and (exempt or one_shot)
+        )
         permitted = effective_category(candidate) <= max_auto_category
-        if not candidate.dominated and (permitted or exempt):
+        if (not candidate.dominated and (permitted or exempt)) or explicitly_requested_override:
             eligible.append(candidate)
         else:
             filtered.append(candidate)
@@ -183,7 +188,7 @@ def resolve(
         already_allowed = requested.tool.tool_id in allowed_once or requested.tool.tool_id in exception_tools
         if over_limit and not already_allowed:
             approval = ApprovalRequest(
-                request_id=_request_id(intent, requested.tool.tool_id),
+                request_id=request_id(intent, requested.tool.tool_id),
                 intent=intent,
                 requested_tool_id=requested.tool.tool_id,
                 requested_category=effective,
@@ -194,6 +199,11 @@ def resolve(
                 ),
             )
             selected = None
+        elif already_allowed:
+            # Explicit human authority is for the exact requested tool, even when a
+            # safer alternative exists. The caller may still choose the recommendation,
+            # but policy must not silently replace the human-approved target.
+            selected = requested
 
     return Resolution(
         intent=intent,
