@@ -18,8 +18,9 @@ The gateway is intentionally separate from the existing Hermes role prompts. Mod
 6. Compare candidates. A lower-risk, no-more-privileged tool with equivalent intent fit dominates a more powerful alternative.
 7. Hide dominated alternatives from the agent-facing result.
 8. Filter tools above `CAPABILITY_MAX_AUTO_RISK` unless a human governance rule explicitly allows them.
-9. If the agent explicitly requested an over-limit tool, return an approval request and recommend the safest sufficient alternative.
-10. `emergency_stop` overrides every model/catalog result and returns no executable capability.
+9. If the agent explicitly requested an over-limit tool, persist an approval request and recommend the safest sufficient alternative.
+10. The dashboard can approve that exact tool once, add it as a persistent exception, or lower the enforcement category for every tool normalized to the same canonical capability.
+11. `emergency_stop` overrides every model/catalog result and returns no executable capability.
 
 ## Judge configuration
 
@@ -43,12 +44,13 @@ export CAPABILITY_GATEWAY_DB=/opt/data/capability-gateway.sqlite3
 
 Persistent controls:
 
+- pending risky-tool approval queue;
 - one-time grant for one approval request/tool pair;
 - permanent tool exception;
 - risk-category override for a canonical capability;
 - global emergency stop.
 
-The red emergency stop must remain independent from the LLM judge and catalog availability.
+The red emergency stop is independent from the LLM judge and catalog availability.
 
 ## API
 
@@ -67,7 +69,7 @@ Content-Type: application/json
 
 Callers may instead pass already discovered concrete MCP tool descriptors in `tools`.
 
-Governance endpoints require:
+Gateway governance endpoints require:
 
 ```http
 Authorization: Bearer $CAPABILITY_ADMIN_KEY
@@ -81,32 +83,67 @@ Available controls:
 - `POST /v1/governance/capability-risk`
 - `POST /v1/governance/emergency-stop`
 
+## Dashboard governance
+
+The base dashboard remains read-only unless the optional capability-gateway overlay is enabled. When enabled, governance writes use two credentials:
+
+- `CAPABILITY_ADMIN_KEY` stays server-side between the dashboard server and capability gateway;
+- `DASHBOARD_GOVERNANCE_KEY` is the separate operator credential entered into the dashboard UI.
+
+The dashboard exposes:
+
+- the agent intent that caused the risky request;
+- requested tool and canonical capability;
+- requested risk category versus automatic ceiling;
+- safer sufficient tool recommendation when one exists;
+- **Allow once**;
+- **Add tool exception**;
+- **Set all `<canonical capability>` to `<allowed category>`**;
+- red **Запретить все и немедленно** emergency stop.
+
+## Canary Compose overlay
+
+The base `compose.yaml` is intentionally unchanged. Enable this MVP as a canary overlay:
+
+```bash
+docker compose -f compose.yaml -f compose.capability-gateway.yaml up -d --build
+```
+
+Copy the required values from `capability_gateway/.env.example` into the root `.env` first.
+
+The gateway is not published on a host port; it is reachable only through the private `hermes-control` network. The dashboard continues to be published on loopback only.
+
 ## Security rules
 
 - Never auto-install or execute a newly discovered MCP server merely to inspect it.
 - External registry/catalog metadata is untrusted input.
 - Tool annotations such as `readOnlyHint`/`destructiveHint` are not authorization facts.
-- A model classification may raise or add risk but must never bypass deterministic/server-side policy.
+- A model classification may add risk semantics but must never bypass deterministic/server-side policy.
+- Judge failure is fail-closed.
 - Emergency stop is deny-all and must not depend on external services.
 - Capability-level risk overrides change enforcement policy; they do **not** rewrite the immutable base assessment.
-- Permanent exceptions must remain auditable. The dashboard integration must not expose mutation endpoints without a separate governance credential.
+- Permanent exceptions and capability overrides remain visible in governance state.
+- A one-time approval is conservative in this canary: it is consumed when the resolver exposes the approved risky tool. Production hardening should move atomic consumption to the actual execution boundary.
 
 ## Tests
 
-The package intentionally uses only the Python standard library in this first slice:
+The Python package intentionally uses only the standard library in this first slice:
 
 ```bash
 python -m unittest discover -s capability_gateway/tests -v
 ```
 
-## Next integration slice
+Dashboard changes remain covered by the existing TypeScript typecheck/test commands once the branch runs in CI:
 
-1. Wire the capability gateway in front of MCP execution so the agent sees only resolver-approved tools.
-2. Atomically consume one-time grants at the execution boundary.
-3. Add dashboard governance UI:
-   - allow once;
-   - add tool exception;
-   - lower/raise risk category for the canonical capability;
-   - red **Deny all immediately** emergency-stop control.
-4. Add a dashboard governance API protected by a credential separate from the existing read-only dashboard.
-5. Add catalog trust/reputation inputs and cache/pinning so external catalog drift cannot silently change an approved tool.
+```bash
+cd dashboard
+npm run check
+```
+
+## Remaining before production enforcement
+
+1. Put the capability gateway in the actual MCP execution path so agents can only invoke resolver-approved tools.
+2. Move one-time grant consumption from resolver exposure to the downstream execution boundary and bind it to the exact tool invocation arguments.
+3. Add catalog artifact pinning/cache/reputation so remote catalog drift cannot silently change an approved tool.
+4. Add live fixture tests for registry/catalog schemas and an OpenAI-compatible judge fixture.
+5. Add adversarial canaries: misleading `readOnlyHint`, tool schema rug-pull, judge outage, catalog outage, over-privileged shell alternative, stale one-time grant, and emergency-stop race.
