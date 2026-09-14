@@ -1,10 +1,23 @@
 const MAX_RESPONSE_BYTES = 131_072;
 
+export interface PendingRiskApproval {
+  readonly request_id: string;
+  readonly intent: string;
+  readonly tool_id: string;
+  readonly capability: string;
+  readonly requested_category: string;
+  readonly allowed_category: string;
+  readonly recommended_tool_id: string | null;
+  readonly reason: string;
+  readonly created_at: string;
+}
+
 export interface RiskGovernanceState {
   readonly emergency_stop: boolean;
   readonly max_auto_category: string;
   readonly tool_exceptions: readonly string[];
   readonly capability_overrides: Readonly<Record<string, string>>;
+  readonly pending_approvals: readonly PendingRiskApproval[];
 }
 
 export type RiskGovernanceAction =
@@ -43,12 +56,14 @@ export class RiskGovernanceClient {
     );
   }
 
-  public async apply(action: RiskGovernanceAction): Promise<unknown> {
+  public async apply(action: RiskGovernanceAction): Promise<RiskGovernanceState> {
     const [path, body] = actionRequest(action);
-    return this.request(path, {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
+    return parseState(
+      await this.request(path, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    );
   }
 
   private async request(
@@ -125,7 +140,8 @@ function parseState(value: unknown): RiskGovernanceState {
     !isRecord(value.capability_overrides) ||
     !Object.values(value.capability_overrides).every(
       (item) => typeof item === "string",
-    )
+    ) ||
+    !Array.isArray(value.pending_approvals)
   ) {
     throw new TypeError("invalid risk governance state");
   }
@@ -134,7 +150,32 @@ function parseState(value: unknown): RiskGovernanceState {
     max_auto_category: value.max_auto_category,
     tool_exceptions: Object.freeze([...value.tool_exceptions]),
     capability_overrides: Object.freeze({ ...value.capability_overrides }),
+    pending_approvals: Object.freeze(value.pending_approvals.map(parseApproval)),
   });
+}
+
+function parseApproval(value: unknown): PendingRiskApproval {
+  if (!isRecord(value)) throw new TypeError("invalid pending risk approval");
+  return Object.freeze({
+    request_id: requiredString(value.request_id),
+    intent: requiredString(value.intent),
+    tool_id: requiredString(value.tool_id),
+    capability: requiredString(value.capability),
+    requested_category: requiredString(value.requested_category),
+    allowed_category: requiredString(value.allowed_category),
+    recommended_tool_id:
+      value.recommended_tool_id === null
+        ? null
+        : requiredString(value.recommended_tool_id),
+    reason: requiredString(value.reason),
+    created_at: requiredString(value.created_at),
+  });
+}
+
+function requiredString(value: unknown): string {
+  if (typeof value !== "string" || value.length === 0)
+    throw new TypeError("expected string");
+  return value;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
