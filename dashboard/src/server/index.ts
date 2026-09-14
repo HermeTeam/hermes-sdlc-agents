@@ -12,6 +12,11 @@ import {
 } from "./langfuse-monitor.ts";
 import type { LangfuseMonitor } from "./langfuse-monitor.ts";
 import { OverviewCoordinator } from "./overview.ts";
+import { RiskGovernanceClient } from "./risk-governance-client.ts";
+import {
+  handleRiskGovernanceRoute,
+  type RiskGovernanceRouteOptions,
+} from "./risk-governance-route.ts";
 import { RoleClient } from "./role-client.ts";
 
 const MAX_RESPONSE_BYTES = 131_072;
@@ -48,6 +53,7 @@ export interface DashboardApplication {
 export interface DashboardApplicationOptions {
   readonly overview: Pick<OverviewCoordinator, "getOverview">;
   readonly langfuseMonitor?: Pick<LangfuseMonitor, "getSnapshot">;
+  readonly riskGovernance?: RiskGovernanceRouteOptions;
   readonly staticRoot?: string;
 }
 
@@ -96,6 +102,20 @@ async function handleRequest(
   response: ServerResponse,
   options: DashboardApplicationOptions,
 ): Promise<void> {
+  const requestUrl = request.url;
+  if (requestUrl === undefined || requestUrl.length > MAX_REQUEST_URL_LENGTH)
+    return sendJson(response, 404, { error: { code: "not_found" } });
+
+  if (
+    await handleRiskGovernanceRoute(
+      request,
+      response,
+      options.riskGovernance,
+    )
+  ) {
+    return;
+  }
+
   discardRequestBody(request);
   const contentLength = Number(request.headers["content-length"] ?? 0);
   if (
@@ -110,9 +130,6 @@ async function handleRequest(
       { error: { code: "method_not_allowed" } },
       { Allow: "GET" },
     );
-  const requestUrl = request.url;
-  if (requestUrl === undefined || requestUrl.length > MAX_REQUEST_URL_LENGTH)
-    return sendJson(response, 404, { error: { code: "not_found" } });
   let pathname: string;
   try {
     pathname = new URL(requestUrl, "http://dashboard.invalid").pathname;
@@ -242,6 +259,29 @@ function closeServer(server: Server): Promise<void> {
   );
 }
 
+function createRiskGovernanceFromEnvironment(): RiskGovernanceRouteOptions | undefined {
+  const baseUrl = process.env.CAPABILITY_GATEWAY_URL?.trim();
+  const adminKey = process.env.CAPABILITY_ADMIN_KEY?.trim();
+  const userKey = process.env.DASHBOARD_GOVERNANCE_KEY?.trim();
+  if (!baseUrl && !adminKey && !userKey) return undefined;
+  if (!baseUrl || !adminKey || !userKey) {
+    throw new Error(
+      "CAPABILITY_GATEWAY_URL, CAPABILITY_ADMIN_KEY and DASHBOARD_GOVERNANCE_KEY must be configured together",
+    );
+  }
+  if (adminKey.length < 24 || userKey.length < 24) {
+    throw new Error("risk governance keys must contain at least 24 characters");
+  }
+  const url = new URL(baseUrl);
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error("CAPABILITY_GATEWAY_URL must use http or https");
+  }
+  return Object.freeze({
+    client: new RiskGovernanceClient(url, adminKey, 3_000),
+    userKey,
+  });
+}
+
 async function main(): Promise<void> {
   const config = loadDashboardConfig();
   const overview = new OverviewCoordinator({
@@ -258,9 +298,11 @@ async function main(): Promise<void> {
     cacheTtlMs: 2_000,
   });
   const langfuseMonitor = createLangfuseMonitorFromEnvironment();
+  const riskGovernance = createRiskGovernanceFromEnvironment();
   const app = createDashboardApplication({
     overview,
     ...(langfuseMonitor === null ? {} : { langfuseMonitor }),
+    ...(riskGovernance === undefined ? {} : { riskGovernance }),
     staticRoot: process.env.DASHBOARD_STATIC_ROOT ?? "dist/web",
   });
   await listenDashboard(
