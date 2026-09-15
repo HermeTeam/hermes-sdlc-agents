@@ -10,11 +10,17 @@ export interface PendingRiskApproval {
   readonly recommended_tool_id: string | null;
   readonly reason: string;
   readonly created_at: string;
+  readonly agent_id: string | null;
+  readonly run_id: string | null;
+  readonly repository: string | null;
+  readonly branch: string | null;
+  readonly args_hash: string | null;
 }
 
 export interface RiskGovernanceState {
   readonly emergency_stop: boolean;
   readonly max_auto_category: string;
+  readonly execution_mode: string | null;
   readonly tool_exceptions: readonly string[];
   readonly capability_overrides: Readonly<Record<string, string>>;
   readonly pending_approvals: readonly PendingRiskApproval[];
@@ -145,11 +151,16 @@ function parseState(value: unknown): RiskGovernanceState {
   ) {
     throw new TypeError("invalid risk governance state");
   }
+  const capabilityOverrides: Record<string, string> = {};
+  for (const [capability, category] of Object.entries(value.capability_overrides)) {
+    capabilityOverrides[capability] = requiredString(category);
+  }
   return Object.freeze({
     emergency_stop: value.emergency_stop,
     max_auto_category: value.max_auto_category,
+    execution_mode: optionalString(value.execution_mode),
     tool_exceptions: Object.freeze([...value.tool_exceptions]),
-    capability_overrides: Object.freeze({ ...value.capability_overrides }),
+    capability_overrides: Object.freeze(capabilityOverrides),
     pending_approvals: Object.freeze(value.pending_approvals.map(parseApproval)),
   });
 }
@@ -163,12 +174,14 @@ function parseApproval(value: unknown): PendingRiskApproval {
     capability: requiredString(value.capability),
     requested_category: requiredString(value.requested_category),
     allowed_category: requiredString(value.allowed_category),
-    recommended_tool_id:
-      value.recommended_tool_id === null
-        ? null
-        : requiredString(value.recommended_tool_id),
+    recommended_tool_id: optionalString(value.recommended_tool_id),
     reason: requiredString(value.reason),
     created_at: requiredString(value.created_at),
+    agent_id: optionalString(value.agent_id),
+    run_id: optionalString(value.run_id),
+    repository: optionalString(value.repository),
+    branch: optionalString(value.branch),
+    args_hash: optionalString(value.args_hash),
   });
 }
 
@@ -176,6 +189,11 @@ function requiredString(value: unknown): string {
   if (typeof value !== "string" || value.length === 0)
     throw new TypeError("expected string");
   return value;
+}
+
+function optionalString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return requiredString(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

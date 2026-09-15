@@ -82,7 +82,9 @@ export function RiskGovernance() {
           <p className="eyebrow">Least-privilege authority</p>
           <h2 id="risk-governance-title">Risk governance</h2>
           <p className="muted">
-            Automatic ceiling: <strong>{state.max_auto_category}</strong> · Pending approvals: {state.pending_approvals.length}
+            Automatic ceiling: <strong>{state.max_auto_category}</strong>
+            {state.execution_mode && <> · Execution: <strong>{state.execution_mode}</strong></>}
+            {" · "}Pending approvals: {state.pending_approvals.length}
           </p>
         </div>
         <div className="emergency-actions">
@@ -110,7 +112,7 @@ export function RiskGovernance() {
 
       {state.emergency_stop && (
         <aside className="emergency-banner" role="alert">
-          <strong>Emergency stop active.</strong> The capability resolver exposes no executable tools until governance explicitly resumes execution.
+          <strong>Emergency stop active.</strong> Dynamic execution and capability resolution are denied until governance explicitly resumes execution.
         </aside>
       )}
       {error && <p className="governance-error" role="alert">{error}</p>}
@@ -174,6 +176,7 @@ function ApprovalCard({
   busy: boolean;
   onAction: (action: RiskGovernanceAction) => Promise<void>;
 }) {
+  const exactExecution = approval.args_hash !== null;
   return (
     <article className="approval-card">
       <div className="approval-header">
@@ -184,6 +187,17 @@ function ApprovalCard({
         <span className="risk-pill">{approval.requested_category}</span>
       </div>
       <p><strong>Agent intent:</strong> {approval.intent}</p>
+      {exactExecution && (
+        <div className="authority-scope">
+          <p><strong>Exact execution scope</strong></p>
+          {approval.agent_id && <p>Agent: <code>{approval.agent_id}</code></p>}
+          {approval.run_id && <p>Run/session: <code>{approval.run_id}</code></p>}
+          {approval.repository && <p>Repository: <code>{approval.repository}</code></p>}
+          {approval.branch && <p>Branch/ref: <code>{approval.branch}</code></p>}
+          <p>Arguments SHA-256: <code>{approval.args_hash}</code></p>
+          <p className="muted">Allow once authorizes only this exact invocation and expires automatically.</p>
+        </div>
+      )}
       <p>{approval.reason}</p>
       {approval.recommended_tool_id && (
         <p className="safer-alternative">

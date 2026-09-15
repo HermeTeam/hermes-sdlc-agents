@@ -9,8 +9,17 @@ from typing import Any
 
 from .catalogs import CatalogUnavailable, discover_tools
 from .core import assess_risk, resolve
+from .github_app import GitHubAppUnavailable
 from .governance import GovernanceStore
 from .judge import JudgeUnavailable, OpenAICompatibleJudge
+from .mcp_proxy import (
+    DynamicAuthorityProxy,
+    MCPAuthorityBlocked,
+    MCPProxyUnavailable,
+    read_mcp_body,
+    rpc_request_id,
+    send_mcp_error,
+)
 from .models import RankedTool, RiskCategory, ToolDescriptor
 
 
@@ -30,6 +39,21 @@ class CapabilityGateway:
         self.admin_key = os.environ.get("CAPABILITY_ADMIN_KEY", "").strip()
         if len(self.admin_key) < 24:
             raise RuntimeError("CAPABILITY_ADMIN_KEY must contain at least 24 characters")
+        self.execution_grant_ttl_seconds = max(
+            10,
+            min(int(os.environ.get("CAPABILITY_EXECUTION_GRANT_TTL_SECONDS", "60")), 900),
+        )
+        self.execution_mode = os.environ.get("CAPABILITY_EXECUTION_MODE", "resolver").strip().lower()
+        if self.execution_mode not in {"resolver", "dynamic"}:
+            raise RuntimeError("CAPABILITY_EXECUTION_MODE must be resolver or dynamic")
+        self.mcp_proxy = (
+            DynamicAuthorityProxy.from_environment(
+                store=self.store,
+                max_auto_category=self.max_auto_category,
+            )
+            if self.execution_mode == "dynamic"
+            else None
+        )
 
     def resolve_intent(self, body: dict[str, Any]) -> dict[str, Any]:
         intent = _text(body.get("intent"), "intent", 2000)
@@ -89,9 +113,6 @@ class CapabilityGateway:
                     capability_overrides=snapshot.capability_overrides,
                     emergency_stop=snapshot.emergency_stop,
                 )
-                # Conservative MVP semantics: the one-shot authority is spent when the
-                # gateway exposes the approved risky tool for this resolution. If the
-                # downstream executor fails, a new human approval is required.
                 if resolution.selected and resolution.selected.tool.tool_id == request.requested_tool_id:
                     if not self.store.consume_once(request.request_id, request.requested_tool_id):
                         return {
@@ -120,6 +141,7 @@ class CapabilityGateway:
         return {
             "emergency_stop": snapshot.emergency_stop,
             "max_auto_category": self.max_auto_category.name,
+            "execution_mode": self.execution_mode,
             "tool_exceptions": sorted(snapshot.tool_exceptions),
             "capability_overrides": {
                 key: value.name for key, value in sorted(snapshot.capability_overrides.items())
@@ -135,6 +157,11 @@ class CapabilityGateway:
                     "recommended_tool_id": item.recommended_tool_id,
                     "reason": item.reason,
                     "created_at": item.created_at,
+                    "agent_id": item.agent_id,
+                    "run_id": item.run_id,
+                    "repository": item.repository,
+                    "branch": item.branch,
+                    "args_hash": item.args_hash,
                 }
                 for item in snapshot.pending_approvals
             ],
@@ -143,11 +170,20 @@ class CapabilityGateway:
 
 def make_handler(gateway: CapabilityGateway):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "HermeTeamCapabilityGateway/0.1"
+        server_version = "HermeTeamCapabilityGateway/0.2"
+        protocol_version = "HTTP/1.1"
 
         def do_GET(self) -> None:  # noqa: N802
+            if self._is_mcp_path():
+                return self._mcp()
             if self.path == "/health":
-                return self._json(200, {"status": "ok"})
+                return self._json(
+                    200,
+                    {
+                        "status": "ok",
+                        "execution_mode": gateway.execution_mode,
+                    },
+                )
             if self.path == "/v1/governance":
                 if not self._admin():
                     return
@@ -155,6 +191,8 @@ def make_handler(gateway: CapabilityGateway):
             return self._json(404, {"error": "not_found"})
 
         def do_POST(self) -> None:  # noqa: N802
+            if self._is_mcp_path():
+                return self._mcp()
             try:
                 body = self._body()
                 if self.path == "/v1/resolve":
@@ -172,7 +210,11 @@ def make_handler(gateway: CapabilityGateway):
                 if self.path == "/v1/governance/allow-once":
                     request_id = _text(body.get("request_id"), "request_id", 100)
                     tool_id = _text(body.get("tool_id"), "tool_id", 300)
-                    gateway.store.grant_once(request_id, tool_id)
+                    gateway.store.grant_once(
+                        request_id,
+                        tool_id,
+                        execution_ttl_seconds=gateway.execution_grant_ttl_seconds,
+                    )
                     return self._json(200, gateway.governance_state())
                 if self.path == "/v1/governance/tool-exception":
                     tool_id = _text(body.get("tool_id"), "tool_id", 300)
@@ -187,13 +229,52 @@ def make_handler(gateway: CapabilityGateway):
             except (ValueError, TypeError) as exc:
                 return self._json(400, {"error": "invalid_request", "message": str(exc)})
             except JudgeUnavailable:
-                # The judge is mandatory for MVP. Never silently downgrade to semantic guessing.
                 return self._json(503, {"error": "judge_unavailable"})
             except CatalogUnavailable:
                 return self._json(503, {"error": "catalog_unavailable"})
 
+        def do_DELETE(self) -> None:  # noqa: N802
+            if self._is_mcp_path():
+                return self._mcp()
+            return self._json(404, {"error": "not_found"})
+
         def log_message(self, fmt: str, *args: object) -> None:
             return
+
+        def _mcp(self) -> None:
+            if gateway.mcp_proxy is None:
+                return self._json(503, {"error": "dynamic_execution_unconfigured"})
+            body: bytes | None = None
+            try:
+                body = read_mcp_body(self)
+                permit = gateway.mcp_proxy.permit(headers=self.headers, body=body)
+                gateway.mcp_proxy.forward(
+                    handler=self,
+                    method=self.command,
+                    body=body,
+                    permit=permit,
+                )
+            except MCPAuthorityBlocked as exc:
+                status = 401 if exc.code == "unauthorized_agent" else 200
+                return send_mcp_error(
+                    self,
+                    exc,
+                    request_id=rpc_request_id(body),
+                    http_status=status,
+                )
+            except (GitHubAppUnavailable, MCPProxyUnavailable):
+                return send_mcp_error(
+                    self,
+                    MCPAuthorityBlocked(
+                        "provider_authority_unavailable",
+                        "dynamic provider authority is temporarily unavailable",
+                    ),
+                    request_id=rpc_request_id(body),
+                    http_status=503,
+                )
+
+        def _is_mcp_path(self) -> bool:
+            return self.path == "/mcp" or self.path.startswith("/mcp?") or self.path == "/mcp/"
 
         def _admin(self) -> bool:
             expected = f"Bearer {gateway.admin_key}"

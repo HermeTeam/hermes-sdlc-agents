@@ -1,5 +1,6 @@
 .env
 secrets/*.env
+secrets/*.pem
 runtime/
 *.log
 *.zip
