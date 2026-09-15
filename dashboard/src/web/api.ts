@@ -177,12 +177,16 @@ function parseRiskGovernance(value: unknown): RiskGovernanceState {
   ) {
     throw new TypeError("invalid risk governance response");
   }
+  const capabilityOverrides: Record<string, string> = {};
+  for (const [capability, category] of Object.entries(value.capability_overrides)) {
+    capabilityOverrides[capability] = requiredString(category, "capability_override");
+  }
   return Object.freeze({
     emergency_stop: value.emergency_stop,
     max_auto_category: value.max_auto_category,
     execution_mode: optionalString(value.execution_mode),
     tool_exceptions: Object.freeze([...value.tool_exceptions]),
-    capability_overrides: Object.freeze({ ...value.capability_overrides }),
+    capability_overrides: Object.freeze(capabilityOverrides),
     pending_approvals: Object.freeze(
       value.pending_approvals.map((item) => {
         if (!isRecord(item)) throw new TypeError("invalid risk approval");
