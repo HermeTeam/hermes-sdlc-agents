@@ -17,7 +17,7 @@ from .authority import (
     builder_invocation_context,
     load_protected_patterns,
 )
-from .github_app import GitHubAppTokenBroker, GitHubAppUnavailable, ProviderToken
+from .github_app import GitHubAppTokenBroker, ProviderToken
 from .governance import GovernanceStore
 from .models import RiskCategory
 
@@ -284,7 +284,10 @@ def send_mcp_error(
 
 
 def rpc_request_id(body: bytes | None) -> Any:
-    rpc = _parse_rpc(body)
+    try:
+        rpc = _parse_rpc(body)
+    except MCPAuthorityBlocked:
+        return None
     return rpc.get("id") if rpc else None
 
 
@@ -370,16 +373,16 @@ def _forward_upstream(
     try:
         connection.request(method, path, body=body, headers=outgoing_headers)
         response = connection.getresponse()
-        handler.send_response(response.status)
         content_type = response.getheader("Content-Type") or "application/octet-stream"
-        handler.send_header("Content-Type", content_type)
-        for name in ("Mcp-Session-Id", "Mcp-Protocol-Version", "Cache-Control"):
-            value = response.getheader(name)
-            if value:
-                handler.send_header(name, value)
-        handler.send_header("X-Content-Type-Options", "nosniff")
 
         if method == "GET" or content_type.lower().startswith("text/event-stream"):
+            handler.send_response(response.status)
+            handler.send_header("Content-Type", content_type)
+            for name in ("Mcp-Session-Id", "Mcp-Protocol-Version", "Cache-Control"):
+                value = response.getheader(name)
+                if value:
+                    handler.send_header(name, value)
+            handler.send_header("X-Content-Type-Options", "nosniff")
             handler.send_header("Connection", "close")
             handler.end_headers()
             total = 0
@@ -398,10 +401,17 @@ def _forward_upstream(
         raw = response.read(MAX_MCP_RESPONSE_BYTES + 1)
         if len(raw) > MAX_MCP_RESPONSE_BYTES:
             raise MCPProxyUnavailable("upstream MCP response exceeded allowed size")
+        handler.send_response(response.status)
+        handler.send_header("Content-Type", content_type)
+        for name in ("Mcp-Session-Id", "Mcp-Protocol-Version", "Cache-Control"):
+            value = response.getheader(name)
+            if value:
+                handler.send_header(name, value)
+        handler.send_header("X-Content-Type-Options", "nosniff")
         handler.send_header("Content-Length", str(len(raw)))
         handler.end_headers()
         handler.wfile.write(raw)
-    except (OSError, http.client.HTTPException, GitHubAppUnavailable) as exc:
+    except (OSError, http.client.HTTPException) as exc:
         raise MCPProxyUnavailable(f"upstream MCP request failed: {type(exc).__name__}") from exc
     finally:
         connection.close()
