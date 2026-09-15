@@ -193,6 +193,11 @@ Keep `ORCHESTRATOR_ENABLED=false` until canaries pass for one role at a time.
 
 ## Quick start
 
+For the complete local deployment procedure, including role credentials, debug smoke tests, Langfuse, Capability Gateway and security canaries, see:
+
+- [Local bootstrap guide — English](docs/bootstrap.md)
+- [Локальное развёртывание — Русский](docs/bootstrap_ru.md)
+
 Requirements: Docker Engine with Compose v2, an OpenAI-compatible LLM gateway and GitHub credentials accepted by the official GitHub MCP Server.
 
 ```bash
@@ -275,6 +280,8 @@ The project should not jump directly to a giant governance platform. The preferr
 
 ## Documentation
 
+- [Local bootstrap guide — English](docs/bootstrap.md)
+- [Локальное развёртывание — Русский](docs/bootstrap_ru.md)
 - [Configuration reference](docs/CONFIGURATION_REFERENCE.md)
 - [Git provider integration contract](docs/GIT_PROVIDER_INTEGRATION.md)
 - [Security model](docs/SECURITY.md)
