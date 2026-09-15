@@ -1,6 +1,8 @@
 FROM python:3.12.11-alpine3.22
 
-RUN addgroup -S hermeteam && adduser -S -G hermeteam -h /opt/hermeteam hermeteam \
+RUN apk add --no-cache openssl \
+    && addgroup -S hermeteam \
+    && adduser -S -G hermeteam -h /opt/hermeteam hermeteam \
     && mkdir -p /opt/hermeteam/capability_gateway /opt/data \
     && chown -R hermeteam:hermeteam /opt/hermeteam /opt/data
 
