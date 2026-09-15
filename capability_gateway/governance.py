@@ -387,6 +387,27 @@ class GovernanceStore:
             )
             return None
 
+    def has_execution_grant(self, context: InvocationContext) -> bool:
+        now = _sqlite_time(datetime.now(timezone.utc))
+        with self._lock, self._connect() as db:
+            row = db.execute(
+                "SELECT 1 FROM execution_grants "
+                "WHERE agent_id=? AND run_id=? AND tool_id=? AND capability=? AND repository=? "
+                "AND COALESCE(branch,'')=COALESCE(?, '') AND args_hash=? AND consumed=0 AND expires_at>? "
+                "LIMIT 1",
+                (
+                    context.agent_id,
+                    context.run_id,
+                    context.tool_id,
+                    context.capability,
+                    context.repository,
+                    context.branch,
+                    context.args_hash,
+                    now,
+                ),
+            ).fetchone()
+            return row is not None
+
     def consume_execution_grant(self, context: InvocationContext) -> str | None:
         """Atomically consume a human exact-invocation grant matching this request."""
         now = _sqlite_time(datetime.now(timezone.utc))
