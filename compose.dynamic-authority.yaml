@@ -1,0 +1,35 @@
+# Canary-only dynamic request authority overlay.
+# Use together with compose.yaml and compose.capability-gateway.yaml.
+# The Builder no longer receives a GitHub provider token in this mode; its
+# repository MCP credential is an internal HermeTeam gateway key.
+services:
+  capability-gateway:
+    environment:
+      CAPABILITY_EXECUTION_MODE: dynamic
+      CAPABILITY_UPSTREAM_MCP_URL: "${GIT_PROVIDER_MCP_URL:?Set GIT_PROVIDER_MCP_URL in .env}"
+      BUILDER_CAPABILITY_GATEWAY_KEY: "${BUILDER_CAPABILITY_GATEWAY_KEY:?Set BUILDER_CAPABILITY_GATEWAY_KEY in .env}"
+      GITHUB_APP_ID: "${GITHUB_APP_ID:?Set GITHUB_APP_ID in .env}"
+      GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:?Set GITHUB_APP_INSTALLATION_ID in .env}"
+      GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github-app-private-key.pem
+      GITHUB_API_BASE_URL: "${GITHUB_API_BASE_URL:-https://api.github.com}"
+      GITHUB_REPOSITORY_FULL_NAME: "${GITHUB_REPOSITORY_FULL_NAME:?Set GITHUB_REPOSITORY_FULL_NAME in .env}"
+      REPOSITORY_DEFAULT_BRANCH: "${REPOSITORY_DEFAULT_BRANCH:-main}"
+      HERMETEAM_PROTECTED_PATHS_FILE: /opt/hermeteam/policies/protected-paths.txt
+      CAPABILITY_EXECUTION_GRANT_TTL_SECONDS: "${CAPABILITY_EXECUTION_GRANT_TTL_SECONDS:-60}"
+      CAPABILITY_PROVIDER_TOKEN_CACHE_SECONDS: "${CAPABILITY_PROVIDER_TOKEN_CACHE_SECONDS:-300}"
+      CAPABILITY_PROVIDER_TIMEOUT_SECONDS: "${CAPABILITY_PROVIDER_TIMEOUT_SECONDS:-10}"
+      CAPABILITY_UPSTREAM_TIMEOUT_SECONDS: "${CAPABILITY_UPSTREAM_TIMEOUT_SECONDS:-180}"
+    volumes:
+      - capability-gateway-data:/opt/data
+      - "${GITHUB_APP_PRIVATE_KEY_FILE:?Set GITHUB_APP_PRIVATE_KEY_FILE in .env}:/run/secrets/github-app-private-key.pem:ro"
+      - ./policies/protected-paths.txt:/opt/hermeteam/policies/protected-paths.txt:ro
+
+  hermes-builder:
+    environment:
+      # Override the direct provider endpoint and token from compose.yaml. The value
+      # below is an internal gateway credential, not a GitHub credential.
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${BUILDER_CAPABILITY_GATEWAY_KEY:?Set BUILDER_CAPABILITY_GATEWAY_KEY in .env}"
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
