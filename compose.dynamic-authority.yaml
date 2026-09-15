@@ -10,7 +10,7 @@ services:
       BUILDER_CAPABILITY_GATEWAY_KEY: "${BUILDER_CAPABILITY_GATEWAY_KEY:?Set BUILDER_CAPABILITY_GATEWAY_KEY in .env}"
       GITHUB_APP_ID: "${GITHUB_APP_ID:?Set GITHUB_APP_ID in .env}"
       GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:?Set GITHUB_APP_INSTALLATION_ID in .env}"
-      GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github-app-private-key.pem
+      GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github_app_private_key
       GITHUB_API_BASE_URL: "${GITHUB_API_BASE_URL:-https://api.github.com}"
       GITHUB_REPOSITORY_FULL_NAME: "${GITHUB_REPOSITORY_FULL_NAME:?Set GITHUB_REPOSITORY_FULL_NAME in .env}"
       REPOSITORY_DEFAULT_BRANCH: "${REPOSITORY_DEFAULT_BRANCH:-main}"
@@ -21,8 +21,9 @@ services:
       CAPABILITY_UPSTREAM_TIMEOUT_SECONDS: "${CAPABILITY_UPSTREAM_TIMEOUT_SECONDS:-180}"
     volumes:
       - capability-gateway-data:/opt/data
-      - "${GITHUB_APP_PRIVATE_KEY_FILE:?Set GITHUB_APP_PRIVATE_KEY_FILE in .env}:/run/secrets/github-app-private-key.pem:ro"
       - ./policies/protected-paths.txt:/opt/hermeteam/policies/protected-paths.txt:ro
+    secrets:
+      - github_app_private_key
 
   hermes-builder:
     environment:
@@ -33,3 +34,7 @@ services:
     depends_on:
       capability-gateway:
         condition: service_healthy
+
+secrets:
+  github_app_private_key:
+    file: "${GITHUB_APP_PRIVATE_KEY_FILE:?Set GITHUB_APP_PRIVATE_KEY_FILE in .env}"
