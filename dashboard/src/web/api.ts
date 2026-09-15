@@ -33,11 +33,17 @@ export interface PendingRiskApproval {
   readonly recommended_tool_id: string | null;
   readonly reason: string;
   readonly created_at: string;
+  readonly agent_id: string | null;
+  readonly run_id: string | null;
+  readonly repository: string | null;
+  readonly branch: string | null;
+  readonly args_hash: string | null;
 }
 
 export interface RiskGovernanceState {
   readonly emergency_stop: boolean;
   readonly max_auto_category: string;
+  readonly execution_mode: string | null;
   readonly tool_exceptions: readonly string[];
   readonly capability_overrides: Readonly<Record<string, string>>;
   readonly pending_approvals: readonly PendingRiskApproval[];
@@ -174,6 +180,7 @@ function parseRiskGovernance(value: unknown): RiskGovernanceState {
   return Object.freeze({
     emergency_stop: value.emergency_stop,
     max_auto_category: value.max_auto_category,
+    execution_mode: optionalString(value.execution_mode),
     tool_exceptions: Object.freeze([...value.tool_exceptions]),
     capability_overrides: Object.freeze({ ...value.capability_overrides }),
     pending_approvals: Object.freeze(
@@ -186,9 +193,14 @@ function parseRiskGovernance(value: unknown): RiskGovernanceState {
           capability: requiredString(item.capability, "capability"),
           requested_category: requiredString(item.requested_category, "requested_category"),
           allowed_category: requiredString(item.allowed_category, "allowed_category"),
-          recommended_tool_id: nullableString(item.recommended_tool_id),
+          recommended_tool_id: optionalString(item.recommended_tool_id),
           reason: requiredString(item.reason, "reason"),
           created_at: requiredString(item.created_at, "created_at"),
+          agent_id: optionalString(item.agent_id),
+          run_id: optionalString(item.run_id),
+          repository: optionalString(item.repository),
+          branch: optionalString(item.branch),
+          args_hash: optionalString(item.args_hash),
         });
       }),
     ),
@@ -204,6 +216,11 @@ function requiredString(value: unknown, field: string): string {
     throw new TypeError(`invalid ${field}`);
   }
   return value;
+}
+
+function optionalString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  return requiredString(value, "string");
 }
 
 function nullableString(value: unknown): string | null {
