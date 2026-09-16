@@ -1,0 +1,39 @@
+session:
+  id: deploy-YYYYMMDD-HHMMSS-XXXX
+  repository: HermeTeam/hermes-sdlc-agents
+  repo_sha: null
+  repo_version: null
+  target_mode: dynamic-authority
+  phase: DISCOVER
+  status: RUNNING
+
+environment:
+  os: null
+  architecture: null
+  docker_version: null
+  compose_version: null
+  python_version: null
+  pyyaml: unknown
+
+target:
+  repository_full_name: null
+  default_branch: null
+  sandbox_confirmed: false
+
+gates:
+  static_validation: pending
+  capability_tests: pending
+  dashboard_tests: pending
+  base_roles: pending
+  negative_canaries: pending
+  dynamic_authority: pending
+  approval_semantics: pending
+  emergency_stop: pending
+  observability: optional
+  orchestrator: disabled
+
+evolution:
+  parent_skill: hermeteam-deploy-evolve@1.0.0
+  active_branch: base
+  lessons: []
+  candidate_created: false
