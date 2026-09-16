@@ -1,0 +1,45 @@
+proposal:
+  id: EVO-XXXX
+  parent_skill: hermeteam-deploy-evolve@1.0.0
+  candidate_skill: null
+  action: PATCH  # PATCH | FORK | TEST_ONLY | DOC_ONLY
+  branch: base
+  status: PROPOSED_FOR_HUMAN_REVIEW
+
+lesson:
+  id: LES-XXXX
+  repo_sha: null
+  phase: null
+  failure_fingerprint: null
+  observation: null
+  verified_workaround: null
+  evidence: []
+  evidence_count: 0
+  confidence: 0.0
+
+scope:
+  os: []
+  architecture: []
+  compose_version: null
+  repo_sha_range: null
+
+security_review:
+  role_separation_weakened: false
+  protected_paths_weakened: false
+  branch_constraints_weakened: false
+  credential_scope_widened: false
+  human_approval_weakened: false
+  emergency_stop_weakened: false
+  notes: []
+
+evaluation:
+  scenarios: []
+  result: PENDING
+
+rollback:
+  procedure: null
+
+review:
+  owner: human
+  required: true
+  approved: false
