@@ -1,0 +1,9 @@
+branch:
+  id: branch-id
+  parent_phase: PHASE
+  trigger: sanitized trigger
+  evidence: []
+  security_invariants_preserved: []
+  actions_attempted: []
+  result: UNRESOLVED
+  rejoin_phase: null
