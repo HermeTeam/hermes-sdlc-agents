@@ -7,7 +7,7 @@
         "node": ">=22.6.0"
     },
     "scripts": {
-        "test:server": "node --experimental-strip-types --test tests/*.test.ts",
+        "test:server": "node --experimental-transform-types --test tests/*.test.ts",
         "test:web": "vitest run --config vitest.web.config.ts",
         "test": "npm run test:server && npm run test:web",
         "test:e2e": "../scripts/dashboard-e2e-smoke.sh",

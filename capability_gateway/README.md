@@ -1,149 +1,177 @@
-# HermeTeam Capability Gateway MVP
+# HermeTeam Capability Gateway
 
-This directory contains the first vertical slice of the HermeTeam least-privilege tool resolver.
+This package contains two related control-plane slices:
 
-## Product invariant
+1. **least-privilege capability resolution** — choose a sufficient lower-risk MCP capability for an intent;
+2. **dynamic request authority (Builder canary)** — place HermeTeam in the actual Builder MCP path and acquire GitHub provider authority server-side only after validating the exact invocation.
+
+## Product invariants
 
 > An agent must not receive a more powerful tool when a lower-risk capability can satisfy the same intent.
 
-The gateway is intentionally separate from the existing Hermes role prompts. Model behavior is not a security boundary.
+> An agent must not hold reusable provider authority when HermeTeam can acquire the minimum authority for one validated request on its behalf.
 
-## Current flow
+Model behavior is not a security boundary. MCP metadata and model-judge output are evidence; deterministic server-side policy and the execution gateway decide whether an actual invocation may proceed.
 
-1. Receive an agent intent and optionally a tool the agent requested.
-2. If no tool list is supplied, discover inspected tools from an external MCP catalog (Glama adapter). The official MCP Registry adapter is also present for authoritative server discovery; official registry entries are not considered executable until concrete tool schemas are available from an inspector/catalog.
-3. Send each concrete tool descriptor plus the intent to an OpenAI-compatible judge.
-4. Normalize the tool into a vendor-neutral `canonical_capability` and classify `read`, `write`, `destructive`, `egress`, `credential_access`, `arbitrary_execution`, and `open_world` properties.
-5. Apply deterministic risk weights. MCP self-declared annotations are weak evidence only and cannot lower risk.
-6. Compare candidates. A lower-risk, no-more-privileged tool with equivalent intent fit dominates a more powerful alternative.
-7. Hide dominated alternatives from the agent-facing result.
-8. Filter tools above `CAPABILITY_MAX_AUTO_RISK` unless a human governance rule explicitly allows them.
-9. If the agent explicitly requested an over-limit tool, persist an approval request and recommend the safest sufficient alternative.
-10. The dashboard can approve that exact tool once, add it as a persistent exception, or lower the enforcement category for every tool normalized to the same canonical capability.
-11. `emergency_stop` overrides every model/catalog result and returns no executable capability.
+## Least-privilege resolver
 
-## Judge configuration
+`POST /v1/resolve`:
 
-The MVP requires an OpenAI-compatible `/v1/chat/completions` endpoint:
+1. receives an intent and optional requested tool;
+2. discovers inspected MCP tools when callers do not supply candidates;
+3. uses an OpenAI-compatible judge to normalize tools into vendor-neutral canonical capabilities and semantic risk properties;
+4. applies deterministic risk weights;
+5. removes dominated alternatives;
+6. applies `CAPABILITY_MAX_AUTO_RISK` plus governance overrides;
+7. persists a human approval request when an explicitly requested tool exceeds the automatic risk ceiling.
 
-```bash
-export CAPABILITY_JUDGE_BASE_URL=https://llm-gateway.example
-export CAPABILITY_JUDGE_API_KEY=...
-export CAPABILITY_JUDGE_MODEL=...
+The model judge cannot lower deterministic policy decisions. Catalog/judge failure is fail-closed for resolver requests.
+
+## Dynamic request authority
+
+Set:
+
+```dotenv
+CAPABILITY_EXECUTION_MODE=dynamic
 ```
 
-The judge is mandatory. If it is unavailable or returns malformed JSON, resolution fails closed with `503 judge_unavailable`.
+and use `compose.dynamic-authority.yaml` for the current `hermes-builder` canary.
 
-## Governance configuration
+The Builder no longer talks directly to the GitHub MCP endpoint in this mode:
 
-```bash
-export CAPABILITY_MAX_AUTO_RISK=MEDIUM
-export CAPABILITY_ADMIN_KEY='a-long-random-admin-secret-at-least-24-chars'
-export CAPABILITY_GATEWAY_DB=/opt/data/capability-gateway.sqlite3
+```text
+Hermes Builder
+      │ internal gateway key
+      ▼
+HermeTeam Capability / Action Gateway
+      │ exact tools/call
+      ├─ role/repository/branch/path validation
+      ├─ canonical capability + deterministic risk
+      ├─ AUTO / HUMAN / EXCEPTION / CAPABILITY_OVERRIDE authority
+      ├─ exact args SHA-256
+      ├─ one-shot TTL execution grant when required
+      └─ GitHub App token broker
+                 │ repo + minimal permission set
+                 ▼
+          GitHub MCP Server
 ```
 
-Persistent controls:
+The GitHub App private key and installation tokens exist only in `capability-gateway`. The Builder receives only `BUILDER_CAPABILITY_GATEWAY_KEY`, an internal HermeTeam credential.
 
-- pending risky-tool approval queue;
-- one-time grant for one approval request/tool pair;
-- permanent tool exception;
-- risk-category override for a canonical capability;
+See [Dynamic Request Authority](../docs/DYNAMIC_REQUEST_AUTHORITY.md) for setup and canary procedures.
+
+## Exact execution grants
+
+For an over-limit actual invocation, the gateway persists the approval scope:
+
+- `agent_id`;
+- `run_id` / MCP session fallback;
+- exact `tool_id`;
+- canonical capability;
+- repository;
+- branch/ref;
+- SHA-256 of normalized tool arguments.
+
+`Allow once` creates a short-lived execution grant bound to that tuple. It is consumed atomically immediately before the approved upstream request is released. Changing any argument creates a different hash and requires new authority.
+
+The existing permanent tool exceptions and capability-risk overrides remain governance policy. They never bypass hard repository/branch/protected-path constraints.
+
+## GitHub App token broker
+
+For actual `tools/call`, HermeTeam maps deterministic capabilities to provider permissions, for example:
+
+```text
+repository.file.read       → contents:read
+repository.files.modify    → contents:write
+repository.pull_request.create → pull_requests:write
+ci.workflow.read           → actions:read
+ci.workflow.trigger        → actions:write
+```
+
+The broker requests an installation token narrowed to the configured repository and the required permission set. Tokens may be cached server-side briefly by repository + permission set; per-request authority remains the exact HermeTeam grant/policy decision because the provider token is never exposed to the agent.
+
+## Governance
+
+Persistent controls are stored in SQLite:
+
+- pending resolver approvals;
+- pending exact execution approvals;
+- one-shot exact execution grants;
+- permanent tool exceptions;
+- canonical-capability risk overrides;
 - global emergency stop.
 
-The red emergency stop is independent from the LLM judge and catalog availability.
+The dashboard governance surface uses two credentials:
 
-## API
+- `CAPABILITY_ADMIN_KEY` — server-side dashboard → capability gateway credential;
+- `DASHBOARD_GOVERNANCE_KEY` — separate operator credential entered in the local dashboard UI.
 
-Agent-facing:
+The dashboard displays exact execution scope before `Allow once` when the request originated in the dynamic MCP path.
 
-```http
-POST /v1/resolve
-Content-Type: application/json
+## Emergency stop
 
-{
-  "intent": "read the latest production deployment status",
-  "catalog_query": "deployment status",
-  "requested_tool_id": "some-server:shell_exec"
-}
-```
+`emergency_stop` is independent of the model judge and catalog adapters.
 
-Callers may instead pass already discovered concrete MCP tool descriptors in `tools`.
+In resolver-only mode it exposes no executable resolved capabilities. In dynamic Builder mode it also denies actual Builder MCP traffic before GitHub provider authority is acquired. This execution guarantee currently applies only to roles routed through the dynamic gateway.
 
-Gateway governance endpoints require:
+## Canary Compose
 
-```http
-Authorization: Bearer $CAPABILITY_ADMIN_KEY
-```
-
-Available controls:
-
-- `GET /v1/governance`
-- `POST /v1/governance/allow-once`
-- `POST /v1/governance/tool-exception`
-- `POST /v1/governance/capability-risk`
-- `POST /v1/governance/emergency-stop`
-
-## Dashboard governance
-
-The base dashboard remains read-only unless the optional capability-gateway overlay is enabled. When enabled, governance writes use two credentials:
-
-- `CAPABILITY_ADMIN_KEY` stays server-side between the dashboard server and capability gateway;
-- `DASHBOARD_GOVERNANCE_KEY` is the separate operator credential entered into the dashboard UI.
-
-The dashboard exposes:
-
-- the agent intent that caused the risky request;
-- requested tool and canonical capability;
-- requested risk category versus automatic ceiling;
-- safer sufficient tool recommendation when one exists;
-- **Allow once**;
-- **Add tool exception**;
-- **Set all `<canonical capability>` to `<allowed category>`**;
-- red **Запретить все и немедленно** emergency stop.
-
-## Canary Compose overlay
-
-The base `compose.yaml` is intentionally unchanged. Enable this MVP as a canary overlay:
+Resolver/governance canary:
 
 ```bash
 docker compose -f compose.yaml -f compose.capability-gateway.yaml up -d --build
 ```
 
-Copy the required values from `capability_gateway/.env.example` into the root `.env` first.
+Builder dynamic-authority canary:
 
-The gateway is not published on a host port; it is reachable only through the private `hermes-control` network. The dashboard continues to be published on loopback only.
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.capability-gateway.yaml \
+  -f compose.dynamic-authority.yaml \
+  up -d --build capability-gateway hermes-builder hermeteam-dashboard
+```
+
+Copy required values from `capability_gateway/.env.example` to the root `.env` first. The gateway is private on `hermes-control` and is not host-published.
 
 ## Security rules
 
-- Never auto-install or execute a newly discovered MCP server merely to inspect it.
-- External registry/catalog metadata is untrusted input.
-- Tool annotations such as `readOnlyHint`/`destructiveHint` are not authorization facts.
-- A model classification may add risk semantics but must never bypass deterministic/server-side policy.
-- Judge failure is fail-closed.
-- Emergency stop is deny-all and must not depend on external services.
-- Capability-level risk overrides change enforcement policy; they do **not** rewrite the immutable base assessment.
-- Permanent exceptions and capability overrides remain visible in governance state.
-- A one-time approval is conservative in this canary: it is consumed when the resolver exposes the approved risky tool. Production hardening should move atomic consumption to the actual execution boundary.
+- Never auto-install/execute a newly discovered MCP server merely to inspect it.
+- External catalog/registry metadata is untrusted input.
+- MCP annotations are not authorization facts.
+- Unknown Builder execution tools fail closed.
+- Builder repository mutations are constrained to the configured repository and `agent/*` branches.
+- Builder protected-path mutations are hard-denied in this canary.
+- High-risk exact invocations require an unexpired matching human grant unless governance explicitly changes policy.
+- A one-shot grant cannot be reused and cannot authorize changed arguments.
+- GitHub App tokens and private keys must never be returned to agents or browser clients.
+- Emergency stop is checked before provider token acquisition.
 
 ## Tests
 
-The Python package intentionally uses only the standard library in this first slice:
+Python capability/authority tests:
 
 ```bash
 python -m unittest discover -s capability_gateway/tests -v
 ```
 
-Dashboard changes remain covered by the existing TypeScript typecheck/test commands once the branch runs in CI:
+Dashboard checks:
 
 ```bash
 cd dashboard
+npm ci
 npm run check
 ```
 
-## Remaining before production enforcement
+Pull requests run both in `.github/workflows/ci.yml`.
 
-1. Put the capability gateway in the actual MCP execution path so agents can only invoke resolver-approved tools.
-2. Move one-time grant consumption from resolver exposure to the downstream execution boundary and bind it to the exact tool invocation arguments.
-3. Add catalog artifact pinning/cache/reputation so remote catalog drift cannot silently change an approved tool.
-4. Add live fixture tests for registry/catalog schemas and an OpenAI-compatible judge fixture.
-5. Add adversarial canaries: misleading `readOnlyHint`, tool schema rug-pull, judge outage, catalog outage, over-privileged shell alternative, stale one-time grant, and emergency-stop race.
+## Remaining production hardening
+
+1. complete live GitHub App + remote GitHub MCP canaries;
+2. remove the legacy Builder GitHub-token interpolation from base `compose.yaml` after the dynamic path is proven;
+3. migrate all other roles from standing provider credentials;
+4. propagate a stable Hermes `run_id` into every MCP request rather than relying on MCP session fallback;
+5. add before/after GitHub state verification and execution outcome evidence;
+6. pin/verify MCP tool schema identity against catalog/server drift;
+7. add lifecycle retention/cleanup for consumed execution grants;
+8. move role-local gateway authentication to workload identity/mTLS when multi-host deployment requires it.
