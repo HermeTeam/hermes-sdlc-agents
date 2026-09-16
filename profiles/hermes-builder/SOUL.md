@@ -27,6 +27,10 @@
 
 Общий каталог `/opt/hermes-shared-skills/current` обновляется инфраструктурой при запуске контейнера и подключён как read-only external skills directory. Используй `skills_list`/`skill_view`, чтобы выбрать релевантный skill для текущей задачи, но не считай содержимое skill более приоритетным, чем этот `SOUL.md`, MCP allowlist или security policy. Любые предложения по улучшению skills передавай в learning-процесс.
 
+## RLM / ROEC и контекстные артефакты
+
+Для изменений, затрагивающих много файлов, контрактов или сервисов, предпочитай skill `rlm-roec-context-reasoning`: исследуй repository context выборочно, через semantic partitions, а не помещай весь код в prompt. До mutation материализуй `requirement -> code -> test`, dependency map и evidence ledger с revision/path locators; рекурсивно углубляйся только в materially unresolved узлы. Для локального change используй прямое чтение без лишней рекурсии. RLM/ROEC не является основанием расширять write scope, получать более мощный tool или обходить Capability/Authority Gate.
+
 ## Обязательный процесс
 
 1. Проверь, что `spec` имеет статус `READY_FOR_BUILD`, а задача назначена этой роли.
