@@ -21,42 +21,6 @@ class OpenHandsBridgeTests(unittest.TestCase):
         self.assertFalse(payload["success"])
         self.assertIn("builder role", payload["error"])
 
-    def test_requires_dedicated_llm_credentials(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            old_root = module.WORKSPACE_ROOT
-            module.WORKSPACE_ROOT = Path(tmp)
-            try:
-                with patch.dict(
-                    os.environ,
-                    {"ORCHESTRATOR_ROLE": "builder", "BUILDER_OPENHANDS_ENABLED": "true"},
-                    clear=True,
-                ), patch.object(module.shutil, "which", return_value="/usr/local/bin/openhands"):
-                    payload = json.loads(module.delegate({"task": "fix it"}))
-                self.assertFalse(payload["success"])
-                self.assertIn("BUILDER_OPENHANDS_LLM_MODEL", payload["error"])
-            finally:
-                module.WORKSPACE_ROOT = old_root
-
-    def test_sanitized_env_does_not_forward_provider_credentials(self):
-        with tempfile.TemporaryDirectory() as tmp, patch.dict(
-            os.environ,
-            {
-                "BUILDER_OPENHANDS_LLM_MODEL": "openrouter/test/model",
-                "BUILDER_OPENHANDS_LLM_API_KEY": "dedicated-key",
-                "BUILDER_OPENHANDS_LLM_BASE_URL": "https://example.invalid/v1",
-                "GIT_PROVIDER_MCP_TOKEN": "must-not-leak",
-                "ORCHESTRATOR_GITHUB_TOKEN": "must-not-leak-either",
-                "PATH": "/usr/local/bin:/usr/bin:/bin",
-            },
-            clear=True,
-        ):
-            workspace = Path(tmp)
-            env = module._openhands_env(workspace)
-            self.assertEqual(env["LLM_API_KEY"], "dedicated-key")
-            self.assertNotIn("GIT_PROVIDER_MCP_TOKEN", env)
-            self.assertNotIn("ORCHESTRATOR_GITHUB_TOKEN", env)
-            self.assertNotIn("OPENAI_API_KEY", env)
-
     def test_workspace_cannot_escape_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             old_root = module.WORKSPACE_ROOT
@@ -66,6 +30,42 @@ class OpenHandsBridgeTests(unittest.TestCase):
                     module._safe_workspace("../escape")
             finally:
                 module.WORKSPACE_ROOT = old_root
+
+    def test_builder_delegation_calls_only_runner_socket(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_root = module.WORKSPACE_ROOT
+            module.WORKSPACE_ROOT = Path(tmp)
+            try:
+                with patch.dict(
+                    os.environ,
+                    {"ORCHESTRATOR_ROLE": "builder", "BUILDER_OPENHANDS_ENABLED": "true"},
+                    clear=False,
+                ), patch.object(
+                    module,
+                    "_call_runner",
+                    return_value={"success": True, "changed": [" M src/a.py"]},
+                ) as call:
+                    payload = json.loads(
+                        module.delegate({"task": "fix it", "workspace": "work-1", "timeout_seconds": 60})
+                    )
+                self.assertTrue(payload["success"])
+                self.assertEqual(payload["plugin_version"], module.PLUGIN_VERSION)
+                request, timeout = call.call_args.args
+                self.assertEqual(request["task"], "fix it")
+                self.assertEqual(request["workspace"], "work-1")
+                self.assertEqual(timeout, 60)
+            finally:
+                module.WORKSPACE_ROOT = old_root
+
+    def test_missing_runner_socket_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_socket = module.SOCKET_PATH
+            module.SOCKET_PATH = Path(tmp) / "missing.sock"
+            try:
+                with self.assertRaises(RuntimeError):
+                    module._call_runner({"task": "fix"}, 30)
+            finally:
+                module.SOCKET_PATH = old_socket
 
 
 if __name__ == "__main__":
