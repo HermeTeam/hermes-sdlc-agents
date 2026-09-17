@@ -188,7 +188,7 @@ ORCHESTRATOR_LEARNING_GITHUB_TOKEN=...
 
 ## 9. Проверить optional MCP integrations
 
-Role profiles содержат дополнительные MCP integrations: например Brave Search, PostgreSQL, MongoDB, Context7 и browser-oriented MCP servers.
+Role profiles содержат дополнительные MCP integrations: например DuckDuckGo Search, PostgreSQL, MongoDB, Context7 и browser-oriented MCP servers.
 
 Настраивайте только реально нужные интеграции. Если интеграция не используется, лучше отключить её в соответствующем role profile, чем оставлять фиктивные credentials и считать поверхность безвредной. Активный tool surface должен быть минимальным.
 

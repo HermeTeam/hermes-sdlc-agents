@@ -15,7 +15,6 @@ toolsets:
   - mcp-filesystem
   - mcp-puppeteer
   - mcp-postgresql
-  - mcp-brave-search
   - mcp-docs-langchain
   - mcp-mcp-mermaid
   - mcp-chrome-devtools
@@ -147,10 +146,15 @@ mcp_servers:
   ddg-search:
     command: uvx
     args:
+      - --with
+      - duckduckgo-mcp-server[browser]
       - duckduckgo-mcp-server
-    enabled: false
+      - --search-backend
+      - auto
+    enabled: true
     tools:
       include:
+        - search
         - fetch_content
       resources: false
       prompts: false
@@ -294,24 +298,6 @@ mcp_servers:
     tools:
       include:
         - query
-      resources: false
-      prompts: false
-    sampling:
-      enabled: false
-    elicitation:
-      enabled: false
-  brave-search:
-    command: npx
-    args:
-      - -y
-      - "@modelcontextprotocol/server-brave-search"
-    env:
-      BRAVE_API_KEY: "${BRAVE_API_KEY}"
-    enabled: true
-    tools:
-      include:
-        - brave_web_search
-        - brave_local_search
       resources: false
       prompts: false
     sampling:

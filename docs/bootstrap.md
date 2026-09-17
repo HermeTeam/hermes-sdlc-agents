@@ -190,7 +190,7 @@ These credentials are separate from the role MCP credentials.
 
 ## 9. Review optional MCP integrations
 
-The role profiles contain additional MCP integrations. Configure only the ones you actually use. Examples include Brave Search, PostgreSQL, MongoDB, Context7 and browser-oriented MCP servers.
+The role profiles contain additional MCP integrations. Configure only the ones you actually use. Examples include DuckDuckGo Search, PostgreSQL, MongoDB, Context7 and browser-oriented MCP servers.
 
 If an integration is not needed, prefer disabling it in the corresponding role profile instead of leaving fake credentials and assuming it is harmless. Keep the active tool surface as small as possible.
 

@@ -208,8 +208,8 @@ Root `.env` является централизованным источнико
 | `<ROLE>_API_SERVER_MODEL_NAME`   | stable role model name; mapped to container `API_SERVER_MODEL_NAME` |
 | `ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` | role-local read-only discovery token; mapped to container `ORCHESTRATOR_GITHUB_TOKEN` |
 | `ORCHESTRATOR_<ROLE>_GITLAB_TOKEN` | optional role-local GitLab discovery token; mapped to container `ORCHESTRATOR_GITLAB_TOKEN` |
-| `BRAVE_API_KEY`                  | shared Brave Search key; mapped to container `BRAVE_API_KEY` unless a role override is set |
-| `<ROLE>_BRAVE_API_KEY`           | optional role override for container `BRAVE_API_KEY` |
+| `BRAVE_API_KEY`                  | legacy Brave Search key; unused when DuckDuckGo is the active search provider |
+| `<ROLE>_BRAVE_API_KEY`           | legacy role override; unused when DuckDuckGo is the active search provider |
 | `CONTEXT7_DEFAULT_MINIMUM_TOKENS` | shared Context7 setting; mapped to container `CONTEXT7_DEFAULT_MINIMUM_TOKENS` unless a role override is set |
 | `<ROLE>_CONTEXT7_DEFAULT_MINIMUM_TOKENS` | optional role override for container `CONTEXT7_DEFAULT_MINIMUM_TOKENS` |
 | `MDB_MCP_CONNECTION_STRING`      | shared MongoDB MCP connection string; mapped to container `MDB_MCP_CONNECTION_STRING` unless a role override is set |
