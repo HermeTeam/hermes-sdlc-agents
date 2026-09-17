@@ -13,15 +13,10 @@ RUN set -eux; \
 # that exact environment rather than into the system Python.
 RUN uv pip install --python /opt/hermes/.venv/bin/python langfuse
 
-# Builder coding quality toolchain. These binaries live in the shared agent
-# image, but only the builder profile exposes the bounded OpenHands bridge.
-# Versions are pinned to avoid runtime package drift and lazy installs.
-ENV UV_TOOL_BIN_DIR=/usr/local/bin \
-    UV_TOOL_DIR=/opt/uv-tools
+# Builder LSP toolchain. These binaries live in the shared agent image, but
+# only the builder profile enables the Python/TypeScript LSP servers.
 RUN set -eux; \
-    uv tool install 'openhands==1.16.0' --python 3.12; \
     npm install -g 'typescript@7.0.2' 'typescript-language-server@6.0.0' 'pyright@1.1.414'; \
-    openhands --version; \
     typescript-language-server --version; \
     pyright --version
 
