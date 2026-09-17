@@ -18,10 +18,10 @@ services:
     pids_limit: 512
     cpus: "2.0"
     mem_limit: 4g
+    env_file:
+      - path: ./secrets/hermes-builder-openhands.env
+        required: true
     environment:
-      BUILDER_OPENHANDS_LLM_MODEL: "${BUILDER_OPENHANDS_LLM_MODEL:?Set BUILDER_OPENHANDS_LLM_MODEL in .env or the builder secret source}"
-      BUILDER_OPENHANDS_LLM_API_KEY: "${BUILDER_OPENHANDS_LLM_API_KEY:?Set BUILDER_OPENHANDS_LLM_API_KEY in .env or the builder secret source}"
-      BUILDER_OPENHANDS_LLM_BASE_URL: "${BUILDER_OPENHANDS_LLM_BASE_URL:-}"
       OPENHANDS_RUNNER_SOCKET: /opt/data/workspace/.hermeteam-openhands/runner.sock
     volumes:
       - ./workspace/builder:/opt/data/workspace
