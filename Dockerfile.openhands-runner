@@ -1,0 +1,21 @@
+FROM python:3.12-slim
+
+ARG OPENHANDS_VERSION=1.16.0
+
+ENV UV_TOOL_BIN_DIR=/usr/local/bin \
+    UV_TOOL_DIR=/opt/uv-tools \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl git; \
+    rm -rf /var/lib/apt/lists/*; \
+    curl -LsSf https://astral.sh/uv/install.sh | sh; \
+    /root/.local/bin/uv tool install "openhands==${OPENHANDS_VERSION}" --python 3.12; \
+    openhands --version
+
+COPY openhands_runner /opt/hermeteam-openhands-runner
+WORKDIR /opt/data/workspace
+
+ENTRYPOINT ["python", "/opt/hermeteam-openhands-runner/server.py"]
