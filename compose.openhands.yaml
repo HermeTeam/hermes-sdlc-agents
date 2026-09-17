@@ -1,0 +1,52 @@
+services:
+  hermes-builder-openhands:
+    image: "${HERMES_OPENHANDS_IMAGE:-hermes-builder-openhands:local}"
+    build:
+      context: .
+      dockerfile: Dockerfile.openhands-runner
+      args:
+        OPENHANDS_VERSION: "${OPENHANDS_VERSION:-1.16.0}"
+    container_name: hermes-builder-openhands
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=256m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    pids_limit: 512
+    cpus: "2.0"
+    mem_limit: 4g
+    environment:
+      BUILDER_OPENHANDS_LLM_MODEL: "${BUILDER_OPENHANDS_LLM_MODEL:?Set BUILDER_OPENHANDS_LLM_MODEL in .env or the builder secret source}"
+      BUILDER_OPENHANDS_LLM_API_KEY: "${BUILDER_OPENHANDS_LLM_API_KEY:?Set BUILDER_OPENHANDS_LLM_API_KEY in .env or the builder secret source}"
+      BUILDER_OPENHANDS_LLM_BASE_URL: "${BUILDER_OPENHANDS_LLM_BASE_URL:-}"
+      OPENHANDS_RUNNER_SOCKET: /opt/data/workspace/.hermeteam-openhands/runner.sock
+    volumes:
+      - ./workspace/builder:/opt/data/workspace
+    networks:
+      - openhands-egress
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import os,stat; p='/opt/data/workspace/.hermeteam-openhands/runner.sock'; s=os.stat(p); raise SystemExit(0 if stat.S_ISSOCK(s.st_mode) else 1)",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  hermes-builder:
+    depends_on:
+      hermes-builder-openhands:
+        condition: service_healthy
+    environment:
+      BUILDER_OPENHANDS_ENABLED: "${BUILDER_OPENHANDS_ENABLED:-true}"
+
+networks:
+  openhands-egress:
+    driver: bridge
