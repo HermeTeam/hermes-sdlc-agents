@@ -9,7 +9,7 @@ ENV UV_TOOL_BIN_DIR=/usr/local/bin \
 
 RUN set -eux; \
     apt-get update; \
-    apt-get install -y --no-install-recommends ca-certificates curl git; \
+    apt-get install -y --no-install-recommends bash ca-certificates curl git ripgrep; \
     rm -rf /var/lib/apt/lists/*; \
     curl -LsSf https://astral.sh/uv/install.sh | sh; \
     /root/.local/bin/uv tool install "openhands==${OPENHANDS_VERSION}" --python 3.12; \
