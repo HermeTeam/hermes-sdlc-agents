@@ -1,0 +1,4 @@
+name: hermeteam-openhands-bridge
+version: "0.1.0"
+description: "Bounded OpenHands delegation tool for the HermeTeam builder role."
+author: HermeTeam
