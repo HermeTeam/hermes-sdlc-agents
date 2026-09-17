@@ -13,8 +13,16 @@ RUN set -eux; \
 # that exact environment rather than into the system Python.
 RUN uv pip install --python /opt/hermes/.venv/bin/python langfuse
 
+# Builder LSP toolchain. These binaries live in the shared agent image, but
+# only the builder profile enables the Python/TypeScript LSP servers.
+RUN set -eux; \
+    npm install -g 'typescript@7.0.2' 'typescript-language-server@6.0.0' 'pyright@1.1.414'; \
+    typescript-language-server --version; \
+    pyright --version
+
 COPY orchestrator /opt/hermes-sdlc-orchestrator
-# Add the HermeTeam plugin beside Hermes' bundled plugins so discovery does
+# Add the HermeTeam plugins beside Hermes' bundled plugins so discovery does
 # not depend on the container user's HOME or the /opt/data volume.
 COPY hermes-plugins/hermeteam-intent-action-gate /opt/hermes/plugins/hermeteam-intent-action-gate
+COPY hermes-plugins/hermeteam-openhands-bridge /opt/hermes/plugins/hermeteam-openhands-bridge
 ENV PYTHONPATH=/opt/hermes-sdlc-orchestrator

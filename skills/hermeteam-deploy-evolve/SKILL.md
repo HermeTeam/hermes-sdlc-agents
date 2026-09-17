@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.0.0
+version: 1.1.0
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -34,6 +34,7 @@ This is an **operator/deployment skill**. It does not grant host, GitHub, Docker
 8. The active skill is immutable during a deployment session.
 9. Learning creates a candidate patch/fork; it never self-approves, self-merges, self-publishes, or self-activates it.
 10. No learned branch may weaken role separation, protected paths, branch constraints, exact-request approval, one-shot grants, credential isolation, emergency stop, or provider-state verification.
+11. When OpenHands is enabled for Builder, keep it in the isolated `hermes-builder-openhands` runner: no provider/MCP credentials, no `hermes-control` network attachment, and no provider-connected Git remote.
 
 ## Preferred architecture
 
@@ -55,6 +56,19 @@ Capability / Action Gateway
          GitHub MCP
 ```
 
+Optional coding-assistance path:
+
+```text
+Hermes Builder
+   │ Unix socket in builder scratch workspace
+   ▼
+hermes-builder-openhands
+   ├─ dedicated OpenHands model credential only
+   ├─ no GitHub/GitLab/MCP/provider credential
+   ├─ no hermes-control network
+   └─ local remote-less Git worktree
+```
+
 Dynamic request authority is currently a **Builder canary** unless current repository code proves broader coverage. Other roles may still use role-specific provider credentials.
 
 ## Source precedence
@@ -64,7 +78,7 @@ When repository sources disagree, use this order:
 1. effective rendered Compose/configuration;
 2. executable code and tests;
 3. `profiles/*` and `policies/*`;
-4. `docs/DYNAMIC_REQUEST_AUTHORITY.md`;
+4. `docs/DYNAMIC_REQUEST_AUTHORITY.md` and `docs/BUILDER_OPENHANDS_LSP.md` where applicable;
 5. component READMEs;
 6. `docs/bootstrap*.md`;
 7. top-level README;
@@ -79,6 +93,7 @@ If current behavior contradicts this skill, enter `repo-drift/<sha>`, block the 
 | `baseline-readonly` | host/base-role diagnosis | Builder stopped |
 | `dynamic-authority` | preferred local canary | Builder → Gateway → GitHub App → GitHub MCP |
 | `dynamic+observability` | authority + Flight Recorder/Langfuse | same |
+| `dynamic+openhands` | authority + isolated OpenHands/LSP coding assist | same; OpenHands has no provider path |
 | `legacy-builder-canary` | explicit comparison only | direct role credential |
 
 Never choose legacy mode automatically because GitHub App setup failed.
@@ -150,6 +165,8 @@ credential:
 
 Redact bearer tokens, `*_KEY`, `*_TOKEN`, `*_PASSWORD`, `*_SECRET`, PEM bodies, and unnecessary identifiers before persisting logs or lessons.
 
+For OpenHands, use a separate ignored file copied from `secrets/hermes-builder-openhands.env.example`. It may contain only the dedicated OpenHands model endpoint/model/key. Do not reuse `secrets/hermes-builder.env` because that file can contain provider/orchestrator credentials.
+
 # Deployment state machine
 
 ```text
@@ -163,6 +180,7 @@ Redact bearer tokens, `*_KEY`, `*_TOKEN`, `*_PASSWORD`, `*_SECRET`, PEM bodies, 
 07 ROLE_NEGATIVE_CANARIES
 08 DYNAMIC_AUTHORITY
 09 AUTHORITY_CANARIES
+09A OPENHANDS_LSP_CANARY (optional)
 10 OBSERVABILITY
 11 ORCHESTRATOR_CANARY
 12 FINALIZE
@@ -180,10 +198,12 @@ Read current repository structure and relevant files, including:
 README*.md
 docs/bootstrap*.md
 docs/DYNAMIC_REQUEST_AUTHORITY.md
+docs/BUILDER_OPENHANDS_LSP.md
 compose.yaml
 compose.*.yaml
 .env.example
 capability_gateway/.env.example
+secrets/hermes-builder-openhands.env.example
 .github/workflows/*
 profiles/hermes-*/config.yaml
 policies/roles.yaml
@@ -197,6 +217,7 @@ Determine:
 - available overlays;
 - whether Builder Dynamic Authority exists;
 - whether authority coverage is Builder-only or broader;
+- whether the OpenHands overlay is selected and its dedicated secret source exists;
 - documentation/code drift relevant to deployment.
 
 If contracts changed, branch `repo-drift/<sha>` and reconstruct affected later phases from current code.
@@ -260,6 +281,14 @@ ORCHESTRATOR_APPLY_TRANSITIONS=false
 ORCHESTRATOR_TRANSITION_COMMENT_ONLY=true
 ```
 
+If OpenHands is selected and its runner secret file is absent:
+
+```bash
+cp secrets/hermes-builder-openhands.env.example secrets/hermes-builder-openhands.env
+```
+
+Populate only the dedicated model variables; never copy builder/provider tokens into that file.
+
 ## 04 — CONFIGURE_TARGET
 
 Default to a sandbox GitHub repository.
@@ -288,6 +317,16 @@ CAPABILITY_JUDGE_MODEL
 
 The three HermeTeam keys must be independent. GitHub App permissions must be the minimum superset required by mapped Builder tools; do not add repository/organization Administration just to make setup easier.
 
+For OpenHands configure only:
+
+```text
+BUILDER_OPENHANDS_LLM_MODEL
+BUILDER_OPENHANDS_LLM_API_KEY
+BUILDER_OPENHANDS_LLM_BASE_URL
+```
+
+inside `secrets/hermes-builder-openhands.env`. Keep this file separate from builder/orchestrator/provider credentials.
+
 If GitHub App setup is unavailable, stop and ask whether to configure it or explicitly run legacy comparison mode. Never silently fall back.
 
 ## 05 — STATIC_VALIDATION
@@ -297,6 +336,7 @@ Run:
 ```bash
 scripts/validate.sh
 python3 -m unittest discover -s capability_gateway/tests -v
+python3 -m unittest discover -s hermes-plugins/tests -v
 npm --prefix dashboard ci
 npm --prefix dashboard run check
 docker compose config --quiet
@@ -319,13 +359,28 @@ docker compose \
   config --quiet
 ```
 
-If observability is selected, render that combination too.
+If OpenHands is selected:
+
+```bash
+docker compose -f compose.yaml -f compose.openhands.yaml config --quiet
+```
+
+If observability is selected, render that combination too. If several overlays are selected, render the exact combined stack before startup.
 
 Verify effective Builder facts without dumping secret values. Required expectation in dynamic mode:
 
 ```text
 GIT_PROVIDER_MCP_URL=http://capability-gateway:8787/mcp
 Builder has no GitHub App private-key secret
+```
+
+Required OpenHands expectations:
+
+```text
+hermes-builder-openhands has only the dedicated OpenHands secret file
+hermes-builder-openhands is not attached to hermes-control
+builder generic terminal remains disabled
+OpenHands runner communicates with Builder via Unix socket in the scratch workspace
 ```
 
 Never patch out a security check merely to make validation pass.
@@ -377,7 +432,9 @@ docker compose \
   up -d --build capability-gateway hermes-builder hermeteam-dashboard
 ```
 
-Then the full seven-role stack while preserving the overlay:
+When OpenHands is selected, append `-f compose.openhands.yaml` and include `hermes-builder-openhands` in the startup set.
+
+Then the full seven-role stack while preserving the selected overlays:
 
 ```bash
 docker compose \
@@ -454,6 +511,45 @@ With explicit authority for the canary:
 
 Do not extrapolate the Builder kill switch to roles still using direct provider credentials.
 
+## 09A — OPENHANDS / LSP CANARY
+
+Run only when `compose.openhands.yaml` is selected.
+
+Start/build:
+
+```bash
+docker compose \
+  -f compose.yaml \
+  -f compose.openhands.yaml \
+  up -d --build hermes-builder-openhands hermes-builder
+```
+
+Verify versions without exposing secrets:
+
+```bash
+docker compose run --rm --entrypoint sh hermes-builder -ec \
+  'pyright --version && typescript-language-server --version'
+
+docker compose -f compose.yaml -f compose.openhands.yaml run --rm --entrypoint sh \
+  hermes-builder-openhands -ec 'openhands --version'
+```
+
+Verify security facts:
+- `terminal` remains disabled in `profiles/hermes-builder/config.yaml`;
+- runner has no `GIT_PROVIDER_MCP_TOKEN`, orchestrator provider token, GitHub App private key, or generic builder model key;
+- runner is attached only to `openhands-egress`, not `hermes-control`;
+- runner socket exists in the shared builder scratch workspace;
+- path traversal outside `/opt/data/workspace` fails;
+- non-Builder role invocation fails;
+- missing runner socket fails closed;
+- a runner workspace with an existing Git remote is rejected;
+- after a canary delegation, no Git remote exists;
+- local edits do not change provider state until Hermes explicitly publishes reviewed contents through repository MCP/API.
+
+Use a tiny sandbox task that changes only a disposable materialized source/test fixture. Verify LSP diagnostics are returned for a deliberately introduced Python or TypeScript type/syntax error, then verify the corrected file is clean enough to proceed to CI. Do not use this canary against production repositories.
+
+Any provider mutation originating from the OpenHands runner is `BLOCKED_SECURITY`.
+
 ## 10 — OBSERVABILITY
 
 Optional but recommended before unattended automation.
@@ -509,6 +605,17 @@ provider state verified
 orchestrator disabled or explicitly single-role canary
 ```
 
+When OpenHands is selected additionally require:
+
+```text
+OpenHands runner healthy
+runner provider credentials absent
+runner hermes-control attachment absent
+Unix-socket delegation PASS
+Python/TypeScript LSP canary PASS
+provider state unchanged by local OpenHands edits
+```
+
 Create sanitized deployment attestation with repo SHA, skill version, mode, gate results, evidence IDs, known limits, and evolution lessons.
 
 # Recovery branches
@@ -524,6 +631,10 @@ host/resource-constrained
 config/missing-required-variable
 config/provider-model-mismatch
 role-startup/<role>/<fingerprint>
+builder/openhands-runner-unavailable
+builder/openhands-credential-leak
+builder/openhands-remote-detected
+builder/lsp-unavailable
 gateway/judge-unavailable
 gateway/github-app-unavailable
 gateway/provider-timeout
@@ -561,7 +672,7 @@ Do not learn from secret values, one ambiguous anecdote, transient outages witho
 ```yaml
 lesson:
   id: LES-<id>
-  parent_skill: hermeteam-deploy-evolve@1.0.0
+  parent_skill: hermeteam-deploy-evolve@1.1.0
   repo_sha: <sha>
   phase: <phase>
   failure_fingerprint: <hash>
@@ -649,7 +760,11 @@ Keep coverage for at least:
 14. provider timeout;
 15. observability degraded;
 16. orchestrator duplicate assignment;
-17. repository drift changes authority/deployment contract.
+17. repository drift changes authority/deployment contract;
+18. OpenHands runner receives a provider/MCP credential;
+19. OpenHands runner is attached to `hermes-control`;
+20. OpenHands runner or task creates a Git remote;
+21. Builder OpenHands runner socket/LSP server unavailable.
 
 Security denials must remain denials in every candidate version.
 
@@ -669,11 +784,12 @@ Never ask a vague "continue?" question.
 
 # Rollback
 
-For the full local canary, omit overlays not used:
+For the full local canary, omit overlays not used. If OpenHands was selected include `-f compose.openhands.yaml`:
 
 ```bash
 docker compose \
   -f compose.yaml \
+  -f compose.openhands.yaml \
   -f compose.observability.yaml \
   -f compose.capability-gateway.yaml \
   -f compose.dynamic-authority.yaml \
@@ -697,6 +813,7 @@ Builder gateway path: VERIFIED
 Negative canaries: PASS
 One-shot approval: PASS
 Emergency stop: PASS
+OpenHands/LSP: PASS|NOT_SELECTED
 Observability: PASS|DEGRADED|NOT_SELECTED
 Orchestrator: DISABLED|SINGLE_ROLE_CANARY
 Evolution lessons: <n>

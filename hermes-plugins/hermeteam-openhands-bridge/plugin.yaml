@@ -1,0 +1,4 @@
+name: hermeteam-openhands-bridge
+version: "0.2.0"
+description: "Bounded Unix-socket bridge from HermeTeam builder to an isolated OpenHands runner."
+author: HermeTeam
