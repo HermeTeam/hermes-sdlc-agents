@@ -53,12 +53,81 @@ class OpenHandsRunnerTests(unittest.TestCase):
             finally:
                 runner.WORKSPACE_ROOT = old_root
 
+    def test_discovers_only_regular_agent_skill_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "skills"
+            root.mkdir()
+            good = root / "python-testing"
+            good.mkdir()
+            (good / "SKILL.md").write_text("---\nname: python-testing\n---\n", encoding="utf-8")
+            missing = root / "missing-skill-file"
+            missing.mkdir()
+            outside = Path(tmp) / "outside"
+            outside.mkdir()
+            (outside / "SKILL.md").write_text("outside", encoding="utf-8")
+            (root / "linked-skill").symlink_to(outside, target_is_directory=True)
+            bad_name = root / "bad name"
+            bad_name.mkdir()
+            (bad_name / "SKILL.md").write_text("bad", encoding="utf-8")
+
+            discovered = runner.discover_shared_skills(root)
+            self.assertEqual(discovered, {"python-testing": good.resolve()})
+
+    def test_prepare_shared_skills_materializes_user_skill_symlinks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "skills"
+            skill = root / "rlm-roec-context-reasoning"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: rlm-roec-context-reasoning\n---\n", encoding="utf-8")
+            home = Path(tmp) / "home"
+
+            prepared = runner.prepare_shared_skills(home, root)
+            link = home / ".openhands" / "skills" / "rlm-roec-context-reasoning"
+            self.assertEqual(prepared, {"rlm-roec-context-reasoning": skill.resolve()})
+            self.assertTrue(link.is_symlink())
+            self.assertEqual(link.resolve(), skill.resolve())
+            self.assertIsNone(runner.verify_shared_skills(home, prepared))
+
+    def test_prepare_shared_skills_rejects_symlinked_openhands_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "skills"
+            skill = root / "safe-skill"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: safe-skill\n---\n", encoding="utf-8")
+            home = Path(tmp) / "home"
+            home.mkdir()
+            outside = Path(tmp) / "outside"
+            outside.mkdir()
+            (home / ".openhands").symlink_to(outside, target_is_directory=True)
+
+            with self.assertRaises(ValueError):
+                runner.prepare_shared_skills(home, root)
+
+    def test_verify_shared_skills_detects_link_replacement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "skills"
+            skill = root / "safe-skill"
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text("---\nname: safe-skill\n---\n", encoding="utf-8")
+            home = Path(tmp) / "home"
+            prepared = runner.prepare_shared_skills(home, root)
+            link = home / ".openhands" / "skills" / "safe-skill"
+            link.unlink()
+            link.mkdir()
+
+            violation = runner.verify_shared_skills(home, prepared)
+            self.assertIn("link was replaced", violation or "")
+
     def test_openhands_overlay_has_no_provider_secret_names(self):
         overlay = (Path(__file__).parents[2] / "compose.openhands.yaml").read_text(encoding="utf-8")
         self.assertNotIn("GIT_PROVIDER_MCP_TOKEN", overlay)
         self.assertNotIn("ORCHESTRATOR_GITHUB_TOKEN", overlay)
         self.assertNotIn("GITHUB_APP_PRIVATE_KEY", overlay)
         self.assertIn("secrets/hermes-builder-openhands.env", overlay)
+        self.assertIn("shared-skills:/opt/hermes-shared-skills:ro", overlay)
+        self.assertIn("OPENHANDS_SHARED_SKILLS_ROOT: /opt/hermes-shared-skills/current", overlay)
+        self.assertIn("skills-superset-sync:", overlay)
+        self.assertIn("condition: service_completed_successfully", overlay)
 
 
 if __name__ == "__main__":
