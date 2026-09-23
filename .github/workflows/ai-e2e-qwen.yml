@@ -40,6 +40,8 @@ jobs:
       - name: Validate repository and verification manifests
         run: |
           scripts/validate.sh
+          bash -n scripts/e2e/bootstrap-from-scratch.sh
+          python -m compileall -q verification
           python verification/validate.py
       - name: Run deterministic contract/unit tests
         run: |
