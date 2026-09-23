@@ -86,7 +86,7 @@ printf '\nHERMES_DASHBOARD_BASIC_AUTH_PASSWORD=%s\n' \
 
 Этот credential защищает native Hermes dashboards отдельных ролей, которые публикуются только при включении debug overlay. Он не относится к центральному HermeTeam dashboard.
 
-## 5. Настроить Hermes image и LLM provider
+## 5. Настроить Hermes image и Qwen API Platform
 
 Для первого локального запуска можно использовать default image:
 
@@ -96,15 +96,19 @@ HERMES_IMAGE=nousresearch/hermes-agent:latest
 
 После успешного canary замените mutable tag на immutable digest.
 
-Настройте OpenAI-compatible endpoint:
+В этой ветке runtime стандартизирован на Qwen API Platform через OpenAI-compatible API. Ниже указан default international endpoint; для региона вашего Qwen account переопределите `QWEN_API_BASE_URL`.
 
 ```dotenv
-HERMES_MODEL_ID=<model-id>
-HERMES_MODEL_BASE_URL=<openai-compatible-base-url>
-OPENAI_API_KEY=<llm-api-key>
+QWEN_API_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+DASHSCOPE_API_KEY=<qwen-api-key>
+OPENAI_API_KEY=<qwen-api-key>
+
+HERMES_MODEL_ID=qwen3.7-plus
+HERMES_MODEL_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+HERMES_MODEL_OPENAI_API_KEY=<qwen-api-key>
 ```
 
-Проверьте role-specific model overrides в `.env`. Текущие defaults могут задавать отдельные модели для Builder, Incident или Learning. Если ваш provider не предоставляет такую модель, очистите или замените соответствующий override.
+Role defaults разделены по нагрузке: Planner, Project Manager и Reviewer используют `qwen3.7-max`; Builder и Release — `qwen3.7-plus`; Incident, Learning и JSON repair — `qwen3.5-flash`. Model IDs, endpoint и API key должны относиться к совместимому Qwen account/region, если cross-region схема не проверена отдельно.
 
 ## 6. Настроить целевой GitHub repository
 
