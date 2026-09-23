@@ -19,6 +19,9 @@ require() {
 
 require QWEN_API_KEY
 require E2E_SANDBOX_REPOSITORY_FULL_NAME
+require E2E_GITHUB_APP_ID
+require E2E_GITHUB_APP_INSTALLATION_ID
+require E2E_GITHUB_APP_PRIVATE_KEY
 
 for role in PLANNER PROJECT_MANAGER BUILDER REVIEWER RELEASE INCIDENT LEARNING; do
   require "E2E_${role}_GITHUB_MCP_TOKEN"
@@ -32,19 +35,29 @@ fi
 
 cd "$root"
 
-docker compose -f compose.yaml -f compose.debug.yaml down --volumes --remove-orphans >/dev/null 2>&1 || true
-rm -f .env
+compose=(
+  docker compose
+  -f compose.yaml
+  -f compose.debug.yaml
+  -f compose.capability-gateway.yaml
+  -f compose.dynamic-authority.yaml
+)
+
+"${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+rm -f .env secrets/e2e-github-app-private-key.pem
 rm -rf verification/reports
 mkdir -p verification/reports
 
 scripts/bootstrap.sh
 
-python3 - "$root/.env" <<'PY'
+python3 - "$root/.env" "$root/secrets/e2e-github-app-private-key.pem" <<'PY'
 from pathlib import Path
 import os
+import secrets
 import sys
 
 path = Path(sys.argv[1])
+private_key_path = Path(sys.argv[2])
 original = path.read_text(encoding="utf-8").splitlines()
 values = {}
 order = []
@@ -60,10 +73,10 @@ def setv(key: str, value: str) -> None:
         order.append(key)
 
 qwen_key = os.environ["QWEN_API_KEY"]
-qwen_base = os.environ.get("QWEN_API_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+qwen_base = os.environ.get("QWEN_API_BASE_URL") or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
 repo = os.environ["E2E_SANDBOX_REPOSITORY_FULL_NAME"]
 owner, name = repo.split("/", 1)
-branch = os.environ.get("E2E_SANDBOX_DEFAULT_BRANCH", "main")
+branch = os.environ.get("E2E_SANDBOX_DEFAULT_BRANCH") or "main"
 
 setv("DASHSCOPE_API_KEY", qwen_key)
 setv("OPENAI_API_KEY", qwen_key)
@@ -104,12 +117,31 @@ setv("GITHUB_REPOSITORY", name)
 setv("GITHUB_REPOSITORY_FULL_NAME", repo)
 setv("GITHUB_REPOSITORY_HTML_URL", f"https://github.com/{repo}")
 setv("GITHUB_REPOSITORY_API_URL", f"https://api.github.com/repos/{repo}")
+
+# Keep unattended orchestration disabled until the downstream authority canaries pass.
 setv("ORCHESTRATOR_ENABLED", "false")
 setv("ORCHESTRATOR_APPLY_TRANSITIONS", "false")
 setv("ORCHESTRATOR_TRANSITION_COMMENT_ONLY", "true")
+
+# Preferred E2E topology: Builder -> Capability Gateway -> GitHub App -> GitHub MCP.
+setv("CAPABILITY_ADMIN_KEY", secrets.token_hex(32))
+setv("DASHBOARD_GOVERNANCE_KEY", secrets.token_hex(32))
+setv("BUILDER_CAPABILITY_GATEWAY_KEY", secrets.token_hex(32))
+setv("CAPABILITY_MAX_AUTO_RISK", "MEDIUM")
+setv("CAPABILITY_JUDGE_BASE_URL", qwen_base)
+setv("CAPABILITY_JUDGE_API_KEY", qwen_key)
+setv("CAPABILITY_JUDGE_MODEL", "qwen3.7-max")
+setv("GITHUB_APP_ID", os.environ["E2E_GITHUB_APP_ID"])
+setv("GITHUB_APP_INSTALLATION_ID", os.environ["E2E_GITHUB_APP_INSTALLATION_ID"])
+setv("GITHUB_APP_PRIVATE_KEY_FILE", "./secrets/e2e-github-app-private-key.pem")
+setv("CAPABILITY_EXECUTION_GRANT_TTL_SECONDS", "60")
+setv("CAPABILITY_PROVIDER_TOKEN_CACHE_SECONDS", "300")
+setv("CAPABILITY_PROVIDER_TIMEOUT_SECONDS", "10")
+setv("CAPABILITY_UPSTREAM_TIMEOUT_SECONDS", "180")
+
 setv(
     "HERMES_DASHBOARD_BASIC_AUTH_PASSWORD",
-    os.environ.get("E2E_HERMES_DASHBOARD_PASSWORD", "e2e-only-not-for-production"),
+    os.environ.get("E2E_HERMES_DASHBOARD_PASSWORD") or secrets.token_hex(32),
 )
 
 lines = []
@@ -128,14 +160,17 @@ for key in order:
         lines.append(f"{key}={values[key]}")
 path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 path.chmod(0o600)
+
+private_key_path.write_text(os.environ["E2E_GITHUB_APP_PRIVATE_KEY"], encoding="utf-8")
+private_key_path.chmod(0o600)
 PY
 
 python3 verification/validate.py
 scripts/validate.sh
-docker compose -f compose.yaml -f compose.debug.yaml config --quiet
+"${compose[@]}" config --quiet
 python3 verification/qwen_probe.py
 
-docker compose -f compose.yaml -f compose.debug.yaml up -d --build
+"${compose[@]}" up -d --build
 
 for _ in $(seq 1 120); do
   if scripts/smoke-test.sh >/dev/null 2>&1; then
@@ -146,6 +181,8 @@ for _ in $(seq 1 120); do
 done
 
 scripts/smoke-test.sh
+"${compose[@]}" exec -T capability-gateway python -c \
+  "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=3).read()"
 python3 verification/hermes_canary.py
 
 cat > verification/reports/stage-00-bootstrap.json <<EOF
@@ -154,8 +191,9 @@ cat > verification/reports/stage-00-bootstrap.json <<EOF
   "status": "PASS",
   "provider": "qwen-api-platform",
   "repository": "${E2E_SANDBOX_REPOSITORY_FULL_NAME}",
+  "builder_authority_path": "capability-gateway-github-app",
   "orchestrator_enabled": false
 }
 EOF
 
-echo "Stage 00 PASS: HermeTeam configured and deployed from a clean ephemeral state with Qwen."
+echo "Stage 00 PASS: clean HermeTeam dynamic-authority deployment is healthy with Qwen."
