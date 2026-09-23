@@ -23,8 +23,13 @@ services:
         required: true
     environment:
       OPENHANDS_RUNNER_SOCKET: /opt/data/workspace/.hermeteam-openhands/runner.sock
+      OPENHANDS_SHARED_SKILLS_ROOT: /opt/hermes-shared-skills/current
+    depends_on:
+      skills-superset-sync:
+        condition: service_completed_successfully
     volumes:
       - ./workspace/builder:/opt/data/workspace
+      - shared-skills:/opt/hermes-shared-skills:ro
     networks:
       - openhands-egress
     healthcheck:
