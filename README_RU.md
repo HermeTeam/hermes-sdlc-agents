@@ -221,7 +221,7 @@ scripts/smoke-test.sh
 
 ## AI E2E verification
 
-Qwen verification pipeline находится в `.github/workflows/ai-e2e-qwen.yml`. Полный прогон запускается только вручную/trusted context, потому что ему нужны sandbox provider credentials. Нулевой этап разворачивает HermeTeam с чистого состояния в disposable runner, проверяет Qwen model matrix, запускает все семь ролей и выполняет no-tool Hermes readiness canaries до deterministic authority и dashboard gates.
+Qwen verification pipeline находится в `.github/workflows/ai-e2e-qwen.yml`. Полный прогон запускается только в trusted context: после появления workflow в default branch — через `workflow_dispatch`, а при разработке этой feature-ветки — push commit с `[full-e2e]` в сообщении. Full job привязан к environment `ai-e2e-sandbox` и использует только sandbox provider credentials. Нулевой этап разворачивает HermeTeam с чистого состояния в disposable runner, проверяет Qwen model matrix, запускает все семь ролей и выполняет no-tool Hermes readiness canaries до deterministic authority и dashboard gates.
 
 Основные артефакты:
 
