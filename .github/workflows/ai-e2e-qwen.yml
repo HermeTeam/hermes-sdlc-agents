@@ -2,6 +2,9 @@ name: AI E2E — Qwen verification
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feature/qwen-e2e-verification-pipeline
   pull_request:
     paths:
       - ".github/workflows/ai-e2e-qwen.yml"
