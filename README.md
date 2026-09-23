@@ -233,7 +233,7 @@ scripts/smoke-test.sh
 
 ## AI E2E verification
 
-The Qwen verification pipeline is defined in `.github/workflows/ai-e2e-qwen.yml`. Its full run is manual/trusted-only because it requires sandbox provider credentials. Stage 00 deploys HermeTeam from scratch in a disposable runner, probes the Qwen model matrix, starts all seven roles, and executes no-tool Hermes readiness canaries before the deterministic authority and dashboard gates run.
+The Qwen verification pipeline is defined in `.github/workflows/ai-e2e-qwen.yml`. Its full run is trusted-only because it requires sandbox provider credentials: use `workflow_dispatch` after the workflow is available on the default branch, or during feature-branch development push a commit containing `[full-e2e]`. The full job is bound to the `ai-e2e-sandbox` environment. Stage 00 deploys HermeTeam from scratch in a disposable runner, probes the Qwen model matrix, starts all seven roles, and executes no-tool Hermes readiness canaries before the deterministic authority and dashboard gates run.
 
 Core assets:
 
