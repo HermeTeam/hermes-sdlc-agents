@@ -17,6 +17,14 @@ class VerificationContractTests(unittest.TestCase):
         self.assertTrue(models)
         self.assertTrue(all(model.startswith("qwen") for model in models))
 
+    def test_openhands_uses_qwen_via_litellm_openai_transport(self) -> None:
+        data = yaml.safe_load(
+            (ROOT / "verification/config/models.qwen.yaml").read_text(encoding="utf-8")
+        )
+        cfg = data["auxiliary"]["openhands_builder"]
+        self.assertEqual(cfg["model"], "openai/qwen3.7-plus")
+        self.assertEqual(cfg["api_model"], "qwen3.7-plus")
+
     def test_p0_scenarios_are_zero_tolerance(self) -> None:
         data = yaml.safe_load(
             (ROOT / "verification/scenarios/p0/core.yaml").read_text(encoding="utf-8")
