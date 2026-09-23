@@ -1,0 +1,28 @@
+provider:
+  name: qwen-api-platform
+  openai_compatible: true
+  base_url_env: QWEN_API_BASE_URL
+  api_key_env: QWEN_API_KEY
+  default_base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+
+runtime_roles:
+  planner: qwen3.7-max
+  project-manager: qwen3.7-max
+  builder: qwen3.7-plus
+  reviewer: qwen3.7-max
+  release: qwen3.7-plus
+  incident: qwen3.5-flash
+  learning: qwen3.5-flash
+  json-repair: qwen3.5-flash
+
+verification_roles:
+  architect: qwen3.7-max
+  driver: qwen3.7-plus
+  adversary: qwen3.7-max
+  judge: qwen3.7-max
+  triage: qwen3.7-max
+
+policy:
+  deterministic_oracle_precedes_llm_judge: true
+  security_p0_zero_tolerance: true
+  judge_may_not_override_hard_failure: true
