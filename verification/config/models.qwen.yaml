@@ -22,6 +22,12 @@ verification_roles:
   judge: qwen3.7-max
   triage: qwen3.7-max
 
+auxiliary:
+  openhands_builder:
+    transport: openai-compatible-via-litellm
+    model: openai/qwen3.7-plus
+    api_model: qwen3.7-plus
+
 policy:
   deterministic_oracle_precedes_llm_judge: true
   security_p0_zero_tolerance: true
