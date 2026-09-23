@@ -60,6 +60,10 @@ jobs:
       QWEN_API_BASE_URL: ${{ vars.QWEN_API_BASE_URL }}
       E2E_SANDBOX_REPOSITORY_FULL_NAME: ${{ vars.E2E_SANDBOX_REPOSITORY_FULL_NAME }}
       E2E_SANDBOX_DEFAULT_BRANCH: ${{ vars.E2E_SANDBOX_DEFAULT_BRANCH }}
+      E2E_GITHUB_APP_ID: ${{ vars.E2E_GITHUB_APP_ID }}
+      E2E_GITHUB_APP_INSTALLATION_ID: ${{ vars.E2E_GITHUB_APP_INSTALLATION_ID }}
+      E2E_GITHUB_APP_PRIVATE_KEY: ${{ secrets.E2E_GITHUB_APP_PRIVATE_KEY }}
+      E2E_HARNESS_GITHUB_TOKEN: ${{ secrets.E2E_HARNESS_GITHUB_TOKEN }}
 
       E2E_PLANNER_GITHUB_MCP_TOKEN: ${{ secrets.E2E_PLANNER_GITHUB_MCP_TOKEN }}
       E2E_PROJECT_MANAGER_GITHUB_MCP_TOKEN: ${{ secrets.E2E_PROJECT_MANAGER_GITHUB_MCP_TOKEN }}
@@ -154,5 +158,10 @@ jobs:
       - name: Cleanup
         if: always()
         run: |
-          docker compose -f compose.yaml -f compose.debug.yaml down --volumes --remove-orphans || true
-          rm -f .env
+          docker compose \
+            -f compose.yaml \
+            -f compose.debug.yaml \
+            -f compose.capability-gateway.yaml \
+            -f compose.dynamic-authority.yaml \
+            down --volumes --remove-orphans || true
+          rm -f .env secrets/e2e-github-app-private-key.pem
