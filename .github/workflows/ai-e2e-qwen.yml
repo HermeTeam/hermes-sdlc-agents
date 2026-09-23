@@ -147,8 +147,12 @@ jobs:
         if: always()
         run: |
           mkdir -p verification/reports
-          docker compose -f compose.yaml -f compose.debug.yaml ps \
-            > verification/reports/compose-ps.txt 2>&1 || true
+          docker compose \
+            -f compose.yaml \
+            -f compose.debug.yaml \
+            -f compose.capability-gateway.yaml \
+            -f compose.dynamic-authority.yaml \
+            ps > verification/reports/compose-ps.txt 2>&1 || true
 
       - name: Upload E2E evidence
         if: always()
