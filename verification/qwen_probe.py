@@ -72,10 +72,7 @@ def main() -> int:
     if not api_key:
         print("QWEN_API_KEY (or DASHSCOPE_API_KEY) is required", file=sys.stderr)
         return 2
-    base_url = os.getenv(
-        "QWEN_API_BASE_URL",
-        "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
-    )
+    base_url = os.getenv("QWEN_API_BASE_URL") or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
     for model in args.model or load_models():
         probe(base_url, api_key, model, args.timeout)
     return 0
