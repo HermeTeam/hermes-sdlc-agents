@@ -23,7 +23,9 @@ def call_qwen(model: str, system: str, user: str, timeout: int = 120) -> str:
     api_key = os.getenv("QWEN_API_KEY") or os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
         raise RuntimeError("QWEN_API_KEY (or DASHSCOPE_API_KEY) is required")
-    base_url = os.getenv("QWEN_API_BASE_URL") or config()["provider"]["default_base_url"]
+    base_url = (os.getenv("QWEN_API_BASE_URL") or "").strip()
+    if not base_url:
+        raise RuntimeError("QWEN_API_BASE_URL is required and must match the Qwen API key region/workspace")
     body = json.dumps(
         {
             "model": model,
