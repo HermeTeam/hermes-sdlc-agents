@@ -37,10 +37,16 @@ jobs:
           python-version: "3.12"
       - name: Install contract dependencies
         run: python -m pip install pyyaml
-      - name: Validate verification manifests
-        run: python verification/validate.py
-      - name: Run verification contract tests
-        run: python -m unittest discover -s verification/tests -v
+      - name: Validate repository and verification manifests
+        run: |
+          scripts/validate.sh
+          python verification/validate.py
+      - name: Run deterministic contract/unit tests
+        run: |
+          python -m unittest discover -s verification/tests -v
+          python -m unittest discover -s capability_gateway/tests -v
+          python -m unittest discover -s hermes-plugins/tests -v
+          python -m unittest discover -s orchestrator/tests -v
 
   full-e2e:
     name: Full E2E from scratch
