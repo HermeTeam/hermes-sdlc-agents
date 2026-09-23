@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.2.0
+version: 1.3.0
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -35,6 +35,8 @@ This is an **operator/deployment skill**. It does not grant host, GitHub, Docker
 9. Learning creates a candidate patch/fork; it never self-approves, self-merges, self-publishes, or self-activates it.
 10. No learned branch may weaken role separation, protected paths, branch constraints, exact-request approval, one-shot grants, credential isolation, emergency stop, or provider-state verification.
 11. When OpenHands is enabled for Builder, keep it in the isolated `hermes-builder-openhands` runner: no provider/MCP credentials, no `hermes-control` network attachment, no provider-connected Git remote, and only a read-only mount of the shared skills catalog.
+12. A from-scratch E2E deployment may delete local test state only when `HERMETEAM_E2E_EPHEMERAL=1`; never reuse that path on a developer or production deployment.
+13. The repository default model stack is Qwen API Platform in this branch; model reachability is a deployment gate, but model output never substitutes for deterministic provider-state evidence.
 
 ## Preferred architecture
 
@@ -96,8 +98,22 @@ If current behavior contradicts this skill, enter `repo-drift/<sha>`, block the 
 | `dynamic+observability` | authority + Flight Recorder/Langfuse | same |
 | `dynamic+openhands` | authority + isolated OpenHands/LSP coding assist | same; OpenHands has no provider path |
 | `legacy-builder-canary` | explicit comparison only | direct role credential |
+| `e2e-qwen` | disposable from-scratch verification runner | sandbox-only provider credentials |
 
 Never choose legacy mode automatically because GitHub App setup failed.
+
+### E2E Qwen mode
+
+The repository-owned E2E harness lives under `verification/` with the entrypoint `scripts/e2e/bootstrap-from-scratch.sh`. In `e2e-qwen` mode:
+
+1. require a disposable runner and `HERMETEAM_E2E_EPHEMERAL=1`;
+2. require a non-production sandbox repository and distinct role/provider credentials;
+3. bootstrap a fresh `.env` rather than reusing operator state;
+4. configure the Qwen OpenAI-compatible endpoint and role model matrix;
+5. keep `ORCHESTRATOR_ENABLED=false` through Stage 00;
+6. validate configuration and probe Qwen before container startup;
+7. build/start the full debug-local stack, run liveness checks, then execute a no-tool readiness run for every role;
+8. persist only sanitized evidence; do not archive raw logs by default.
 
 ## Interactive protocol
 
@@ -210,6 +226,10 @@ profiles/hermes-*/config.yaml
 policies/roles.yaml
 policies/protected-paths.txt
 AGENTS.md
+verification/config/models.qwen.yaml
+verification/scenarios/
+.github/workflows/ai-e2e-qwen.yml
+scripts/e2e/bootstrap-from-scratch.sh
 ```
 
 Determine:
