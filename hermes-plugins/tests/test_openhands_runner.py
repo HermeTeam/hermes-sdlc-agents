@@ -73,6 +73,19 @@ class OpenHandsRunnerTests(unittest.TestCase):
             discovered = runner.discover_shared_skills(root)
             self.assertEqual(discovered, {"python-testing": good.resolve()})
 
+    def test_discover_shared_skills_rejects_symlinked_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source"
+            source.mkdir()
+            skill = source / "safe-skill"
+            skill.mkdir()
+            (skill / "SKILL.md").write_text("---\nname: safe-skill\n---\n", encoding="utf-8")
+            linked_root = Path(tmp) / "linked-root"
+            linked_root.symlink_to(source, target_is_directory=True)
+
+            with self.assertRaises(RuntimeError):
+                runner.discover_shared_skills(linked_root)
+
     def test_prepare_shared_skills_materializes_user_skill_symlinks(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "skills"
