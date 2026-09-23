@@ -28,6 +28,8 @@ The default endpoint is the international compatible-mode endpoint, but `QWEN_AP
 
 ## Required full-E2E secrets
 
+The full job runs via `workflow_dispatch` after the workflow is present on the default branch. While developing this feature branch, a push whose commit message contains `[full-e2e]` can run it; the job still targets the protected `ai-e2e-sandbox` environment and therefore must not receive production credentials.
+
 The workflow expects:
 
 - `QWEN_API_KEY`
