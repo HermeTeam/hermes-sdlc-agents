@@ -66,14 +66,15 @@ def ensure_local_git(workspace: Path) -> None:
 
 
 def discover_shared_skills(root: Path | None = None) -> dict[str, Path]:
-    source_root = (root or SHARED_SKILLS_ROOT).resolve()
+    configured_root = root or SHARED_SKILLS_ROOT
+    if configured_root.is_symlink():
+        raise RuntimeError(f"shared skills root must not be a symlink: {configured_root}")
+    source_root = configured_root.resolve()
     if not source_root.is_dir():
         raise RuntimeError(f"shared skills root is unavailable: {source_root}")
 
     discovered: dict[str, Path] = {}
     for entry in sorted(source_root.iterdir(), key=lambda path: path.name):
-        if len(discovered) >= MAX_SHARED_SKILLS:
-            raise RuntimeError(f"shared skills catalog exceeds {MAX_SHARED_SKILLS} entries")
         if not SAFE_SKILL_NAME.fullmatch(entry.name):
             continue
         if entry.is_symlink() or not entry.is_dir():
@@ -81,6 +82,8 @@ def discover_shared_skills(root: Path | None = None) -> dict[str, Path]:
         skill_file = entry / "SKILL.md"
         if skill_file.is_symlink() or not skill_file.is_file():
             continue
+        if len(discovered) >= MAX_SHARED_SKILLS:
+            raise RuntimeError(f"shared skills catalog exceeds {MAX_SHARED_SKILLS} entries")
         resolved = entry.resolve()
         resolved.relative_to(source_root)
         discovered[entry.name] = resolved
