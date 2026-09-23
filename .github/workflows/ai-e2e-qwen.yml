@@ -116,15 +116,31 @@ jobs:
       - name: 03 P0 verification manifests
         run: python verification/validate.py
 
-      - name: 04 Re-probe Qwen after deterministic gates
+      - name: 04 Generate adversarial cases with Qwen agent
+        run: |
+          python verification/ai_agents.py adversary \
+            --output verification/reports/adversarial-cases.json
+
+      - name: 05 Re-probe Qwen after deterministic gates
         run: python verification/qwen_probe.py
 
-      - name: Capture sanitized service status
+      - name: 06 Build sanitized deterministic evidence
+        run: |
+          python verification/build_evidence.py \
+            --output verification/reports/deterministic-evidence.json
+
+      - name: 07 Independent Qwen judge
+        run: |
+          python verification/ai_agents.py judge \
+            --evidence verification/reports/deterministic-evidence.json \
+            --output verification/reports/qwen-judge.json
+
+      - name: Capture non-secret service status
         if: always()
         run: |
           mkdir -p verification/reports
-          docker compose -f compose.yaml -f compose.debug.yaml ps             > verification/reports/compose-ps.txt 2>&1 || true
-          docker compose -f compose.yaml -f compose.debug.yaml logs --no-color --tail=300             > verification/reports/compose-logs.txt 2>&1 || true
+          docker compose -f compose.yaml -f compose.debug.yaml ps \
+            > verification/reports/compose-ps.txt 2>&1 || true
 
       - name: Upload E2E evidence
         if: always()
