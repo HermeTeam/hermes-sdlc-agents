@@ -3,7 +3,6 @@ provider:
   openai_compatible: true
   base_url_env: QWEN_API_BASE_URL
   api_key_env: QWEN_API_KEY
-  default_base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 
 runtime_roles:
   planner: qwen3.7-max
