@@ -110,10 +110,12 @@ The repository-owned E2E harness lives under `verification/` with the entrypoint
 2. require a non-production sandbox repository and distinct role/provider credentials;
 3. bootstrap a fresh `.env` rather than reusing operator state;
 4. configure the Qwen OpenAI-compatible endpoint and role model matrix;
-5. keep `ORCHESTRATOR_ENABLED=false` through Stage 00;
-6. validate configuration and probe Qwen before container startup;
-7. build/start the full debug-local stack, run liveness checks, then execute a no-tool readiness run for every role;
-8. persist only sanitized evidence; do not archive raw logs by default.
+5. configure the Builder dynamic-authority path with a sandbox-only GitHub App; keep the independent harness cleanup token outside HermeTeam configuration;
+6. keep `ORCHESTRATOR_ENABLED=false` through Stage 00;
+7. validate configuration and probe Qwen before container startup;
+8. build/start the full debug + Capability Gateway + dynamic-authority stack, run liveness checks, then execute a no-tool readiness run for every role;
+9. run provider-state canaries only against the sandbox repository;
+10. persist only sanitized evidence; do not archive raw container logs by default.
 
 ## Interactive protocol
 
