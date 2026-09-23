@@ -25,6 +25,7 @@ def build() -> dict:
     reports = ROOT / "verification" / "reports"
     readiness = read_json(reports / "hermes-qwen-readiness.json")
     stage00 = read_json(reports / "stage-00-bootstrap.json")
+    live_authority = read_json(reports / "live-authority-canaries.json")
     return {
         "schema_version": 1,
         "repository_sha": os.getenv("GITHUB_SHA", "local"),
@@ -32,6 +33,7 @@ def build() -> dict:
         "p0_scenarios_sha256": sha256(ROOT / "verification/scenarios/p0/core.yaml"),
         "stage00": stage00,
         "hermes_role_readiness": readiness,
+        "live_authority_canaries": live_authority,
         "gates": {
             "repository_validation": "PASS",
             "verification_contracts": "PASS",
@@ -39,6 +41,7 @@ def build() -> dict:
             "hermes_plugin_tests": "PASS",
             "orchestrator_tests": "PASS",
             "dashboard_e2e": "PASS",
+            "live_dynamic_authority": "PASS",
             "qwen_model_probe": "PASS",
         },
         "hard_failures": [],
