@@ -103,6 +103,12 @@ def validate_env_defaults() -> None:
     if "dashscope" not in openhands.get("BUILDER_OPENHANDS_LLM_BASE_URL", ""):
         fail("OpenHands base URL is not a Qwen/DashScope compatible endpoint")
 
+    gateway_env = parse_dotenv(ROOT / "capability_gateway" / ".env.example")
+    if gateway_env.get("CAPABILITY_JUDGE_MODEL") != "qwen3.7-max":
+        fail("Capability Gateway judge must use qwen3.7-max")
+    if "dashscope" not in gateway_env.get("CAPABILITY_JUDGE_BASE_URL", ""):
+        fail("Capability Gateway judge base URL is not Qwen/DashScope compatible")
+
 
 def main() -> int:
     validate_models()
