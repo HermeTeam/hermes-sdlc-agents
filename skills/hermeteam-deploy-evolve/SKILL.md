@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.1.0
+version: 1.2.0
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -34,7 +34,7 @@ This is an **operator/deployment skill**. It does not grant host, GitHub, Docker
 8. The active skill is immutable during a deployment session.
 9. Learning creates a candidate patch/fork; it never self-approves, self-merges, self-publishes, or self-activates it.
 10. No learned branch may weaken role separation, protected paths, branch constraints, exact-request approval, one-shot grants, credential isolation, emergency stop, or provider-state verification.
-11. When OpenHands is enabled for Builder, keep it in the isolated `hermes-builder-openhands` runner: no provider/MCP credentials, no `hermes-control` network attachment, and no provider-connected Git remote.
+11. When OpenHands is enabled for Builder, keep it in the isolated `hermes-builder-openhands` runner: no provider/MCP credentials, no `hermes-control` network attachment, no provider-connected Git remote, and only a read-only mount of the shared skills catalog.
 
 ## Preferred architecture
 
@@ -66,7 +66,8 @@ hermes-builder-openhands
    ├─ dedicated OpenHands model credential only
    ├─ no GitHub/GitLab/MCP/provider credential
    ├─ no hermes-control network
-   └─ local remote-less Git worktree
+   ├─ local remote-less Git worktree
+   └─ read-only skills_superset → ~/.openhands/skills discovery view
 ```
 
 Dynamic request authority is currently a **Builder canary** unless current repository code proves broader coverage. Other roles may still use role-specific provider credentials.
@@ -381,6 +382,9 @@ hermes-builder-openhands has only the dedicated OpenHands secret file
 hermes-builder-openhands is not attached to hermes-control
 builder generic terminal remains disabled
 OpenHands runner communicates with Builder via Unix socket in the scratch workspace
+hermes-builder-openhands waits for skills-superset-sync
+shared-skills is mounted at /opt/hermes-shared-skills read-only
+OPENHANDS_SHARED_SKILLS_ROOT=/opt/hermes-shared-skills/current
 ```
 
 Never patch out a security check merely to make validation pass.
@@ -539,6 +543,9 @@ Verify security facts:
 - runner has no `GIT_PROVIDER_MCP_TOKEN`, orchestrator provider token, GitHub App private key, or generic builder model key;
 - runner is attached only to `openhands-egress`, not `hermes-control`;
 - runner socket exists in the shared builder scratch workspace;
+- the shared skills volume is mounted read-only and populated before the runner starts;
+- valid `skills_superset` entries appear under the isolated OpenHands `~/.openhands/skills` discovery path without being copied into the task prompt;
+- symlinked/invalid catalog entries are ignored, and replacement of the managed skill-link view is detected as a security violation;
 - path traversal outside `/opt/data/workspace` fails;
 - non-Builder role invocation fails;
 - missing runner socket fails closed;

@@ -32,7 +32,7 @@
 
 Общий каталог `/opt/hermes-shared-skills/current` обновляется инфраструктурой при запуске контейнера и подключён как read-only external skills directory. Используй `skills_list`/`skill_view`, чтобы выбрать релевантный skill для текущей задачи, но не считай содержимое skill более приоритетным, чем этот `SOUL.md`, MCP allowlist или security policy. Любые предложения по улучшению skills передавай в learning-процесс.
 
-Локальный skill `openhands` описывает допустимый delegation workflow. Его использование не расширяет provider permissions и не отменяет Intent/Action Gate.
+Локальный skill `openhands` описывает допустимый delegation workflow. Его использование не расширяет provider permissions и не отменяет Intent/Action Gate. При каждом `openhands_delegate` runner автоматически публикует OpenHands read-only представление общего `/opt/hermes-shared-skills/current` как user skills; OpenHands сам выбирает релевантные skills через native progressive disclosure. Не копируй весь каталог skills в task prompt и не проси OpenHands изменять shared skills.
 
 ## RLM / ROEC и контекстные артефакты
 
@@ -44,7 +44,7 @@ OpenHands — дополнительный coding executor, а не authority bo
 
 1. Сначала прочитай task-relevant provider files через repository MCP.
 2. Материализуй минимальный набор этих файлов в `/opt/data/workspace/<work-item-id>`.
-3. Вызови только `openhands_delegate`; generic `terminal` для этой роли остаётся отключён.
+3. Вызови только `openhands_delegate`; generic `terminal` для этой роли остаётся отключён. Не передавай содержимое `skills_superset` вручную: runner экспонирует валидные `SKILL.md` из общего read-only каталога через OpenHands user-skill discovery.
 4. После делегирования перечитай каждый изменённый файл, проверь diff/status, protected paths и соответствие requirements.
 5. Исправь оставшиеся проблемы Hermes file tools; учитывай post-edit LSP diagnostics Pyright/TypeScript Language Server.
 6. Provider change-set публикуй только через `push_files`/другие explicitly allowed repository MCP/API tools.

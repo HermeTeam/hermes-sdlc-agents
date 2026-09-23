@@ -26,6 +26,8 @@ Hermes Builder
   |              - no hermes-control network
   |              - no Git/provider/MCP credentials
   |              - OpenHands CLI + local Git metadata
+  |              - skills_superset mounted read-only
+  |              - ~/.openhands/skills -> validated read-only skill links
   |
   +--> review local changes and diagnostics
   |
@@ -34,7 +36,7 @@ Hermes Builder
   +--> GitHub Actions evidence
 ```
 
-The builder and runner share only the builder scratch workspace. The bridge communicates through `/opt/data/workspace/.hermeteam-openhands/runner.sock`; no TCP service is exposed.
+The builder and runner share the builder scratch workspace for code plus the existing `shared-skills` Docker volume, mounted read-only in the runner. The bridge communicates through `/opt/data/workspace/.hermeteam-openhands/runner.sock`; no TCP service is exposed. The runner never receives the writable sync mount.
 
 ## Images and dependencies
 
@@ -107,7 +109,7 @@ docker compose \
   up -d --build hermes-builder-openhands hermes-builder
 ```
 
-The sidecar uses a dedicated `openhands-egress` bridge network for model API access and is not connected to `hermes-control`. Builder/runner communication uses the shared Unix socket, not the Docker network.
+The sidecar uses a dedicated `openhands-egress` bridge network for model API access and is not connected to `hermes-control`. Builder/runner communication uses the shared Unix socket, not the Docker network. The sidecar also waits for `skills-superset-sync` and mounts `shared-skills:/opt/hermes-shared-skills:ro`.
 
 ## Delegation workflow
 
@@ -116,11 +118,13 @@ The sidecar uses a dedicated `openhands-egress` bridge network for model API acc
 3. Hermes invokes `openhands_delegate` with a concrete task and relative workspace.
 4. The builder plugin validates that the requested workspace stays under `/opt/data/workspace`, then sends bounded JSON over the Unix socket.
 5. The runner validates the workspace again, initializes local Git metadata if needed, and rejects any existing Git remote.
-6. The runner starts OpenHands headlessly with a minimal child environment derived only from its dedicated model credentials.
-7. After OpenHands exits, the runner checks Git remotes again. Any remote added during the run is removed and reported as a security violation.
-8. Hermes rereads every changed file, evaluates LSP diagnostics, protected paths, and requirement mapping.
-9. Hermes applies reviewed provider changes only through role-allowed repository MCP/API tools.
-10. GitHub Actions remains the authoritative final test evidence.
+6. Before every delegation the runner discovers direct child directories under `/opt/hermes-shared-skills/current` that contain a regular `SKILL.md`, rejects symlinked/invalid entries, and creates a fresh user-skill view under the isolated OpenHands HOME (`~/.openhands/skills`).
+7. Each user-skill entry is a symlink to the read-only shared-skills mount. OpenHands therefore gets the full catalog for native user-skill discovery/progressive disclosure without prompt concatenation or a writable copy.
+8. The runner starts OpenHands headlessly with a minimal child environment derived only from its dedicated model credentials.
+9. After OpenHands exits, the runner checks Git remotes and the managed skill-link view again. Added remotes are removed; skill-link replacement/tampering is reported as a security violation and the managed view is rebuilt best-effort.
+10. Hermes rereads every changed file, evaluates LSP diagnostics, protected paths, and requirement mapping.
+11. Hermes applies reviewed provider changes only through role-allowed repository MCP/API tools.
+12. GitHub Actions remains the authoritative final test evidence.
 
 The local Git repository exists only because OpenHands and Hermes LSP need repository/worktree context. It is not a clone and has no provider remote.
 
@@ -142,11 +146,11 @@ The result includes exit code, bounded stdout/stderr, and local `git status --po
 
 ## Security boundaries and limitations
 
-- OpenHands is isolated from the builder's process environment and control-plane network in a separate container. The shared writable surface is the builder scratch workspace.
+- OpenHands is isolated from the builder's process environment and control-plane network in a separate container. The only shared writable surface is the builder scratch workspace; `skills_superset` is mounted separately read-only.
 - The runner intentionally has outbound network access for its configured model endpoint. It must not receive general provider credentials or be attached to `hermes-control`.
 - Generic terminal access stays disabled in the builder because the builder container contains repository/provider secrets needed by Hermes/orchestrator.
 - OpenHands can edit only local materialized files. Provider state changes still pass through the existing HermeTeam Intent/Action Gate and repository MCP/API permissions.
-- The runner's local Git remote checks are defense in depth; the principal provider-write boundary is absence of provider credentials in the runner.
+- The runner's local Git remote checks are defense in depth; the principal provider-write boundary is absence of provider credentials in the runner. Shared skills are advisory context, not authority. The runner exposes only validated direct skill directories and fails closed if the managed OpenHands skill-link view is replaced during a run.
 - LSP diagnostics improve syntax/type feedback but do not replace unit/integration tests or GitHub Actions.
 - `install_strategy: manual` is intentional: missing language-server binaries are an image/configuration failure, not permission to download software during an agent run.
 - OpenHands CLI is pinned. Review upstream lifecycle/security before changing the pinned version.
@@ -182,6 +186,8 @@ Security canaries in `hermes-plugins/tests` verify:
 - workspace path traversal is rejected on both sides;
 - missing runner socket fails closed;
 - the OpenHands child environment excludes provider/MCP tokens;
-- the OpenHands Compose overlay references only the dedicated runner secret file and contains no provider credential names.
+- skill discovery accepts only regular direct child directories with a regular `SKILL.md` and rejects symlinked/invalid entries;
+- the OpenHands user-skill view points to the shared read-only catalog and detects link replacement/tampering;
+- the OpenHands Compose overlay references only the dedicated runner secret file, waits for `skills-superset-sync`, mounts `shared-skills` read-only, and contains no provider credential names.
 
 A production-ready change must still pass repository-wide validation and the PR CI jobs required by `AGENTS.md`.

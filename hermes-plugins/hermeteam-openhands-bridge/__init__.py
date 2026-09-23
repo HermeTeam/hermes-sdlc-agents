@@ -6,7 +6,7 @@ from pathlib import Path
 import socket
 from typing import Any
 
-PLUGIN_VERSION = "0.2.0"
+PLUGIN_VERSION = "0.3.0"
 WORKSPACE_ROOT = Path("/opt/data/workspace")
 SOCKET_PATH = Path("/opt/data/workspace/.hermeteam-openhands/runner.sock")
 MAX_RESPONSE_BYTES = 100000
@@ -88,6 +88,7 @@ def register(ctx: Any) -> None:
         "description": (
             "Delegate a bounded coding/refactoring task to the isolated OpenHands runner using the builder scratch "
             "workspace. The runner container has dedicated LLM credentials but no Git/provider/MCP credentials. "
+            "The runner exposes the shared skills_superset catalog read-only through OpenHands native user-skill discovery. "
             "Provider writes must still be performed by Hermes through repository MCP/API after reviewing changes."
         ),
         "parameters": {

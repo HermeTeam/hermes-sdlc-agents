@@ -367,6 +367,29 @@ for resource in kustomization.get("resources", []):
         errors.append(f"kustomization references missing resource: {resource}")
 
 compose = yaml.safe_load((root / "compose.yaml").read_text(encoding="utf-8"))
+openhands_overlay_path = root / "compose.openhands.yaml"
+if not openhands_overlay_path.is_file():
+    errors.append("compose.openhands.yaml is required for the Builder OpenHands integration")
+else:
+    openhands_overlay = yaml.safe_load(openhands_overlay_path.read_text(encoding="utf-8")) or {}
+    openhands_service = openhands_overlay.get("services", {}).get("hermes-builder-openhands", {})
+    expected_openhands_workspace_mount = "./workspace/builder:/opt/data/workspace"
+    expected_openhands_skills_mount = "shared-skills:/opt/hermes-shared-skills:ro"
+    if openhands_service.get("volumes") != [expected_openhands_workspace_mount, expected_openhands_skills_mount]:
+        errors.append("hermes-builder-openhands: workspace plus read-only shared-skills must be the only volume mounts")
+    if openhands_service.get("environment", {}).get("OPENHANDS_SHARED_SKILLS_ROOT") != "/opt/hermes-shared-skills/current":
+        errors.append("hermes-builder-openhands: OPENHANDS_SHARED_SKILLS_ROOT must point to /opt/hermes-shared-skills/current")
+    if openhands_service.get("depends_on", {}).get("skills-superset-sync", {}).get("condition") != "service_completed_successfully":
+        errors.append("hermes-builder-openhands: must wait for skills-superset-sync")
+    if openhands_service.get("networks") != ["openhands-egress"]:
+        errors.append("hermes-builder-openhands: must remain isolated to openhands-egress")
+    expected_openhands_env_file = [{"path": "./secrets/hermes-builder-openhands.env", "required": True}]
+    if openhands_service.get("env_file") != expected_openhands_env_file:
+        errors.append("hermes-builder-openhands: must use only the dedicated OpenHands secret file")
+    openhands_text = str(openhands_service)
+    for forbidden_name in ("GIT_PROVIDER_MCP_TOKEN", "ORCHESTRATOR_GITHUB_TOKEN", "GITHUB_APP_PRIVATE_KEY", "OPENAI_API_KEY"):
+        if forbidden_name in openhands_text:
+            errors.append(f"hermes-builder-openhands: forbidden provider/control credential reference {forbidden_name}")
 proxy_service_name = "docker-socket-proxy"
 proxy_image = "tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2"
 socket_mount = "/var/run/docker.sock:/var/run/docker.sock:ro"
