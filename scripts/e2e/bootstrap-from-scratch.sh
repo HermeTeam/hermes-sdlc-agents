@@ -23,8 +23,10 @@ require E2E_GITHUB_APP_ID
 require E2E_GITHUB_APP_INSTALLATION_ID
 require E2E_GITHUB_APP_PRIVATE_KEY
 
-for role in PLANNER PROJECT_MANAGER BUILDER REVIEWER RELEASE INCIDENT LEARNING; do
+for role in PLANNER PROJECT_MANAGER REVIEWER RELEASE INCIDENT LEARNING; do
   require "E2E_${role}_GITHUB_MCP_TOKEN"
+done
+for role in PLANNER PROJECT_MANAGER BUILDER REVIEWER RELEASE INCIDENT LEARNING; do
   require "E2E_ORCHESTRATOR_${role}_GITHUB_TOKEN"
 done
 
@@ -101,7 +103,10 @@ for role, model in role_models.items():
     setv(f"{role}_HERMES_MODEL_ID", model)
     setv(f"{role}_HERMES_MODEL_BASE_URL", qwen_base)
     setv(f"{role}_HERMES_MODEL_OPENAI_API_KEY", qwen_key)
-    setv(f"{role}_GITHUB_MCP_TOKEN", os.environ[f"E2E_{role}_GITHUB_MCP_TOKEN"])
+    if role == "BUILDER":
+        setv("BUILDER_GITHUB_MCP_TOKEN", "DYNAMIC_AUTHORITY_NO_PROVIDER_TOKEN")
+    else:
+        setv(f"{role}_GITHUB_MCP_TOKEN", os.environ[f"E2E_{role}_GITHUB_MCP_TOKEN"])
     setv(
         f"ORCHESTRATOR_{role}_GITHUB_TOKEN",
         os.environ[f"E2E_ORCHESTRATOR_{role}_GITHUB_TOKEN"],
