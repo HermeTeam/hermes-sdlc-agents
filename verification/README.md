@@ -37,7 +37,7 @@ The workflow expects:
 - `E2E_SANDBOX_REPOSITORY_FULL_NAME`
 - `E2E_GITHUB_APP_ID`, `E2E_GITHUB_APP_INSTALLATION_ID`, `E2E_GITHUB_APP_PRIVATE_KEY`
 - `E2E_HARNESS_GITHUB_TOKEN` scoped only to the sandbox repository for independent state verification and cleanup
-- seven distinct `E2E_<ROLE>_GITHUB_MCP_TOKEN` values
+- six direct-provider role tokens: `E2E_<ROLE>_GITHUB_MCP_TOKEN` for Planner, Project Manager, Reviewer, Release, Incident and Learning; Builder deliberately has no provider token in the dynamic-authority run
 - seven distinct read-only `E2E_ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` values
 
 The sandbox repository must not be a production repository. The GitHub App must be installed only on the sandbox target with the Builder canary permission superset. The harness token is never written to HermeTeam configuration or injected into its containers. The bootstrap script refuses to reset state unless `HERMETEAM_E2E_EPHEMERAL=1`.
