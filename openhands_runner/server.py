@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import socket
 import subprocess
@@ -10,8 +11,11 @@ from typing import Any
 
 SOCKET_PATH = Path(os.environ.get("OPENHANDS_RUNNER_SOCKET", "/opt/data/workspace/.hermeteam-openhands/runner.sock"))
 WORKSPACE_ROOT = Path("/opt/data/workspace")
+SHARED_SKILLS_ROOT = Path(os.environ.get("OPENHANDS_SHARED_SKILLS_ROOT", "/opt/hermes-shared-skills/current"))
 MAX_REQUEST_BYTES = 20000
 MAX_OUTPUT_CHARS = 20000
+MAX_SHARED_SKILLS = 512
+SAFE_SKILL_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def bounded(value: str) -> str:
@@ -61,6 +65,81 @@ def ensure_local_git(workspace: Path) -> None:
     )
 
 
+def discover_shared_skills(root: Path | None = None) -> dict[str, Path]:
+    source_root = (root or SHARED_SKILLS_ROOT).resolve()
+    if not source_root.is_dir():
+        raise RuntimeError(f"shared skills root is unavailable: {source_root}")
+
+    discovered: dict[str, Path] = {}
+    for entry in sorted(source_root.iterdir(), key=lambda path: path.name):
+        if len(discovered) >= MAX_SHARED_SKILLS:
+            raise RuntimeError(f"shared skills catalog exceeds {MAX_SHARED_SKILLS} entries")
+        if not SAFE_SKILL_NAME.fullmatch(entry.name):
+            continue
+        if entry.is_symlink() or not entry.is_dir():
+            continue
+        skill_file = entry / "SKILL.md"
+        if skill_file.is_symlink() or not skill_file.is_file():
+            continue
+        resolved = entry.resolve()
+        resolved.relative_to(source_root)
+        discovered[entry.name] = resolved
+
+    if not discovered:
+        raise RuntimeError(f"shared skills root contains no valid SKILL.md entries: {source_root}")
+    return discovered
+
+
+def _ensure_safe_directory(path: Path, root: Path) -> None:
+    if path.exists() and path.is_symlink():
+        raise ValueError(f"managed OpenHands path must not be a symlink: {path}")
+    path.mkdir(parents=True, exist_ok=True)
+    path.resolve().relative_to(root.resolve())
+
+
+def prepare_shared_skills(home: Path, root: Path | None = None) -> dict[str, Path]:
+    if home.exists() and home.is_symlink():
+        raise ValueError("OpenHands HOME must not be a symlink")
+    home.mkdir(parents=True, exist_ok=True)
+    home_root = home.resolve()
+
+    openhands_dir = home / ".openhands"
+    _ensure_safe_directory(openhands_dir, home_root)
+    managed_dir = openhands_dir / "skills"
+    if managed_dir.exists() or managed_dir.is_symlink():
+        if managed_dir.is_symlink() or not managed_dir.is_dir():
+            raise ValueError("managed OpenHands skills path must be a directory")
+        shutil.rmtree(managed_dir)
+    managed_dir.mkdir(mode=0o700)
+
+    discovered = discover_shared_skills(root)
+    for name, source in discovered.items():
+        (managed_dir / name).symlink_to(source, target_is_directory=True)
+    return discovered
+
+
+def verify_shared_skills(home: Path, expected: dict[str, Path]) -> str | None:
+    managed_dir = home / ".openhands" / "skills"
+    if managed_dir.is_symlink() or not managed_dir.is_dir():
+        return "managed OpenHands skills directory was replaced"
+
+    actual_names = {entry.name for entry in managed_dir.iterdir()}
+    expected_names = set(expected)
+    if actual_names != expected_names:
+        return "managed OpenHands skills catalog entries changed during execution"
+
+    for name, source in expected.items():
+        link = managed_dir / name
+        if not link.is_symlink():
+            return f"managed OpenHands skill link was replaced: {name}"
+        try:
+            if link.resolve(strict=True) != source.resolve(strict=True):
+                return f"managed OpenHands skill link target changed: {name}"
+        except FileNotFoundError:
+            return f"managed OpenHands skill source disappeared: {name}"
+    return None
+
+
 def child_env(workspace: Path) -> dict[str, str]:
     model = os.environ.get("BUILDER_OPENHANDS_LLM_MODEL", "").strip()
     api_key = os.environ.get("BUILDER_OPENHANDS_LLM_API_KEY", "").strip()
@@ -69,7 +148,10 @@ def child_env(workspace: Path) -> dict[str, str]:
         raise ValueError("OpenHands runner requires BUILDER_OPENHANDS_LLM_MODEL and BUILDER_OPENHANDS_LLM_API_KEY")
 
     home = workspace / ".hermeteam-openhands-home"
+    if home.exists() and home.is_symlink():
+        raise ValueError("OpenHands HOME must not be a symlink")
     home.mkdir(parents=True, exist_ok=True)
+    home.resolve().relative_to(workspace.resolve())
     info = workspace / ".git" / "info"
     info.mkdir(parents=True, exist_ok=True)
     exclude = info / "exclude"
@@ -105,10 +187,13 @@ def run_task(request: dict[str, Any]) -> dict[str, Any]:
     if binary is None:
         raise RuntimeError("openhands binary is not installed")
 
+    env = child_env(workspace)
+    home = Path(env["HOME"])
+    shared_skills = prepare_shared_skills(home)
     proc = subprocess.run(
         [binary, "--headless", "--json", "--override-with-envs", "--exit-without-confirmation", "-t", task],
         cwd=workspace,
-        env=child_env(workspace),
+        env=env,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -124,10 +209,24 @@ def run_task(request: dict[str, Any]) -> dict[str, Any]:
             "security_violation": "OpenHands attempted to configure a git remote; remotes were removed",
             "exit_code": proc.returncode,
         }
+
+    skills_violation = verify_shared_skills(home, shared_skills)
+    if skills_violation:
+        try:
+            prepare_shared_skills(home)
+        except Exception:  # noqa: BLE001
+            pass
+        return {
+            "success": False,
+            "security_violation": skills_violation,
+            "exit_code": proc.returncode,
+        }
+
     return {
         "success": proc.returncode == 0,
         "exit_code": proc.returncode,
         "workspace": str(workspace),
+        "shared_skills_count": len(shared_skills),
         "changed": git(["status", "--porcelain=v1"], workspace).stdout.splitlines()[:200],
         "stdout": bounded(proc.stdout),
         "stderr": bounded(proc.stderr),
