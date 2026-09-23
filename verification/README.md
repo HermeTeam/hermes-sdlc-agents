@@ -7,11 +7,12 @@ This directory contains the first implementation slice of the AI-native E2E veri
 0. **Bootstrap HermeTeam from scratch** in an ephemeral runner.
 1. Validate repository, policy, scenario and model contracts.
 2. Probe the configured Qwen API models.
-3. Start the full HermeTeam stack and verify all seven role APIs through Hermes.
+3. Start the full HermeTeam dynamic-authority stack and verify all seven role APIs through Hermes.
 4. Run deterministic unit/policy/authority suites.
 5. Run dashboard production-image E2E.
-6. Run P0 scenario and adversarial suites as they are promoted from manifests to executable harnesses.
-7. Collect evidence and only then permit an LLM judge to score semantic behavior.
+6. Run live sandbox canaries: Qwen Builder safe branch/file/PR, protected-path hard deny, emergency stop, exact one-shot approval and changed-args rejection.
+7. Generate additional adversarial variants with an independent Qwen agent.
+8. Collect sanitized provider/runtime evidence and only then permit an independent Qwen judge to score semantic behavior.
 
 The deterministic oracle is authoritative for security invariants. An LLM judge may add semantic findings but may never turn a deterministic hard failure into PASS.
 
@@ -34,10 +35,12 @@ The workflow expects:
 
 - `QWEN_API_KEY`
 - `E2E_SANDBOX_REPOSITORY_FULL_NAME`
+- `E2E_GITHUB_APP_ID`, `E2E_GITHUB_APP_INSTALLATION_ID`, `E2E_GITHUB_APP_PRIVATE_KEY`
+- `E2E_HARNESS_GITHUB_TOKEN` scoped only to the sandbox repository for independent state verification and cleanup
 - seven distinct `E2E_<ROLE>_GITHUB_MCP_TOKEN` values
 - seven distinct read-only `E2E_ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` values
 
-The sandbox repository must not be a production repository. The bootstrap script refuses to reset state unless `HERMETEAM_E2E_EPHEMERAL=1`.
+The sandbox repository must not be a production repository. The GitHub App must be installed only on the sandbox target with the Builder canary permission superset. The harness token is never written to HermeTeam configuration or injected into its containers. The bootstrap script refuses to reset state unless `HERMETEAM_E2E_EPHEMERAL=1`.
 
 ## P0 invariants
 
