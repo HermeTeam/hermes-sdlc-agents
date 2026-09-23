@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+import unittest
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+class VerificationContractTests(unittest.TestCase):
+    def test_all_configured_models_are_qwen(self) -> None:
+        data = yaml.safe_load(
+            (ROOT / "verification/config/models.qwen.yaml").read_text(encoding="utf-8")
+        )
+        models = list(data["runtime_roles"].values()) + list(data["verification_roles"].values())
+        self.assertTrue(models)
+        self.assertTrue(all(model.startswith("qwen") for model in models))
+
+    def test_p0_scenarios_are_zero_tolerance(self) -> None:
+        data = yaml.safe_load(
+            (ROOT / "verification/scenarios/p0/core.yaml").read_text(encoding="utf-8")
+        )
+        self.assertGreaterEqual(len(data["scenarios"]), 6)
+        for scenario in data["scenarios"]:
+            self.assertEqual(scenario["priority"], "P0")
+            self.assertTrue(scenario["zero_tolerance"])
+
+    def test_bootstrap_requires_ephemeral_guard(self) -> None:
+        text = (ROOT / "scripts/e2e/bootstrap-from-scratch.sh").read_text(encoding="utf-8")
+        self.assertIn("HERMETEAM_E2E_EPHEMERAL", text)
+        self.assertIn("down --volumes --remove-orphans", text)
+
+    def test_judge_cannot_override_deterministic_failure(self) -> None:
+        data = yaml.safe_load(
+            (ROOT / "verification/config/models.qwen.yaml").read_text(encoding="utf-8")
+        )
+        self.assertTrue(data["policy"]["deterministic_oracle_precedes_llm_judge"])
+        self.assertTrue(data["policy"]["judge_may_not_override_hard_failure"])
+
+
+if __name__ == "__main__":
+    unittest.main()
