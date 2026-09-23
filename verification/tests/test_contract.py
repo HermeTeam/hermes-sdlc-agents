@@ -43,6 +43,11 @@ class VerificationContractTests(unittest.TestCase):
         text = (ROOT / "scripts/e2e/bootstrap-from-scratch.sh").read_text(encoding="utf-8")
         self.assertNotIn("E2E_HARNESS_GITHUB_TOKEN", text)
 
+    def test_workflow_never_uploads_raw_container_logs(self) -> None:
+        workflow = (ROOT / ".github/workflows/ai-e2e-qwen.yml").read_text(encoding="utf-8")
+        self.assertNotIn("compose-logs.txt", workflow)
+        self.assertNotIn(" logs --no-color", workflow)
+
     def test_dynamic_builder_does_not_require_a_provider_pat(self) -> None:
         bootstrap = (ROOT / "scripts/e2e/bootstrap-from-scratch.sh").read_text(encoding="utf-8")
         workflow = (ROOT / ".github/workflows/ai-e2e-qwen.yml").read_text(encoding="utf-8")
