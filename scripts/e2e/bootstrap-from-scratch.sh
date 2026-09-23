@@ -18,6 +18,7 @@ require() {
 }
 
 require QWEN_API_KEY
+require QWEN_API_BASE_URL
 require E2E_SANDBOX_REPOSITORY_FULL_NAME
 require E2E_GITHUB_APP_ID
 require E2E_GITHUB_APP_INSTALLATION_ID
@@ -75,7 +76,9 @@ def setv(key: str, value: str) -> None:
         order.append(key)
 
 qwen_key = os.environ["QWEN_API_KEY"]
-qwen_base = os.environ.get("QWEN_API_BASE_URL") or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+qwen_base = os.environ["QWEN_API_BASE_URL"].strip()
+if not qwen_base:
+    raise SystemExit("QWEN_API_BASE_URL must not be empty")
 repo = os.environ["E2E_SANDBOX_REPOSITORY_FULL_NAME"]
 owner, name = repo.split("/", 1)
 branch = os.environ.get("E2E_SANDBOX_DEFAULT_BRANCH") or "main"
