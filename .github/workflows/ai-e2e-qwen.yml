@@ -117,23 +117,26 @@ jobs:
           DASHBOARD_E2E: "true"
         run: scripts/smoke-test.sh
 
-      - name: 03 P0 verification manifests
+      - name: 03 Live Qwen Builder and dynamic-authority canaries
+        run: python verification/live_authority_canaries.py
+
+      - name: 04 P0 verification manifests
         run: python verification/validate.py
 
-      - name: 04 Generate adversarial cases with Qwen agent
+      - name: 05 Generate adversarial cases with Qwen agent
         run: |
           python verification/ai_agents.py adversary \
             --output verification/reports/adversarial-cases.json
 
-      - name: 05 Re-probe Qwen after deterministic gates
+      - name: 06 Re-probe Qwen after deterministic gates
         run: python verification/qwen_probe.py
 
-      - name: 06 Build sanitized deterministic evidence
+      - name: 07 Build sanitized deterministic evidence
         run: |
           python verification/build_evidence.py \
             --output verification/reports/deterministic-evidence.json
 
-      - name: 07 Independent Qwen judge
+      - name: 08 Independent Qwen judge
         run: |
           python verification/ai_agents.py judge \
             --evidence verification/reports/deterministic-evidence.json \
