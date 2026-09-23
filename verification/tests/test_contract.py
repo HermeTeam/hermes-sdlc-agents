@@ -39,6 +39,17 @@ class VerificationContractTests(unittest.TestCase):
         self.assertIn("HERMETEAM_E2E_EPHEMERAL", text)
         self.assertIn("down --volumes --remove-orphans", text)
 
+    def test_harness_cleanup_token_is_not_persisted_by_bootstrap(self) -> None:
+        text = (ROOT / "scripts/e2e/bootstrap-from-scratch.sh").read_text(encoding="utf-8")
+        self.assertNotIn("E2E_HARNESS_GITHUB_TOKEN", text)
+
+    def test_live_canary_targets_dynamic_authority_overlay(self) -> None:
+        text = (ROOT / "verification/live_authority_canaries.py").read_text(encoding="utf-8")
+        self.assertIn("compose.dynamic-authority.yaml", text)
+        self.assertIn("authority_denied", text)
+        self.assertIn("emergency_stop", text)
+        self.assertIn("approval_required", text)
+
     def test_judge_cannot_override_deterministic_failure(self) -> None:
         data = yaml.safe_load(
             (ROOT / "verification/config/models.qwen.yaml").read_text(encoding="utf-8")
