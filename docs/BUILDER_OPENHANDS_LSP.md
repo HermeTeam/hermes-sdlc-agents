@@ -91,7 +91,7 @@ Configure:
 ```dotenv
 BUILDER_OPENHANDS_LLM_MODEL=openai/qwen3.7-plus
 BUILDER_OPENHANDS_LLM_API_KEY=CHANGE_ME_QWEN_OPENHANDS_KEY
-BUILDER_OPENHANDS_LLM_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+BUILDER_OPENHANDS_LLM_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
 ```
 
 Do not put GitHub/GitLab/MCP tokens, GitHub App private keys, or the builder's normal model credential in this file. `compose.openhands.yaml` attaches only this file to `hermes-builder-openhands`.
