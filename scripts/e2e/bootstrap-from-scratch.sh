@@ -36,6 +36,11 @@ if [[ ! "${E2E_SANDBOX_REPOSITORY_FULL_NAME}" =~ ^[^/]+/[^/]+$ ]]; then
   exit 2
 fi
 
+if [[ -n "${GITHUB_REPOSITORY:-}" && "${E2E_SANDBOX_REPOSITORY_FULL_NAME,,}" == "${GITHUB_REPOSITORY,,}" ]]; then
+  echo "Refusing E2E mutations against the source repository; use a dedicated sandbox repository." >&2
+  exit 2
+fi
+
 cd "$root"
 
 compose=(
