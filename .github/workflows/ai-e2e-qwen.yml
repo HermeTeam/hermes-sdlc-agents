@@ -85,6 +85,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 00 Verify Qwen and sandbox prerequisites
+        run: python3 verification/check_prerequisites.py
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
