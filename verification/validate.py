@@ -100,14 +100,16 @@ def validate_env_defaults() -> None:
     expected_openhands = model_data["auxiliary"]["openhands_builder"]["model"]
     if openhands.get("BUILDER_OPENHANDS_LLM_MODEL") != expected_openhands:
         fail("OpenHands model differs from Qwen model matrix")
-    if "dashscope" not in openhands.get("BUILDER_OPENHANDS_LLM_BASE_URL", ""):
-        fail("OpenHands base URL is not a Qwen/DashScope compatible endpoint")
+    openhands_base_url = openhands.get("BUILDER_OPENHANDS_LLM_BASE_URL", "").rstrip("/")
+    if not openhands_base_url.startswith("https://") or not openhands_base_url.endswith("/compatible-mode/v1"):
+        fail("OpenHands must use the configured Qwen OpenAI-compatible endpoint")
 
     gateway_env = parse_dotenv(ROOT / "capability_gateway" / ".env.example")
     if gateway_env.get("CAPABILITY_JUDGE_MODEL") != "qwen3.7-max":
         fail("Capability Gateway judge must use qwen3.7-max")
-    if "dashscope" not in gateway_env.get("CAPABILITY_JUDGE_BASE_URL", ""):
-        fail("Capability Gateway judge base URL is not Qwen/DashScope compatible")
+    judge_base_url = gateway_env.get("CAPABILITY_JUDGE_BASE_URL", "").rstrip("/")
+    if not judge_base_url.startswith("https://") or not judge_base_url.endswith("/compatible-mode/v1"):
+        fail("Capability Gateway judge must use a Qwen OpenAI-compatible endpoint")
 
 
 def main() -> int:
