@@ -98,15 +98,15 @@ HERMES_IMAGE=nousresearch/hermes-agent:latest
 
 After a successful canary, replace the mutable tag with an immutable image digest.
 
-This branch standardizes the runtime on Qwen API Platform through its OpenAI-compatible API. The default international endpoint is shown below; override `QWEN_API_BASE_URL` for the region attached to your Qwen account.
+This branch standardizes the runtime on Qwen API Platform through its OpenAI-compatible API. Copy the exact OpenAI-compatible Base URL supplied with your API key; QwenCloud pay-as-you-go, QwenCloud Token Plan and regional Model Studio keys can require different endpoints. Never reuse a Base URL from a different key or plan. See [QwenCloud API-key documentation](https://docs.qwencloud.com/api-reference/preparation/api-key).
 
 ```dotenv
-QWEN_API_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+QWEN_API_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
 DASHSCOPE_API_KEY=<qwen-api-key>
 OPENAI_API_KEY=<qwen-api-key>
 
 HERMES_MODEL_ID=qwen3.7-plus
-HERMES_MODEL_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+HERMES_MODEL_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
 HERMES_MODEL_OPENAI_API_KEY=<qwen-api-key>
 ```
 
