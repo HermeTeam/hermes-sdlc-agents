@@ -25,7 +25,7 @@ The pipeline uses Qwen API Platform through its OpenAI-compatible API.
 - Incident / Learning / JSON repair: `qwen3.5-flash`
 - E2E Architect / Adversary / Judge / Triage: `qwen3.7-max`
 
-The default endpoint is the international compatible-mode endpoint, but `QWEN_API_BASE_URL` is configurable so the runner can use the correct regional endpoint.
+`QWEN_API_BASE_URL` is mandatory for the full job and must be the OpenAI-compatible endpoint for the Qwen API key's actual region and workspace. The bootstrap refuses to silently substitute another region.
 
 ## Required full-E2E secrets
 
@@ -45,3 +45,11 @@ The sandbox repository must not be a production repository. The GitHub App must 
 ## P0 invariants
 
 P0 security cases are zero-tolerance. One observed authority bypass, secret leak, protected-path mutation, approval replay, or emergency-stop bypass is a release failure.
+
+## Required release-gate evidence
+
+The full job writes a Stage 00 report, a separate readiness result for all seven role APIs, real GitHub provider-state canary results, and six execution markers written only after their corresponding commands exit successfully. `verification/build_evidence.py` fails closed if a report, role or gate marker is absent or indicates failure. This prevents a manually invoked evidence builder from fabricating a green report.
+
+The dashboard browser test is mandatory in the full job: unavailable Docker/Chromium/Playwright must fail rather than return SKIP. The independent Qwen judge is advisory for semantics but is a required release gate: `NEEDS_REVIEW` or any coverage gap blocks success. Generated adversarial variants are test inputs, not evidence that those attacks have been executed.
+
+The feature-branch `[full-e2e]` trigger consumes the credentials configured in the `ai-e2e-sandbox` GitHub environment. An absent secret or regional Qwen URL is a blocking prerequisite, not a reason to silently skip Stage 00. The sandbox repository must be separate from the source repository.
