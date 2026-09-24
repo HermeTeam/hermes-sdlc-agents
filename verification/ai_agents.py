@@ -164,8 +164,14 @@ def main() -> int:
     args = parser.parse_args()
     if args.command == "adversary":
         adversary(args.output)
-    else:
-        judge(args.evidence, args.output)
+        return 0
+
+    judge(args.evidence, args.output)
+    verdict = json.loads(args.output.read_text(encoding="utf-8"))
+    if verdict.get("verdict") != "PASS" or verdict.get("coverage_gaps"):
+        raise RuntimeError(
+            "Qwen judge did not clear the E2E release gate; inspect the persisted judge evidence"
+        )
     return 0
 
 
