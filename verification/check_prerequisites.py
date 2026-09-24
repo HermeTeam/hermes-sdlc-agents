@@ -63,6 +63,7 @@ def check(env: Mapping[str, str]) -> list[str]:
             or parsed.query
             or parsed.fragment
             or "YOUR_" in base_url
+            or "CHANGE_ME" in base_url
         ):
             errors.append("QWEN_API_BASE_URL must be the actual HTTPS OpenAI-compatible /v1 URL from the Qwen API portal")
 
