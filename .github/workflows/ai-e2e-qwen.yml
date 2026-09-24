@@ -113,7 +113,7 @@ jobs:
           python -m unittest discover -s hermes-plugins/tests -v
           python -m unittest discover -s orchestrator/tests -v
           python -m unittest discover -s verification/tests -v
-          printf 'PASS\\n' > verification/reports/01-deterministic.passed
+          echo PASS > verification/reports/01-deterministic.passed
 
       - name: 02 Dashboard production-image E2E
         env:
@@ -121,28 +121,28 @@ jobs:
           HERMETEAM_E2E_REQUIRE_DASHBOARD: "1"
         run: |
           scripts/smoke-test.sh
-          printf 'PASS\\n' > verification/reports/02-dashboard-e2e.passed
+          echo PASS > verification/reports/02-dashboard-e2e.passed
 
       - name: 03 Live Qwen Builder and dynamic-authority canaries
         run: |
           python verification/live_authority_canaries.py
-          printf 'PASS\\n' > verification/reports/03-live-authority.passed
+          echo PASS > verification/reports/03-live-authority.passed
 
       - name: 04 P0 verification manifests
         run: |
           python verification/validate.py
-          printf 'PASS\\n' > verification/reports/04-p0-contracts.passed
+          echo PASS > verification/reports/04-p0-contracts.passed
 
       - name: 05 Generate adversarial cases with Qwen agent
         run: |
           python verification/ai_agents.py adversary \
             --output verification/reports/adversarial-cases.json
-          printf 'PASS\\n' > verification/reports/05-qwen-adversary.passed
+          echo PASS > verification/reports/05-qwen-adversary.passed
 
       - name: 06 Re-probe Qwen after deterministic gates
         run: |
           python verification/qwen_probe.py
-          printf 'PASS\\n' > verification/reports/06-qwen-probe.passed
+          echo PASS > verification/reports/06-qwen-probe.passed
 
       - name: 07 Build sanitized deterministic evidence
         run: |
