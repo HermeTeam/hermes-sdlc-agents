@@ -193,7 +193,7 @@ merge-ить pull request
 
 ## Быстрый запуск
 
-Требования: Docker Engine с Compose v2, OpenAI-compatible LLM gateway и GitHub credentials, принимаемые official GitHub MCP Server.
+Требования: Docker Engine с Compose v2, Qwen API Platform (OpenAI-compatible API) и GitHub credentials, принимаемые official GitHub MCP Server.
 
 ```bash
 cd hermes-sdlc-agents
@@ -218,6 +218,19 @@ scripts/validate.sh
 docker compose up -d
 scripts/smoke-test.sh
 ```
+
+## AI E2E verification
+
+Qwen verification pipeline находится в `.github/workflows/ai-e2e-qwen.yml`. Полный прогон запускается только в trusted context: после появления workflow в default branch — через `workflow_dispatch`, а при разработке этой feature-ветки — push commit с `[full-e2e]` в сообщении. Full job привязан к environment `ai-e2e-sandbox` и использует только sandbox provider credentials. Нулевой этап разворачивает HermeTeam с чистого состояния в disposable runner, проверяет Qwen model matrix, запускает все семь ролей и выполняет no-tool Hermes readiness canaries до deterministic authority и dashboard gates.
+
+Основные артефакты:
+
+- `verification/config/models.qwen.yaml` — model matrix runtime и verification ролей;
+- `verification/scenarios/p0/core.yaml` — zero-tolerance P0 contracts;
+- `scripts/e2e/bootstrap-from-scratch.sh` — guarded deployment from scratch;
+- `verification/qwen_probe.py` и `verification/hermes_canary.py` — provider/runtime readiness checks.
+
+From-scratch path отказывается запускаться без `HERMETEAM_E2E_EPHEMERAL=1`; target repository должен быть только non-production sandbox.
 
 Secure default Compose публикует только локальный read-only central dashboard на loopback. Role APIs наружу не публикуются. Для диагностики используйте explicit loopback-only debug override:
 

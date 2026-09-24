@@ -102,9 +102,9 @@ CAPABILITY_ADMIN_KEY=<random-32+-char-secret>
 DASHBOARD_GOVERNANCE_KEY=<different-random-32+-char-secret>
 CAPABILITY_MAX_AUTO_RISK=MEDIUM
 
-CAPABILITY_JUDGE_BASE_URL=<openai-compatible-endpoint>
-CAPABILITY_JUDGE_API_KEY=<judge-key>
-CAPABILITY_JUDGE_MODEL=<judge-model>
+CAPABILITY_JUDGE_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
+CAPABILITY_JUDGE_API_KEY=<qwen-api-key>
+CAPABILITY_JUDGE_MODEL=qwen3.7-max
 
 BUILDER_CAPABILITY_GATEWAY_KEY=<third-independent-random-secret>
 

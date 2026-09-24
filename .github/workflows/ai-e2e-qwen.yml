@@ -1,0 +1,190 @@
+name: AI E2E — Qwen verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/qwen-e2e-verification-pipeline
+  pull_request:
+    paths:
+      - ".github/workflows/ai-e2e-qwen.yml"
+      - ".env.example"
+      - "compose*.yaml"
+      - "profiles/**"
+      - "policies/**"
+      - "orchestrator/**"
+      - "capability_gateway/**"
+      - "hermes-plugins/**"
+      - "dashboard/**"
+      - "scripts/e2e/**"
+      - "verification/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-e2e-qwen-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verification-contracts:
+    name: Verification contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install contract dependencies
+        run: python -m pip install pyyaml
+      - name: Validate repository and verification manifests
+        run: |
+          scripts/validate.sh
+          bash -n scripts/e2e/bootstrap-from-scratch.sh
+          python -m compileall -q verification
+          python verification/validate.py
+      - name: Run deterministic contract/unit tests
+        run: |
+          python -m unittest discover -s verification/tests -v
+          python -m unittest discover -s capability_gateway/tests -v
+          python -m unittest discover -s hermes-plugins/tests -v
+          python -m unittest discover -s orchestrator/tests -v
+
+  full-e2e:
+    name: Full E2E from scratch
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && contains(github.event.head_commit.message, '[full-e2e]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment: ai-e2e-sandbox
+    env:
+      HERMETEAM_E2E_EPHEMERAL: "1"
+      QWEN_API_KEY: ${{ secrets.QWEN_API_KEY }}
+      QWEN_API_BASE_URL: ${{ vars.QWEN_API_BASE_URL }}
+      E2E_SANDBOX_REPOSITORY_FULL_NAME: ${{ vars.E2E_SANDBOX_REPOSITORY_FULL_NAME }}
+      E2E_SANDBOX_DEFAULT_BRANCH: ${{ vars.E2E_SANDBOX_DEFAULT_BRANCH }}
+      E2E_GITHUB_APP_ID: ${{ vars.E2E_GITHUB_APP_ID }}
+      E2E_GITHUB_APP_INSTALLATION_ID: ${{ vars.E2E_GITHUB_APP_INSTALLATION_ID }}
+      E2E_GITHUB_APP_PRIVATE_KEY: ${{ secrets.E2E_GITHUB_APP_PRIVATE_KEY }}
+      E2E_HARNESS_GITHUB_TOKEN: ${{ secrets.E2E_HARNESS_GITHUB_TOKEN }}
+
+      E2E_PLANNER_GITHUB_MCP_TOKEN: ${{ secrets.E2E_PLANNER_GITHUB_MCP_TOKEN }}
+      E2E_PROJECT_MANAGER_GITHUB_MCP_TOKEN: ${{ secrets.E2E_PROJECT_MANAGER_GITHUB_MCP_TOKEN }}
+      E2E_REVIEWER_GITHUB_MCP_TOKEN: ${{ secrets.E2E_REVIEWER_GITHUB_MCP_TOKEN }}
+      E2E_RELEASE_GITHUB_MCP_TOKEN: ${{ secrets.E2E_RELEASE_GITHUB_MCP_TOKEN }}
+      E2E_INCIDENT_GITHUB_MCP_TOKEN: ${{ secrets.E2E_INCIDENT_GITHUB_MCP_TOKEN }}
+      E2E_LEARNING_GITHUB_MCP_TOKEN: ${{ secrets.E2E_LEARNING_GITHUB_MCP_TOKEN }}
+
+      E2E_ORCHESTRATOR_PLANNER_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_PLANNER_GITHUB_TOKEN }}
+      E2E_ORCHESTRATOR_PROJECT_MANAGER_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_PROJECT_MANAGER_GITHUB_TOKEN }}
+      E2E_ORCHESTRATOR_BUILDER_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_BUILDER_GITHUB_TOKEN }}
+      E2E_ORCHESTRATOR_REVIEWER_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_REVIEWER_GITHUB_TOKEN }}
+      E2E_ORCHESTRATOR_RELEASE_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_RELEASE_GITHUB_TOKEN }}
+      E2E_ORCHESTRATOR_INCIDENT_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_INCIDENT_GITHUB_TOKEN }}
+      E2E_ORCHESTRATOR_LEARNING_GITHUB_TOKEN: ${{ secrets.E2E_ORCHESTRATOR_LEARNING_GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 00 Verify Qwen and sandbox prerequisites
+        run: python3 verification/check_prerequisites.py
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.12.0"
+          cache: npm
+          cache-dependency-path: dashboard/package-lock.json
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install pyyaml
+          npm --prefix dashboard ci
+          (cd dashboard && npx playwright install --with-deps chromium)
+
+      - name: 00 Bootstrap HermeTeam from scratch
+        run: |
+          chmod +x scripts/e2e/bootstrap-from-scratch.sh
+          scripts/e2e/bootstrap-from-scratch.sh
+
+      - name: 01 Deterministic repository and authority gates
+        run: |
+          scripts/validate.sh
+          python -m unittest discover -s capability_gateway/tests -v
+          python -m unittest discover -s hermes-plugins/tests -v
+          python -m unittest discover -s orchestrator/tests -v
+          python -m unittest discover -s verification/tests -v
+          echo PASS > verification/reports/01-deterministic.passed
+
+      - name: 02 Dashboard production-image E2E
+        env:
+          DASHBOARD_E2E: "true"
+          HERMETEAM_E2E_REQUIRE_DASHBOARD: "1"
+        run: |
+          scripts/smoke-test.sh
+          echo PASS > verification/reports/02-dashboard-e2e.passed
+
+      - name: 03 Live Qwen Builder and dynamic-authority canaries
+        run: |
+          python verification/live_authority_canaries.py
+          echo PASS > verification/reports/03-live-authority.passed
+
+      - name: 04 P0 verification manifests
+        run: |
+          python verification/validate.py
+          echo PASS > verification/reports/04-p0-contracts.passed
+
+      - name: 05 Generate adversarial cases with Qwen agent
+        run: |
+          python verification/ai_agents.py adversary \
+            --output verification/reports/adversarial-cases.json
+          echo PASS > verification/reports/05-qwen-adversary.passed
+
+      - name: 06 Re-probe Qwen after deterministic gates
+        run: |
+          python verification/qwen_probe.py
+          echo PASS > verification/reports/06-qwen-probe.passed
+
+      - name: 07 Build sanitized deterministic evidence
+        run: |
+          python verification/build_evidence.py \
+            --output verification/reports/deterministic-evidence.json
+
+      - name: 08 Independent Qwen judge
+        run: |
+          python verification/ai_agents.py judge \
+            --evidence verification/reports/deterministic-evidence.json \
+            --output verification/reports/qwen-judge.json
+
+      - name: Capture non-secret service status
+        if: always()
+        run: |
+          mkdir -p verification/reports
+          docker compose \
+            -f compose.yaml \
+            -f compose.debug.yaml \
+            -f compose.capability-gateway.yaml \
+            -f compose.dynamic-authority.yaml \
+            ps > verification/reports/compose-ps.txt 2>&1 || true
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hermeteam-qwen-e2e-evidence-${{ github.run_id }}
+          path: verification/reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose \
+            -f compose.yaml \
+            -f compose.debug.yaml \
+            -f compose.capability-gateway.yaml \
+            -f compose.dynamic-authority.yaml \
+            down --volumes --remove-orphans || true
+          rm -f .env secrets/e2e-github-app-private-key.pem

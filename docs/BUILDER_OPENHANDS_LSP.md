@@ -89,14 +89,14 @@ cp secrets/hermes-builder-openhands.env.example secrets/hermes-builder-openhands
 Configure:
 
 ```dotenv
-BUILDER_OPENHANDS_LLM_MODEL=openrouter/deepseek/deepseek-chat
-BUILDER_OPENHANDS_LLM_API_KEY=CHANGE_ME_DEDICATED_OPENHANDS_KEY
-BUILDER_OPENHANDS_LLM_BASE_URL=https://openrouter.ai/api/v1
+BUILDER_OPENHANDS_LLM_MODEL=openai/qwen3.7-plus
+BUILDER_OPENHANDS_LLM_API_KEY=CHANGE_ME_QWEN_OPENHANDS_KEY
+BUILDER_OPENHANDS_LLM_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
 ```
 
 Do not put GitHub/GitLab/MCP tokens, GitHub App private keys, or the builder's normal model credential in this file. `compose.openhands.yaml` attaches only this file to `hermes-builder-openhands`.
 
-The runner maps these values to the OpenHands/LiteLLM variables `LLM_MODEL`, `LLM_API_KEY`, and `LLM_BASE_URL` only for the OpenHands child process.
+The runner maps these values to the OpenHands/LiteLLM variables `LLM_MODEL`, `LLM_API_KEY`, and `LLM_BASE_URL` only for the OpenHands child process. The `openai/` prefix is intentional: LiteLLM uses it to route the Qwen model through the configured OpenAI-compatible Qwen endpoint.
 
 ## Start the integration
 
