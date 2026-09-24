@@ -25,7 +25,7 @@ The pipeline uses Qwen API Platform through its OpenAI-compatible API.
 - Incident / Learning / JSON repair: `qwen3.5-flash`
 - E2E Architect / Adversary / Judge / Triage: `qwen3.7-max`
 
-`QWEN_API_BASE_URL` is mandatory for the full job and must be the OpenAI-compatible endpoint for the Qwen API key's actual region and workspace. The bootstrap refuses to silently substitute another region.
+`QWEN_API_BASE_URL` is mandatory for the full job and must be the actual OpenAI-compatible Base URL from the Qwen API key or Token Plan account. Pay-as-you-go, Token Plan and regional Model Studio endpoints are not interchangeable. The bootstrap refuses to silently substitute another endpoint. Run `verification/check_prerequisites.py` first to report all missing credential names without exposing their values.
 
 ## Required full-E2E secrets
 
