@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.3.0
+version: 1.3.1
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -107,15 +107,16 @@ Never choose legacy mode automatically because GitHub App setup failed.
 The repository-owned E2E harness lives under `verification/` with the entrypoint `scripts/e2e/bootstrap-from-scratch.sh`. In `e2e-qwen` mode:
 
 1. require a disposable runner and `HERMETEAM_E2E_EPHEMERAL=1`;
-2. require a non-production sandbox repository and distinct role/provider credentials;
-3. bootstrap a fresh `.env` rather than reusing operator state;
-4. configure the Qwen OpenAI-compatible endpoint and role model matrix;
-5. configure the Builder dynamic-authority path with a sandbox-only GitHub App; keep the independent harness cleanup token outside HermeTeam configuration;
-6. keep `ORCHESTRATOR_ENABLED=false` through Stage 00;
-7. validate configuration and probe Qwen before container startup;
-8. build/start the full debug + Capability Gateway + dynamic-authority stack, run liveness checks, then execute a no-tool readiness run for every role;
-9. run provider-state canaries only against the sandbox repository;
-10. persist only sanitized evidence; do not archive raw container logs by default.
+2. run `python3 verification/check_prerequisites.py` before dependency installation; report only missing credential names, never values, and require a sandbox repository distinct from the source repository;
+3. require a non-production sandbox repository and distinct role/provider credentials;
+4. bootstrap a fresh `.env` rather than reusing operator state;
+5. configure the Qwen OpenAI-compatible endpoint supplied with the actual key or Token Plan; never substitute a different key/plan/region Base URL, and apply the role model matrix;
+6. configure the Builder dynamic-authority path with a sandbox-only GitHub App; keep the independent harness cleanup token outside HermeTeam configuration;
+7. keep `ORCHESTRATOR_ENABLED=false` through Stage 00;
+8. validate configuration and probe Qwen before container startup;
+9. build/start the full debug + Capability Gateway + dynamic-authority stack, run liveness checks, then execute a no-tool readiness run for every role;
+10. run provider-state canaries only against the sandbox repository;
+11. persist only sanitized evidence; do not archive raw container logs by default. The evidence builder fails closed if any stage, role or independently recorded gate is missing; the Qwen judge NEEDS_REVIEW and any coverage gaps block full-E2E success.
 
 ## Interactive protocol
 
