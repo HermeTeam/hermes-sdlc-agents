@@ -216,7 +216,7 @@ services:
     image: "${SMB_BUILDER_IMAGE:-hermeteam-smb-builder:local}"
     build:
       context: .
-      dockerfile: Dockerfile.orchestrator
+      dockerfile: Dockerfile.smb-builder
       args:
         HERMES_BASE_IMAGE: "${SMB_HERMES_BASE_IMAGE:?A digest-pinned Hermes image is required}"
     entrypoint: [/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh]
@@ -276,8 +276,8 @@ services:
       - ./workspace/builder:/opt/data/workspace
       - smb-shared-skills:/opt/hermes-shared-skills:ro
       - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
-      - ./profiles/hermes-builder:/etc/hermes:ro
-      - ./profiles/hermes-builder/SOUL.md:/opt/data/SOUL.md:ro
+      - ./profiles/smb-builder:/etc/hermes:ro
+      - ./profiles/smb-builder/SOUL.md:/opt/data/SOUL.md:ro
     depends_on:
       skills-superset-sync:
         condition: service_completed_successfully
