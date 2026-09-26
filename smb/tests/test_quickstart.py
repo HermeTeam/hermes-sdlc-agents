@@ -136,5 +136,27 @@ class SMBQuickstartTests(unittest.TestCase):
         self.assertIn('"127.0.0.1:${HERMETEAM_SMB_DASHBOARD_PORT:-9130}:8080"', compose)
 
 
+    def test_skill_lock_is_pinned_and_builder_only_receives_scoped_skills(self) -> None:
+        manifest = json.loads((ROOT / "smb/skills.lock.json").read_text(encoding="utf-8"))
+        compose = (ROOT / "compose.smb.yaml").read_text(encoding="utf-8")
+        self.assertEqual(manifest["schema_version"], 1)
+        self.assertIn(manifest["commit"], compose)
+        for skill in manifest["builder_skills"]:
+            self.assertIn(skill, compose)
+        self.assertIn("atomic-skills/devops-engineer", manifest["operator_skills"])
+        self.assertNotIn("atomic-skills/devops-engineer", compose)
+        self.assertNotIn("atomic-skills/architecture-designer", compose)
+        self.assertIn("shared-skills:/opt/hermes-shared-skills:ro", compose)
+
+    def test_smb_builder_profile_excludes_optional_mcp_and_openhands(self) -> None:
+        profile = (ROOT / "profiles/hermes-builder-smb/config.yaml").read_text(encoding="utf-8")
+        soul = (ROOT / "profiles/hermes-builder-smb/SOUL.md").read_text(encoding="utf-8")
+        self.assertIn("mcp_servers:\\n  repository:", profile)
+        for name in ("ddg-search:", "postgresql:", "chrome-devtools:", "openhands_delegate"):
+            self.assertNotIn(name, profile)
+        self.assertNotIn("openhands_delegate", soul)
+        self.assertIn("подпиской HermeTeam", soul)
+
+
 if __name__ == "__main__":
     unittest.main()
