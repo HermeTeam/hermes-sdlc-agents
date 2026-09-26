@@ -8,6 +8,12 @@
 
 English version: [README.md](README.md).
 
+## SMB Safe Builder — для команд 3–30 разработчиков
+
+Для CTO, которому нужен один защищённый coding-agent workflow, добавлен [отдельный минимальный runtime](docs/SMB_QUICKSTART_RU.md) (`compose.smb.yaml`): **один Builder + обязательный Dynamic Authority/GitHub App broker + модель, заранее назначенная подпиской HermeTeam + локальный dashboard**. Пользователь не выбирает провайдера или модель и не вводит личный Qwen/OpenAI API-ключ. Полная AI SDLC-команда из семи ролей ниже остаётся отдельным режимом.
+
+**Ограничение первого этапа:** автоматизированная выдача подписных credentials, GitHub App wizard, опубликованные release images и доказанное развёртывание за 30 минут ещё не реализованы. Минимальный runtime требует операторского subscription bundle, sandbox GitHub App и реальных provider-state canaries.
+
 ## Safe AI SDLC
 
 Обычная AI-assisted разработка часто развивается так:
