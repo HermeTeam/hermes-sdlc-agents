@@ -6,7 +6,7 @@ import unittest
 from http.server import ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import Request, build_opener
 
 from subscription_gateway.server import PUBLIC_MODEL, RelayConfig, make_handler
 
@@ -50,6 +50,9 @@ class SubscriptionHTTPBoundaryTests(unittest.TestCase):
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.addCleanup(self.stop_server)
+        # urllib initializes HTTPSHandler from the global HTTPSConnection type;
+        # build the *local HTTP* opener before stubbing only the upstream.
+        self.opener = build_opener()
         self.stub = patch("subscription_gateway.server.http.client.HTTPSConnection", FakeConnection)
         self.stub.start()
         self.addCleanup(self.stub.stop)
@@ -73,7 +76,7 @@ class SubscriptionHTTPBoundaryTests(unittest.TestCase):
                 "Content-Type": "application/json",
             },
         )
-        with urlopen(req, timeout=5) as res:
+        with self.opener.open(req, timeout=5) as res:
             return json.load(res)
 
     def test_bad_internal_auth_does_not_contact_subscribed_provider(self) -> None:
