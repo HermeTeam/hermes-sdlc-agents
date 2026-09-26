@@ -7,8 +7,8 @@ services:
   subscription-relay:
     image: "${SMB_SUBSCRIPTION_RELAY_IMAGE:-hermeteam-subscription-relay:local}"
     build:
-      context: .
-      dockerfile: subscription_gateway/Dockerfile
+      context: ./subscription_gateway
+      dockerfile: Dockerfile
     restart: unless-stopped
     init: true
     read_only: true
