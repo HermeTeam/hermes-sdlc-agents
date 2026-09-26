@@ -194,6 +194,31 @@ describe("dashboard SPA", () => {
       }),
     ).toBeNull();
   });
+  it("shows a single subscribed Safe Builder instead of six absent roles in SMB mode", async () => {
+    const data = overview();
+    data.roles = data.roles.map((role) => role.role === "builder"
+      ? role
+      : {
+          ...role,
+          container: {
+            ...role.container,
+            state: "MISSING" as const,
+            health: "none" as const,
+          },
+          agentState: "DISABLED" as const,
+          sourceError: null,
+        });
+    vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
+      requestPath(input) === "/api/langfuse-monitor"
+        ? response(langfuse())
+        : response(data),
+    );
+    renderApp();
+    expect(await screen.findByText("Builder")).toBeInTheDocument();
+    expect(screen.queryByText("Planner")).toBeNull();
+    expect(screen.getByText("Containers running").parentElement).toHaveTextContent("1/1");
+  });
+
   it("renders server-side Langfuse metrics without exposing credentials", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation((input) =>
       requestPath(input) === "/api/langfuse-monitor"
