@@ -296,6 +296,7 @@ async function main(): Promise<void> {
     }),
     timeoutMs: config.overviewTimeoutMs,
     cacheTtlMs: 2_000,
+    ...(process.env.HERMETEAM_RUNTIME_MODE === "smb" ? { activeRoles: ["builder" as const] } : {}),
   });
   const langfuseMonitor = createLangfuseMonitorFromEnvironment();
   const riskGovernance = createRiskGovernanceFromEnvironment();

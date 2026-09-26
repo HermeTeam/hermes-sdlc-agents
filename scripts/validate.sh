@@ -293,6 +293,13 @@ for role in sorted(expected_roles):
                 "MDB_MCP_CONNECTION_STRING",
                 "POSTGRES_MCP_CONNECTION_STRING",
             }
+            # Builder already has an OpenHands on/off setting in its existing
+            # role secret example. Recognize only that exact optional key;
+            # do not allow arbitrary additional role environment variables.
+            if role == "hermes-builder":
+                allowed_secret_keys.add("BUILDER_OPENHANDS_ENABLED")
+                if secret_values.get("BUILDER_OPENHANDS_ENABLED", "false") not in {"true", "false"}:
+                    errors.append(f"{secret_template.relative_to(root)}: BUILDER_OPENHANDS_ENABLED must be true or false")
             unknown_secret_keys = sorted(set(secret_values) - allowed_secret_keys)
             if unknown_secret_keys:
                 errors.append(f"{secret_template.relative_to(root)}: unsupported role env keys: {', '.join(unknown_secret_keys)}")
