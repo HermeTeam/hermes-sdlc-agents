@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import io
+from urllib.error import HTTPError
 import os
 import stat
 import tempfile
@@ -162,6 +164,29 @@ class SMBQuickstartTests(unittest.TestCase):
             self.assertNotIn(name, profile)
         self.assertNotIn("openhands_delegate", soul)
         self.assertIn("подпиской HermeTeam", soul)
+
+
+    def test_live_probe_uses_exact_subscription_model_and_token(self) -> None:
+        requests = []
+        def fake_urlopen(request, timeout):
+            requests.append(request)
+            return io.BytesIO(b'{"choices":[{"message":{"content":"READY"}}]}')
+        with patch.object(quickstart, "urlopen", side_effect=fake_urlopen):
+            quickstart.probe_subscription()
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(
+            requests[0].full_url,
+            "https://llm-gateway.example/compatible-mode/v1/chat/completions"
+        )
+        self.assertEqual(json.loads(requests[0].data)["model"], "subscription-model")
+        self.assertIn("tenant-access-token", requests[0].headers["Authorization"])
+
+    def test_live_probe_fails_closed_on_gateway_unauthorized(self) -> None:
+        def unauthorized(request, timeout):
+            raise HTTPError(request.full_url, 401, "unauthorized", None, None)
+        with patch.object(quickstart, "urlopen", side_effect=unauthorized):
+            with self.assertRaisesRegex(quickstart.SetupError, "HTTP 401"):
+                quickstart.probe_subscription()
 
 
 if __name__ == "__main__":
