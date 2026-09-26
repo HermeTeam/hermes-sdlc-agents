@@ -111,6 +111,14 @@ class SMBQuickstartTests(unittest.TestCase):
         with self.assertRaisesRegex(quickstart.SetupError, "HTTPS"):
             quickstart.initialize()
 
+    def test_subscription_binding_must_not_interpolate_compose_variables(self) -> None:
+        binding = json.loads(self.paths["SUBSCRIPTION"].read_text())
+        binding["access_token"] = "opaque-tenant-token-with-${UNTRUSTED_ENV}-value-1234"
+        self.write(self.paths["SUBSCRIPTION"], json.dumps(binding))
+        with self.assertRaisesRegex(quickstart.SetupError, "Invalid subscription or installation"):
+            quickstart.initialize()
+        self.assertFalse(self.paths["ENV_FILE"].exists())
+
     def test_invalid_github_installation_does_not_create_config(self) -> None:
         binding = json.loads(self.paths["INSTALLATION"].read_text())
         binding["repository"] = "acme/repository/other"
