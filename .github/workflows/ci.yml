@@ -45,3 +45,16 @@ jobs:
         run: npm ci
       - name: Typecheck and tests
         run: npm run check
+
+  smb-runtime:
+    name: SMB subscription-bound runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Assert subscription and authority contracts
+        run: python -m unittest discover -s smb/tests -p 'test_*.py' -v
+      - name: Render standalone five-service runtime with fake CI-only entitlement
+        run: python smb/tests/check_compose.py
