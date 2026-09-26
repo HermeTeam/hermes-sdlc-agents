@@ -58,3 +58,9 @@ jobs:
         run: python -m unittest discover -s smb/tests -p 'test_*.py' -v
       - name: Render standalone five-service runtime with fake CI-only entitlement
         run: python smb/tests/check_compose.py
+      - name: Fetch pinned operator skills and verify install
+        run: |
+          python3 scripts/smb-fetch-skills.py --target "$RUNNER_TEMP/hermeteam-operator-skills"
+          test -f "$RUNNER_TEMP/hermeteam-operator-skills/devops-engineer/SKILL.md"
+          test -f "$RUNNER_TEMP/hermeteam-operator-skills/security-reviewer/SKILL.md"
+          test -f "$RUNNER_TEMP/hermeteam-operator-skills/rlm-roec-context-reasoning/SKILL.md
