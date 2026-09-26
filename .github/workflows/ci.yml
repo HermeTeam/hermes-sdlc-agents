@@ -63,4 +63,4 @@ jobs:
           python3 scripts/smb-fetch-skills.py --target "$RUNNER_TEMP/hermeteam-operator-skills"
           test -f "$RUNNER_TEMP/hermeteam-operator-skills/devops-engineer/SKILL.md"
           test -f "$RUNNER_TEMP/hermeteam-operator-skills/security-reviewer/SKILL.md"
-          test -f "$RUNNER_TEMP/hermeteam-operator-skills/rlm-roec-context-reasoning/SKILL.md
+          test -f "$RUNNER_TEMP/hermeteam-operator-skills/rlm-roec-context-reasoning/SKILL.md"
