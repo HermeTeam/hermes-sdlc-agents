@@ -134,6 +134,12 @@ class SMBQuickstartTests(unittest.TestCase):
                      "hermes-release:", "hermes-incident:", "hermes-learning:"):
             self.assertNotIn(role, compose)
         self.assertIn('"127.0.0.1:${HERMETEAM_SMB_DASHBOARD_PORT:-9130}:8080"', compose)
+        # The Builder cannot reach the Docker inspect API, even read-only.
+        proxy = compose.split("  docker-socket-proxy:", 1)[1].split("  skills-superset-sync:", 1)[0]
+        self.assertIn("networks: [hermes-observability]", proxy)
+        self.assertNotIn("networks: [hermes-control]", proxy)
+        dashboard = compose.split("  hermeteam-dashboard:", 1)[1].split("\\nsecrets:", 1)[0]
+        self.assertIn("networks: [hermes-control, hermes-observability]", dashboard)
 
 
     def test_skill_lock_is_pinned_and_builder_only_receives_scoped_skills(self) -> None:
