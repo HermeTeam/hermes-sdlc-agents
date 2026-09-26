@@ -107,7 +107,7 @@ services:
       CAPABILITY_MAX_AUTO_RISK: MEDIUM
       CAPABILITY_ADMIN_KEY: "${SMB_CAPABILITY_ADMIN_KEY:?Provisioned SMB admin key required}"
       BUILDER_CAPABILITY_GATEWAY_KEY: "${SMB_BUILDER_GATEWAY_KEY:?Provisioned internal Builder key required}"
-      CAPABILITY_JUDGE_BASE_URL: "${SMB_SUBSCRIPTION_LLM_BASE_URL:?Subscription binding required}"
+      CAPABILITY_JUDGE_BASE_URL: "${SMB_SUBSCRIPTION_JUDGE_BASE_URL:?Subscription binding required}"
       CAPABILITY_JUDGE_API_KEY: "${SMB_SUBSCRIPTION_ACCESS_TOKEN:?Subscription binding required}"
       CAPABILITY_JUDGE_MODEL: "${SMB_SUBSCRIPTION_MODEL_ID:?Subscription binding required}"
       CAPABILITY_UPSTREAM_MCP_URL: https://api.githubcopilot.com/mcp/
