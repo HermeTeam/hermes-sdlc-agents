@@ -1,0 +1,10 @@
+name: hermes-builder-smb
+version: 1.0.0
+description: "Subscription-bound Safe Builder, GitHub provider actions only through Capability Gateway."
+hermes_requires: ">=0.19.0"
+author: "HermeTeam"
+license: "MIT"
+distribution_owned:
+  - distribution.yaml
+  - config.yaml
+  - SOUL.md
