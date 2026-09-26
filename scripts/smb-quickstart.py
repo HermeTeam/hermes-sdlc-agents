@@ -11,6 +11,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -142,6 +144,41 @@ def initialize() -> None:
     print("SMB configuration ready: subscription model bound; GitHub App repository scoped; secrets not displayed.")
 
 
+
+def probe_subscription() -> None:
+    """Verify the exact subscription-assigned model; never probe a customer-selected provider."""
+    binding = read_subscription()
+    endpoint = binding["SMB_SUBSCRIPTION_LLM_BASE_URL"] + "/chat/completions"
+    payload = json.dumps({
+        "model": binding["SMB_SUBSCRIPTION_MODEL_ID"],
+        "messages": [{"role": "user", "content": "HermeTeam startup readiness. Reply READY."}],
+        "max_tokens": 128,
+    }).encode("utf-8")
+    request = Request(
+        endpoint,
+        data=payload,
+        method="POST",
+        headers={
+            "Authorization": "Bearer " + binding["SMB_SUBSCRIPTION_ACCESS_TOKEN"],
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            body = json.loads(response.read(262144))
+        choices = body.get("choices") if isinstance(body, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise SetupError("Subscription model readiness returned no choices")
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if not isinstance(message, dict) or not isinstance(message.get("content"), str) or not message["content"].strip():
+            raise SetupError("Subscription model readiness returned no response")
+    except HTTPError as exc:
+        raise SetupError(f"Subscription gateway rejected readiness request (HTTP {exc.code})") from exc
+    except (URLError, TimeoutError, ValueError, TypeError) as exc:
+        raise SetupError("Subscription gateway readiness request failed") from exc
+    print("Subscription model readiness PASS (provider and credentials remain hidden).")
+
+
 def run_compose(*arguments: str) -> None:
     subprocess.run(
         ["docker", "compose", "--env-file", str(ENV_FILE), "-f", str(COMPOSE), *arguments],
@@ -152,18 +189,20 @@ def run_compose(*arguments: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="HermeTeam Safe Builder: subscription-managed SMB runtime")
-    parser.add_argument("command", choices=("init", "check", "up", "status", "down"))
+    parser.add_argument("command", choices=("init", "check", "probe", "up", "status", "down"))
     args = parser.parse_args()
     try:
-        if args.command in ("init", "check", "up"):
+        if args.command in ("init", "check", "probe", "up"):
             initialize()
         if args.command == "init":
             return 0
         if not ENV_FILE.is_file():
             raise SetupError("Run init after HermeTeam subscription and GitHub App enrollment")
-        if args.command in ("check", "up"):
+        if args.command in ("check", "probe", "up"):
             run_compose("config", "--quiet")
             print("Compose validation PASS: only the SMB services are selected.")
+        if args.command in ("probe", "up"):
+            probe_subscription()
         if args.command == "up":
             run_compose("up", "-d", "--build", "--wait", "--wait-timeout", "360")
         if args.command == "status":
