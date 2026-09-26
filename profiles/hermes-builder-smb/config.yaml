@@ -96,9 +96,9 @@ approvals:
     - "ansible-playbook *"
     - "docker context *"
   smart_policy: |
-    Terminal is disabled in direct repository API/MCP mode. OpenHands delegation is available only
-    through the credential-isolated hermeteam-openhands bridge and only against the local scratch
-    workspace. Escalate any attempt to create a provider-connected local checkout, modify protected
+    Terminal, OpenHands and extra MCP integrations are disabled in the SMB subscription-bound
+    runtime. Do not install or enable them as a fallback. Escalate any attempt to create a
+    provider-connected local checkout, modify protected
     branches, change CI settings, alter quality thresholds, or access infrastructure/deployment systems.
     The builder may mutate provider repository state only through exact role-allowed Git provider
     API/MCP tools for its task branch and may never merge a change request.
