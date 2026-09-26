@@ -124,7 +124,7 @@ def write_private_env(values: dict[str, str]) -> None:
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as output:
             for key, value in values.items():
-                if not re.fullmatch(r"[A-Z0-9_]+", key) or any(ch in value for ch in "\r\n\x00"):
+                if not re.fullmatch(r"[A-Z0-9_]+", key) or any(ch in value for ch in "\r\n\x00$"):
                     raise SetupError("Invalid subscription or installation binding value")
                 output.write(f"{key}={value}\n")
         os.chmod(temporary, 0o600)
