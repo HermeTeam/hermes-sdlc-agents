@@ -8,7 +8,7 @@
 
 Шесть инфраструктурных/runtime сервисов:
 
-- `hermes-builder` — единственная Hermes-роль. Orchestrator выключен, direct GitHub MCP credentials отсутствуют, OpenHands выключен.
+- `hermes-builder` — единственная Hermes-роль. Отдельный облегчённый Dockerfile/profile без OpenHands, Langfuse SDK, LSP и сторонних MCP. Orchestrator выключен, direct GitHub MCP credentials отсутствуют.
 - `capability-gateway` — mandatory Dynamic Authority, exact request, branch/path checks, approvals, серверная GitHub App token minting.
 - `subscription-relay` — узкий OpenAI-compatible bridge к модели, **уже назначенной подпиской HermeTeam**. Builder и judge получают только внутренний relay key, не исходный provider/subscription token. Model alias фиксирован: `hermeteam-subscribed`.
 - `hermeteam-dashboard` — один установленный Builder + governance, loopback `127.0.0.1:9130`.
