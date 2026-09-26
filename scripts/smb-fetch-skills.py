@@ -37,7 +37,7 @@ def install(target: Path = DESTINATION) -> None:
     if target.is_symlink():
         raise RuntimeError("Refusing operator skill symlink destination")
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="hermeteam-operator-skills-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="hermeteam-operator-skills-", dir=target.parent) as tmp:
         clone = Path(tmp) / "repo"
         subprocess.run(["git", "init", "-q", str(clone)], check=True)
         subprocess.run(["git", "-C", str(clone), "remote", "add", "origin", SOURCE + ".git"], check=True)
@@ -54,6 +54,9 @@ def install(target: Path = DESTINATION) -> None:
             if not (source / "SKILL.md").is_file():
                 raise RuntimeError(f"Pinned operator skill missing: {skill}")
             shutil.copytree(source, ready / source.name, symlinks=False)
+        # Skills are reference data; normal sessions must not mutate the active snapshot.
+        for entry in sorted(ready.rglob("*"), key=lambda item: len(item.parts), reverse=True):
+            entry.chmod(0o555 if entry.is_dir() else 0o444)
         # Never replace active skills during a running deployment session.
         if target.exists():
             raise RuntimeError("Operator skills are already installed; review a new lock before replacing them")
