@@ -27,6 +27,7 @@ export interface OverviewCoordinatorOptions {
   readonly timeoutMs: number;
   readonly now?: () => Date;
   readonly cacheTtlMs?: number;
+  readonly activeRoles?: readonly RoleSlug[];
 }
 
 interface SourceSuccess<T> {
@@ -55,6 +56,7 @@ export class OverviewCoordinator {
   readonly #timeoutMs: number;
   readonly #now: () => Date;
   readonly #cacheTtlMs: number;
+  readonly #activeRoles: readonly RoleSlug[];
   #inFlight: Promise<OverviewResponse> | null = null;
   #cached: {
     readonly expiresAt: number;
@@ -80,6 +82,12 @@ export class OverviewCoordinator {
     this.#timeoutMs = options.timeoutMs;
     this.#now = options.now ?? (() => new Date());
     this.#cacheTtlMs = options.cacheTtlMs ?? 0;
+    const roles = options.activeRoles ?? ROLE_SLUGS;
+    if (!(roles.length === 1 && roles[0] === "builder") &&
+        !(roles.length === ROLE_SLUGS.length && roles.every((role, i) => role === ROLE_SLUGS[i]))) {
+      throw new TypeError("activeRoles must be the canonical seven roles or only builder");
+    }
+    this.#activeRoles = roles;
   }
 
   public getOverview(): Promise<OverviewResponse> {
@@ -108,19 +116,19 @@ export class OverviewCoordinator {
     const deadline = new AggregateDeadline(this.#timeoutMs);
     const docker = deadline.limit(this.#docker.listRoleContainers());
     const statuses = Object.fromEntries(
-      ROLE_SLUGS.map((role) => [
+      this.#activeRoles.map((role) => [
         role,
         deadline.limit(this.#roles.readStatus(role)),
       ]),
     ) as Record<RoleSlug, Promise<SourceResult<RoleStatusPayload>>>;
     const [dockerResult, ...roleResults] = await Promise.all([
       docker,
-      ...ROLE_SLUGS.map((role) => statuses[role]),
+      ...this.#activeRoles.map((role) => statuses[role]),
     ]);
     const response = {
       generatedAt: this.#now().toISOString(),
       partial: !dockerResult.ok || roleResults.some((result) => !result.ok),
-      roles: ROLE_SLUGS.map((role, index) => {
+      roles: this.#activeRoles.map((role, index) => {
         const roleResult = roleResults[index];
         if (roleResult === undefined) throw new Error("missing role result");
         const container = dockerResult.ok
@@ -157,7 +165,7 @@ export class OverviewCoordinator {
       return parseOverviewResponse({
         generatedAt: this.#now().toISOString(),
         partial: true,
-        roles: ROLE_SLUGS.map((role) => unavailableRole(role)),
+        roles: this.#activeRoles.map((role) => unavailableRole(role)),
       });
     } finally {
       deadline.close();
