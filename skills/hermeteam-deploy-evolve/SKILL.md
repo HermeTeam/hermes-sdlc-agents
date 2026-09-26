@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.2.0
+version: 1.3.0
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -38,7 +38,7 @@ This is an **operator/deployment skill**. It does not grant host, GitHub, Docker
 
 ## Preferred architecture
 
-Default deployment mode is `dynamic-authority`:
+For full seven-role SDLC deployments, the default deployment mode is `dynamic-authority`. For SMB customers, prefer the independent `smb-subscribed-safe-builder` pilot mode:
 
 ```text
 Hermes Builder
@@ -91,13 +91,28 @@ If current behavior contradicts this skill, enter `repo-drift/<sha>`, block the 
 
 | Mode | Use | Builder provider path |
 |---|---|---|
-| `baseline-readonly` | host/base-role diagnosis | Builder stopped |
+| `smb-subscribed-safe-builder` | first-party subscription + one Builder for 3–30 developers | Builder → Gateway → GitHub App → GitHub MCP; model through internal subscription relay |\n| `baseline-readonly` | host/base-role diagnosis | Builder stopped |
 | `dynamic-authority` | preferred local canary | Builder → Gateway → GitHub App → GitHub MCP |
 | `dynamic+observability` | authority + Flight Recorder/Langfuse | same |
 | `dynamic+openhands` | authority + isolated OpenHands/LSP coding assist | same; OpenHands has no provider path |
 | `legacy-builder-canary` | explicit comparison only | direct role credential |
 
 Never choose legacy mode automatically because GitHub App setup failed.
+
+## SMB subscribed Safe Builder (Phase 1)
+
+Use `docs/SMB_QUICKSTART_RU.md` or `docs/SMB_QUICKSTART.md` as the exact operator contract. The SMB runtime is a **standalone** `compose.smb.yaml`, not an overlay of the full seven-role stack; do not run `compose.yaml` with it. It has one Hermes role, subscription model relay, mandatory Dynamic Authority, local Dashboard and restricted Docker proxy.
+
+- Subscription endpoint, upstream model and subscription token are fixed by the HermeTeam subscription provisioner in owner-only `secrets/smb-subscription.env` and `secrets/smb-subscription.token`; the user does not choose a model provider or enter a personal provider key. Do not substitute a different model, endpoint, PAT or billing credential when the entitlement is unavailable.
+- GitHub App PEM is an owner-only `secrets/smb-github-app.pem` and mounts only into Capability Gateway. The Builder gets an internal Gateway key, never provider credentials.
+- Generate internal role/relay/governance keys with `python3 scripts/smb/bootstrap.py`. It is idempotent and preserves existing `.env.smb`; keep full SDLC `.env` untouched. If `doctor.py` fails, stop rather than rewriting files.
+- `python3 scripts/smb/doctor.py` validates subscription/secret presence and selected GitHub repository without printing secrets. `bash scripts/smb/up.sh` renders the isolated Compose and performs a real entitlement-backed model probe. `bash scripts/smb/down.sh` stops without removing volumes.
+- Only the pinned five read-only `skills_superset` skills are mounted, and skill content never broadens runtime tools or authority.
+- The dashboard's six absent roles are intentionally DISABLED in SMB mode, not source failures. Unattended orchestration and OpenHands remain disabled by design.
+- Preserve negative provider-state canaries (protected path, branch, exact approval, replay, emergency stop) before any production workflow. Subscription health/inference and static Compose checks do not prove GitHub authority enforcement.
+- **Status boundary:** automatic subscription credential issuance, GitHub App installation UX, prebuilt images and the measured 30-minute onboarding are not delivered by Phase 1. Do not claim self-service readiness or production-safe authority without separate live evidence.
+
+Failure branches: `subscription/not-provisioned` → stop and escalate to HermeTeam subscription provisioning; `github-app/uninstalled` → require installation on sandbox; `image/unpinned` → block startup; `authority/canary-failed` → keep orchestrator disabled and do not fall back to broad PAT.
 
 ## Interactive protocol
 
