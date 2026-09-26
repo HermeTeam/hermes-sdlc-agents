@@ -52,6 +52,24 @@ class SmbRuntimeContracts(unittest.TestCase):
         self.assertTrue(all(str(p).startswith("127.0.0.1:") for p in dashboard["ports"]))
         self.assertEqual(dashboard["environment"]["HERMETEAM_RUNTIME_MODE"], "smb")
 
+    def test_smb_profile_has_no_extra_agent_or_mcp_toolsets(self) -> None:
+        config = yaml.safe_load(
+            (ROOT / "profiles/smb-builder/config.yaml").read_text(encoding="utf-8")
+        )
+        self.assertEqual(config["plugins"]["enabled"], ["hermeteam-intent-action-gate"])
+        self.assertEqual(config["toolsets"], [
+            "file", "skills", "todo", "clarify", "mcp-repository"
+        ])
+        self.assertEqual(list(config["mcp_servers"]), ["repository"])
+        self.assertFalse(config["lsp"]["enabled"])
+        self.assertEqual(
+            self.services["hermes-builder"]["build"]["dockerfile"], "Dockerfile.smb-builder"
+        )
+        self.assertIn(
+            "./profiles/smb-builder:/etc/hermes:ro",
+            self.services["hermes-builder"]["volumes"],
+        )
+
     def test_only_selected_skills_are_mounted_read_only(self) -> None:
         builder = self.services["hermes-builder"]
         self.assertIn("smb-shared-skills:/opt/hermes-shared-skills:ro", builder["volumes"])
