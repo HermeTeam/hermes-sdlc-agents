@@ -151,7 +151,7 @@ class SMBQuickstartTests(unittest.TestCase):
     def test_smb_builder_profile_excludes_optional_mcp_and_openhands(self) -> None:
         profile = (ROOT / "profiles/hermes-builder-smb/config.yaml").read_text(encoding="utf-8")
         soul = (ROOT / "profiles/hermes-builder-smb/SOUL.md").read_text(encoding="utf-8")
-        self.assertIn("mcp_servers:\\n  repository:", profile)
+        self.assertIn("mcp_servers:\n  repository:", profile)
         for name in ("ddg-search:", "postgresql:", "chrome-devtools:", "openhands_delegate"):
             self.assertNotIn(name, profile)
         self.assertNotIn("openhands_delegate", soul)
