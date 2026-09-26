@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.2.0
+version: 1.3.0
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -35,6 +35,16 @@ This is an **operator/deployment skill**. It does not grant host, GitHub, Docker
 9. Learning creates a candidate patch/fork; it never self-approves, self-merges, self-publishes, or self-activates it.
 10. No learned branch may weaken role separation, protected paths, branch constraints, exact-request approval, one-shot grants, credential isolation, emergency stop, or provider-state verification.
 11. When OpenHands is enabled for Builder, keep it in the isolated `hermes-builder-openhands` runner: no provider/MCP credentials, no `hermes-control` network attachment, no provider-connected Git remote, and only a read-only mount of the shared skills catalog.
+
+## SMB subscription-bound Safe Builder
+
+For the 3–30 developer ICP, first try the separate `compose.smb.yaml` runtime and `scripts/smb-quickstart.py`. It deploys only Safe Builder, Capability Gateway, local dashboard, read-only Docker status proxy and a pinned minimal skills sync; the canonical seven-role stack remains the advanced path.
+
+**AI provider is pre-attached to the customer's HermeTeam subscription.** The customer must never be asked to select Qwen/OpenAI/model, provide a vendor API key, or fall back to BYOK. The subscription service provisions owner-only `runtime/smb/subscription.json` containing a HermeTeam tenant-gateway model binding. The installer validates that binding and creates a private, ignored `.env.smb`; without a valid subscription binding, stop. This first runtime stage does not itself implement enrollment, billing or renewal; do not claim the 30-minute self-service wizard is already available.
+
+GitHub App enrollment is a separate precondition: owner-only `runtime/smb/installation.json` and `secrets/smb/github-app.pem`. No standing Builder provider PAT is permitted. Enforced provider mutation path must remain Builder → internal Gateway key → exact action authority → server-side GitHub App token broker. The Gateway is mandatory, not a selectable overlay; do not try the legacy direct-MCP fallback.
+
+Read and apply the pinned external operator skills from `smb/skills.lock.json`: architecture, DevOps, testing, security review and ROEC reasoning. The Builder sees only the separate read-only selected testing/debugging/reasoning/security subset. Skills never grant Docker or provider credentials; the operator must verify the lock SHA before updating it. To evaluate runtime changes, run `python3 -m unittest discover -s smb/tests -p 'test_*.py' -v`, `python3 smb/tests/check_compose.py`, standard repository checks and independent provider-state canaries once a real App/subscription is provisioned.
 
 ## Preferred architecture
 
