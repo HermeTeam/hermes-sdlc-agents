@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "source": "https://github.com/stanta/skills_superset",
+  "commit": "c0f6d865f15d2cc03964abcf14f29afb9f15984d",
+  "operator_skills": [
+    "atomic-skills/architecture-designer",
+    "atomic-skills/devops-engineer",
+    "atomic-skills/security-reviewer",
+    "atomic-skills/test-master",
+    "atomic-skills/rlm-roec-context-reasoning"
+  ],
+  "builder_skills": [
+    "atomic-skills/test-master",
+    "atomic-skills/systematic-debugging",
+    "atomic-skills/rlm-roec-context-reasoning",
+    "atomic-skills/security-reviewer"
+  ],
+  "note": "Operator skills are not mounted into Builder. Builder skills are mounted read-only and do not grant tool or provider authority."
+}
