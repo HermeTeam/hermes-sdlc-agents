@@ -49,6 +49,8 @@ python3 scripts/smb-quickstart.py down
 
 `init` validates both provisioned bindings and produces a private, ignored `.env.smb` with generated internal role, gateway and governance keys; repeated calls preserve them. `check` renders only `compose.smb.yaml` without revealing values. `up` builds and starts the five-service stack and waits for health. The live `probe` calls the subscription-assigned model through the existing HermeTeam tenant gateway and blocks startup if that account/model is unavailable; `check` is offline. The local image build still uses the inherited Hermes base-image default unless the operator pins `HERMETEAM_SMB_HERMES_BASE_IMAGE` to a reviewed release digest; this Stage 1 preview is not a published immutable-image distribution. The Dashboard remains `http://127.0.0.1:9130` only. `down` preserves volumes and evidence; it never implicitly performs `down --volumes`. Do not use `docker compose config` without `--quiet` on credential-bearing configs.
 
+To connect the **operator's** pinned architecture/DevOps/testing/security/reasoning skills, run `python3 scripts/smb-fetch-skills.py`. It installs a separate, immutable snapshot under `runtime/smb/operator-skills/`; it is **not** mounted into Builder and never receives subscription or GitHub secrets. The CI job verifies this checkout by exact SHA.
+
 Builder's MCP profile includes **only** approved GitHub repository tools through the internal gateway. The pre-pinned `skills_superset` checkout supplies selected testing, debugging, reasoning and security skills as read-only resources. DevOps and architecture-design skills are for the operator only, not Builder.
 
 ## Security and current limitations
