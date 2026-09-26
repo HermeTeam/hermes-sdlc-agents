@@ -84,6 +84,15 @@ class SmbBootstrapTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "owner-only"):
             bootstrap.check_subscription()
 
+    def test_refuses_unfilled_subscription_bundle_template(self) -> None:
+        self.subscription.write_text(
+            "SMB_SUBSCRIPTION_BASE_URL=https://SUBSCRIPTION_ENDPOINT_FROM_HERMETEAM/v1\\n"
+            "SMB_SUBSCRIPTION_MODEL=SUBSCRIPTION_ASSIGNED_MODEL\\n",
+            encoding="utf-8",
+        )
+        with self.assertRaisesRegex(ValueError, "valid HTTPS subscription"):
+            bootstrap.check_subscription()
+
     def test_refuses_missing_subscription_provisioning(self) -> None:
         self.subscription.unlink()
         with self.assertRaisesRegex(ValueError, "missing or unsafe"):
