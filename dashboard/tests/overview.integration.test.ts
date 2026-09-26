@@ -155,8 +155,9 @@ test("real ephemeral HTTP host has only hardened read-only routes and closes cle
 
 test("SMB overview queries only builder and does not mark disabled roles as unhealthy", async () => {
   const queried: RoleSlug[] = [];
-  const snapshot = Object.fromEntries(ROLE_SLUGS.map(role => [role, container(role)]))
-    as Record<RoleSlug, DockerContainerSnapshot>;
+  const snapshot = Object.fromEntries(
+    ROLE_SLUGS.map(role => [role, container(role)])
+  ) as Record<RoleSlug, DockerContainerSnapshot>;
   const overview = await new OverviewCoordinator({
     docker: { listRoleContainers: async () => snapshot },
     roles: { readStatus: async role => { queried.push(role); return status(role); } },
