@@ -12,6 +12,7 @@ from subscription_gateway.server import PUBLIC_MODEL, RelayConfig, make_handler
 
 
 class FakeConnection:
+    debuglevel = 0  # urllib constructs an HTTPSHandler even for our local HTTP test.
     requests: list[tuple[str, str, bytes, dict[str, str]]] = []
 
     def __init__(self, *_args, **_kwargs) -> None:
