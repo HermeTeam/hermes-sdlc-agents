@@ -120,6 +120,26 @@ test("overview isolates source faults, bounds aggregate deadline, avoids leaks, 
   assert.ok(timed.roles.every((role) => role.sourceError?.code === "timeout"));
 });
 
+test("SMB runtime reads only Builder and does not mark absent full-team roles as outages", async () => {
+  const started: RoleSlug[] = [];
+  const snapshot = Object.fromEntries(
+    ROLE_SLUGS.map((role) => [role, container(role)]),
+  ) as Record<RoleSlug, DockerContainerSnapshot>;
+  const overview = new OverviewCoordinator({
+    docker: { listRoleContainers: async () => snapshot },
+    roles: { readStatus: async (role) => { started.push(role); return status(role); } },
+    timeoutMs: 100,
+    activeRoles: ["builder"],
+    now: () => new Date("2026-08-26T00:00:00.000Z"),
+  });
+  const result = await overview.getOverview();
+  assert.deepEqual(started, ["builder"]);
+  assert.equal(result.partial, false);
+  assert.equal(result.roles.find((role) => role.role === "builder")?.sourceError, null);
+  assert.equal(result.roles.find((role) => role.role === "planner")?.agentState, "DISABLED");
+  assert.equal(result.roles.find((role) => role.role === "planner")?.sourceError, null);
+});
+
 test("real ephemeral HTTP host has only hardened read-only routes and closes cleanly", async () => {
   const dependency = createServer((_request, response) => response.end());
   dependency.listen(0, "127.0.0.1");
