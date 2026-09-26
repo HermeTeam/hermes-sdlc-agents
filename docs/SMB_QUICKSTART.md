@@ -2,7 +2,7 @@
 
 For AI-forward teams with 3–30 developers, this is an independent, small runtime rather than a seven-role SDLC deployment. Use **only** `compose.smb.yaml`; never merge it with the full `compose.yaml`.
 
-The stack contains a single `hermes-builder`, mandatory Dynamic Authority `capability-gateway`, `subscription-relay`, local Dashboard, restricted Docker socket proxy and pinned read-only skills sync. Planner, PM, Reviewer, Release, Incident, Learning, OpenHands, Langfuse and unattended orchestration are not required.
+The stack contains a single `hermes-builder` using a slim dedicated image/profile (no OpenHands, Langfuse SDK, LSP toolchain or third-party MCP servers), mandatory Dynamic Authority `capability-gateway`, `subscription-relay`, local Dashboard, restricted Docker socket proxy and pinned read-only skills sync. Planner, PM, Reviewer, Release, Incident, Learning, OpenHands, Langfuse and unattended orchestration are not required.
 
 ## Subscription-owned model (not user-configurable)
 
