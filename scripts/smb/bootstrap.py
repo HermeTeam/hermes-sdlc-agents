@@ -51,7 +51,8 @@ def check_subscription() -> None:
     private_file(TOKEN, "operator-provisioned subscription token")
     private_file(GITHUB_KEY, "GitHub App private key")
     config = parse_env(SUBSCRIPTION)
-    url = urlsplit(config.get("SMB_SUBSCRIPTION_BASE_URL", ""))
+    subscription_url = config.get("SMB_SUBSCRIPTION_BASE_URL", "")
+    url = urlsplit(subscription_url)
     if (
         url.scheme != "https"
         or not url.hostname
@@ -60,10 +61,18 @@ def check_subscription() -> None:
         or url.password
         or url.query
         or url.fragment
+        or "SUBSCRIPTION_ENDPOINT_FROM_HERMETEAM" in subscription_url.upper()
+        or "CHANGE_ME" in subscription_url.upper()
     ):
         raise ValueError("HermeTeam must provision a valid HTTPS subscription /v1 endpoint")
     model = config.get("SMB_SUBSCRIPTION_MODEL", "")
-    if not model or any(ord(char) < 33 for char in model) or len(model) > 150:
+    if (
+        not model
+        or model.startswith("SUBSCRIPTION_")
+        or model.startswith("CHANGE_ME")
+        or any(ord(char) < 33 for char in model)
+        or len(model) > 150
+    ):
         raise ValueError("HermeTeam must provision a subscription model")
     if len(TOKEN.read_text(encoding="utf-8").strip()) < 16:
         raise ValueError("HermeTeam subscription token missing or invalid")
