@@ -18,7 +18,7 @@ Keep unattended orchestration and OpenHands off during Phase 1. Require digest-p
 - Dashboard's canonical seven-role contract remains intact internally. Absent roles are explicitly DISABLED and hidden in SMB UI, rather than marked as outages.
 - This runtime depends on **external subscription/account provisioning**. The product-level issuance endpoint, billing/authenticated entitlements and GitHub App installation wizard are later deliverables, not simulated here.
 - The existing dynamic gateway is a Builder canary, not general enforcement for arbitrary tools. Do not call the pilot production-ready without external security canaries and a successful live provider-state test.
-- Local builds remain until release images are available. Digest-pinned base image avoids silently pulling mutable `latest`.
+- The SMB-specific Builder image/profile avoids optional OpenHands/Langfuse/LSP and non-GitHub MCP integrations. Local builds remain until release images are available. Digest-pinned base image avoids silently pulling mutable `latest`.
 
 ## Verification
 
