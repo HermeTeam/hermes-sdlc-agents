@@ -86,8 +86,8 @@ class SmbBootstrapTests(unittest.TestCase):
 
     def test_refuses_unfilled_subscription_bundle_template(self) -> None:
         self.subscription.write_text(
-            "SMB_SUBSCRIPTION_BASE_URL=https://SUBSCRIPTION_ENDPOINT_FROM_HERMETEAM/v1\\n"
-            "SMB_SUBSCRIPTION_MODEL=SUBSCRIPTION_ASSIGNED_MODEL\\n",
+            "SMB_SUBSCRIPTION_BASE_URL=https://SUBSCRIPTION_ENDPOINT_FROM_HERMETEAM/v1\n"
+            "SMB_SUBSCRIPTION_MODEL=SUBSCRIPTION_ASSIGNED_MODEL\n",
             encoding="utf-8",
         )
         with self.assertRaisesRegex(ValueError, "valid HTTPS subscription"):
