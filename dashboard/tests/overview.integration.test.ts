@@ -152,3 +152,26 @@ test("real ephemeral HTTP host has only hardened read-only routes and closes cle
   await app.close();
   await new Promise<void>((resolve) => dependency.close(() => resolve()));
 });
+
+test("SMB overview queries only builder and does not mark disabled roles as unhealthy", async () => {
+  const queried: RoleSlug[] = [];
+  const snapshot = Object.fromEntries(
+    ROLE_SLUGS.map(role => [role, container(role)])
+  ) as Record<RoleSlug, DockerContainerSnapshot>;
+  const overview = await new OverviewCoordinator({
+    docker: { listRoleContainers: async () => snapshot },
+    roles: { readStatus: async role => { queried.push(role); return status(role); } },
+    activeRoles: ["builder"],
+    timeoutMs: 100,
+    now: () => new Date("2026-09-26T07:00:00Z"),
+  }).getOverview();
+  assert.equal(overview.partial, false);
+  assert.deepEqual(overview.roles.map(role => role.role), ["builder"]);
+  assert.deepEqual(queried, ["builder"]);
+  assert.throws(() => new OverviewCoordinator({
+    docker: { listRoleContainers: async () => snapshot },
+    roles: { readStatus: async role => status(role) },
+    activeRoles: ["planner"],
+    timeoutMs: 100,
+  }), TypeError);
+});

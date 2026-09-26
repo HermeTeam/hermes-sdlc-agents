@@ -219,3 +219,26 @@ test("overview requires all roles in canonical order and rejects unknown agent s
   unsupportedState.roles[0]!.agentState = "HEALTHY";
   expectContractFailure(() => parseOverviewResponse(unsupportedState));
 });
+
+test("SMB overview accepts builder-only, but rejects arbitrary incomplete team roles", () => {
+  const fixture = {
+    generatedAt: "2026-09-26T07:00:00Z",
+    partial: false,
+    roles: [{
+      role: "builder",
+      container: { state: "RUNNING", health: "healthy", statusText: "Up", restartCount: 0 },
+      agentState: "IDLE",
+      orchestratorEnabled: false,
+      queue: { pendingDue: 0, pendingDelayed: 0, active: 0, blocked: 0 },
+      items: [],
+      sourceError: null,
+    }],
+  };
+  assert.deepEqual(parseOverviewResponse(fixture).roles.map(role => role.role), ["builder"]);
+  expectContractFailure(() =>
+    parseOverviewResponse({ ...fixture, roles: [{ ...fixture.roles[0], role: "planner" }] })
+  );
+  expectContractFailure(() =>
+    parseOverviewResponse({ ...fixture, roles: [fixture.roles[0], fixture.roles[0]] })
+  );
+});

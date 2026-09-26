@@ -8,6 +8,17 @@ The project started as a practical multi-agent SDLC team built on Hermes Agent. 
 
 Russian version: [README_RU.md](README_RU.md).
 
+## SMB Safe Builder runtime (subscription-managed)
+
+For a software team of 3–30 developers, use the separate [SMB Safe Builder runtime](smb/README.md) instead of configuring all seven SDLC roles. It starts one Builder behind the mandatory GitHub App / Capability Gateway authority path and shows only that role in the local Dashboard. The AI provider and model are **already assigned by the HermeTeam subscription**: there is no provider selector or vendor API-key prompt. The runtime consumes an owner-only entitlement installed by the subscription service; billing/enrollment and automated GitHub App setup are not part of this first implementation stage. The existing seven-role deployment remains available separately.
+
+```bash
+python3 scripts/smb-quickstart.py check
+python3 scripts/smb-quickstart.py up
+```
+
+Never substitute a direct GitHub PAT or bring-your-own-model credential when the required subscription/App binding is absent. The setup refuses to start without them.
+
 ## Safe AI SDLC
 
 Traditional AI-assisted development usually evolves in one direction:

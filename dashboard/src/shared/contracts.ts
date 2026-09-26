@@ -183,18 +183,21 @@ export function parseOverviewResponse(input: unknown): OverviewResponse {
     "overview response",
   );
   const roles = arrayAt(value, "roles");
-  if (roles.length !== ROLE_SLUGS.length) {
-    fail(
-      `overview response.roles must contain exactly ${ROLE_SLUGS.length} canonical roles`,
-    );
+  // The SMB runtime intentionally deploys only the canonical Builder.
+  // The full SDLC contract remains exactly seven ordered roles.
+  const smb = roles.length === 1;
+  if (smb ? (roles[0] as { role?: unknown } | null)?.role !== "builder" : roles.length !== ROLE_SLUGS.length) {
+    fail("overview response.roles must contain the canonical seven roles or only builder");
   }
   const parsedRoles = roles.map((role, index) =>
     parseRoleOverview(role, index),
   );
-  assertCanonicalRoleOrder(
-    parsedRoles.map(({ role }) => role),
-    "overview response.roles",
-  );
+  if (!smb) {
+    assertCanonicalRoleOrder(
+      parsedRoles.map(({ role }) => role),
+      "overview response.roles",
+    );
+  }
   return Object.freeze({
     generatedAt: timestampAt(value, "generatedAt"),
     partial: booleanAt(value, "partial"),

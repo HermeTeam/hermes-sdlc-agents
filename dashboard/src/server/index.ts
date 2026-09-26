@@ -295,6 +295,7 @@ async function main(): Promise<void> {
       timeoutMs: config.dependencyTimeoutMs,
     }),
     timeoutMs: config.overviewTimeoutMs,
+    ...(config.runtimeMode === "smb" ? { activeRoles: ["builder" as const] } : {}),
     cacheTtlMs: 2_000,
   });
   const langfuseMonitor = createLangfuseMonitorFromEnvironment();
