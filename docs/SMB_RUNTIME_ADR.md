@@ -1,6 +1,6 @@
 # ADR — Separate subscribed Safe Builder runtime for SMB
 
-**Status:** Implemented as a pilot runtime in `feature/smb-subscription-safe-builder`. Not a production-ready subscription self-service release.
+**Status:** Proposed for `master` in PR #12. Implemented as a pilot runtime; not a production-ready subscription self-service release.
 
 ## Context
 
