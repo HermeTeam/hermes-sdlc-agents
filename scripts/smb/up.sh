@@ -5,4 +5,4 @@ cd "$root"
 python3 scripts/smb/doctor.py
 docker compose --env-file .env.smb -f compose.smb.yaml config --quiet
 docker compose --env-file .env.smb -f compose.smb.yaml up -d --build
-scripts/smb/smoke.sh
+bash scripts/smb/smoke.sh
