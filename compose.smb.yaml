@@ -52,7 +52,8 @@ services:
         exec haproxy -W -db -f /tmp/haproxy.cfg
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks: [hermes-control]
+    # Builder must never reach Docker inspect: it can reveal gateway admin env.
+    networks: [hermes-observability]
 
   skills-superset-sync:
     image: alpine/git:2.49.1
@@ -236,7 +237,7 @@ services:
         condition: service_started
       capability-gateway:
         condition: service_healthy
-    networks: [hermes-control]
+    networks: [hermes-control, hermes-observability]
     ports:
       - "127.0.0.1:${HERMETEAM_SMB_DASHBOARD_PORT:-9130}:8080"
     healthcheck:
@@ -252,6 +253,8 @@ secrets:
 
 networks:
   hermes-control:
+    driver: bridge
+  hermes-observability:
     driver: bridge
 
 volumes:
