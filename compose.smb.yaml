@@ -1,0 +1,309 @@
+# Standalone SMB runtime: do NOT merge with compose.yaml.
+# Only one Builder uses Dynamic Authority. The user cannot select a model
+# provider: HermeTeam provisions the subscription model relay out of band.
+name: hermeteam-smb
+
+services:
+  subscription-relay:
+    image: "${SMB_SUBSCRIPTION_RELAY_IMAGE:-hermeteam-subscription-relay:local}"
+    build:
+      context: ./subscription_gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=8m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    cpus: "0.25"
+    mem_limit: 128m
+    env_file:
+      - path: ./secrets/smb-subscription.env
+        required: true
+    environment:
+      SMB_MODEL_RELAY_KEY: "${SMB_MODEL_RELAY_KEY:?Run scripts/smb/bootstrap.py}"
+      SMB_SUBSCRIPTION_TOKEN_FILE: /run/secrets/smb_subscription_token
+    secrets:
+      - smb_subscription_token
+    networks: [smb-control]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health', timeout=2).read()"]
+      interval: 20s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  capability-gateway:
+    image: "${SMB_CAPABILITY_GATEWAY_IMAGE:-hermeteam-capability-gateway:local}"
+    build:
+      context: ./capability_gateway
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    cpus: "0.75"
+    mem_limit: 512m
+    environment:
+      CAPABILITY_GATEWAY_BIND: "0.0.0.0"
+      CAPABILITY_GATEWAY_PORT: "8787"
+      CAPABILITY_GATEWAY_DB: /opt/data/capability-gateway.sqlite3
+      CAPABILITY_EXECUTION_MODE: dynamic
+      CAPABILITY_MAX_AUTO_RISK: MEDIUM
+      CAPABILITY_ADMIN_KEY: "${SMB_CAPABILITY_ADMIN_KEY:?Run scripts/smb/bootstrap.py}"
+      BUILDER_CAPABILITY_GATEWAY_KEY: "${SMB_BUILDER_GATEWAY_KEY:?Run scripts/smb/bootstrap.py}"
+      CAPABILITY_UPSTREAM_MCP_URL: https://api.githubcopilot.com/mcp/
+      CAPABILITY_JUDGE_BASE_URL: http://subscription-relay:8085
+      CAPABILITY_JUDGE_MODEL: hermeteam-subscribed
+      CAPABILITY_JUDGE_API_KEY: "${SMB_MODEL_RELAY_KEY:?Run scripts/smb/bootstrap.py}"
+      GITHUB_APP_ID: "${SMB_GITHUB_APP_ID:?Set GitHub App ID}"
+      GITHUB_APP_INSTALLATION_ID: "${SMB_GITHUB_APP_INSTALLATION_ID:?Set GitHub App installation ID}"
+      GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/smb_github_app_private_key
+      GITHUB_API_BASE_URL: https://api.github.com
+      GITHUB_REPOSITORY_FULL_NAME: "${SMB_GITHUB_REPOSITORY_FULL_NAME:?Set target repository}"
+      REPOSITORY_DEFAULT_BRANCH: "${SMB_GITHUB_DEFAULT_BRANCH:-main}"
+      HERMETEAM_PROTECTED_PATHS_FILE: /opt/hermeteam/policies/protected-paths.txt
+    volumes:
+      - smb-gateway-data:/opt/data
+      - ./policies/protected-paths.txt:/opt/hermeteam/policies/protected-paths.txt:ro
+    secrets:
+      - smb_github_app_private_key
+    depends_on:
+      subscription-relay:
+        condition: service_healthy
+    networks: [smb-control]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/health', timeout=2).read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:0.3.0@sha256:9e4b9e7517a6b660f2cc903a19b257b1852d5b3344794e3ea334ff00ae677ac2
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777
+      - /run:rw,noexec,nosuid,nodev,size=1m,mode=755
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    cpus: "0.25"
+    mem_limit: 64m
+    environment:
+      ALLOW_RESTARTS: "0"
+      ALLOW_START: "0"
+      ALLOW_STOP: "0"
+      AUTH: "0"
+      BUILD: "0"
+      COMMIT: "0"
+      CONFIGS: "0"
+      CONTAINERS: "1"
+      DISABLE_IPV6: "1"
+      DISTRIBUTION: "0"
+      EVENTS: "0"
+      EXEC: "0"
+      IMAGES: "0"
+      INFO: "0"
+      NETWORKS: "0"
+      NODES: "0"
+      PING: "0"
+      PLUGINS: "0"
+      POST: "0"
+      SECRETS: "0"
+      SERVICES: "0"
+      SESSION: "0"
+      SWARM: "0"
+      SYSTEM: "0"
+      TASKS: "0"
+      VERSION: "0"
+      VOLUMES: "0"
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        sed 's/$${BIND_CONFIG}/:2375/g' /usr/local/etc/haproxy/haproxy.cfg.template > /tmp/haproxy.cfg
+        exec haproxy -W -db -f /tmp/haproxy.cfg
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [smb-control]
+
+  hermeteam-dashboard:
+    image: "${SMB_DASHBOARD_IMAGE:-hermeteam-dashboard:local}"
+    build:
+      context: ./dashboard
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    user: node
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1m,mode=1777
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    cpus: "0.50"
+    mem_limit: 256m
+    environment:
+      DASHBOARD_BIND: "0.0.0.0"
+      DASHBOARD_CONTAINER_MODE: "true"
+      DASHBOARD_PORT: "8080"
+      HERMETEAM_RUNTIME_MODE: smb
+      DOCKER_PROXY_URL: http://docker-socket-proxy:2375
+      ROLE_STATUS_PORT: "8650"
+      CAPABILITY_GATEWAY_URL: http://capability-gateway:8787
+      CAPABILITY_ADMIN_KEY: "${SMB_CAPABILITY_ADMIN_KEY:?Run scripts/smb/bootstrap.py}"
+      DASHBOARD_GOVERNANCE_KEY: "${SMB_DASHBOARD_GOVERNANCE_KEY:?Run scripts/smb/bootstrap.py}"
+    depends_on:
+      docker-socket-proxy:
+        condition: service_started
+      capability-gateway:
+        condition: service_healthy
+    networks: [smb-control]
+    ports:
+      - "127.0.0.1:${SMB_DASHBOARD_PORT:-9130}:8080"
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8080/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  skills-superset-sync:
+    image: alpine/git:2.49.1
+    entrypoint: []
+    restart: "no"
+    environment:
+      SKILLS_SUPERSET_REF: "${SMB_SKILLS_SUPERSET_REF:-c0f6d865f15d2cc03964abcf14f29afb9f15984d}"
+    command:
+      - /bin/sh
+      - -ec
+      - |
+        set -eu
+        tmp_dir="$(mktemp -d)"
+        trap 'rm -rf "$${tmp_dir}"' EXIT
+        git clone --depth=1 --filter=blob:none --sparse https://github.com/stanta/skills_superset.git "$${tmp_dir}/repo"
+        git -C "$${tmp_dir}/repo" fetch --depth=1 origin "$${SKILLS_SUPERSET_REF}"
+        git -C "$${tmp_dir}/repo" checkout --detach FETCH_HEAD
+        git -C "$${tmp_dir}/repo" sparse-checkout set \
+          atomic-skills/architecture-designer \
+          atomic-skills/devops-engineer \
+          atomic-skills/test-master \
+          atomic-skills/security-reviewer \
+          atomic-skills/rlm-roec-context-reasoning
+        mkdir -p /shared/.next
+        for skill in architecture-designer devops-engineer test-master security-reviewer rlm-roec-context-reasoning; do
+          cp -a "$${tmp_dir}/repo/atomic-skills/$${skill}" "/shared/.next/$${skill}"
+        done
+        rm -rf /shared/current
+        mv /shared/.next /shared/current
+    volumes:
+      - smb-shared-skills:/shared
+    networks: [smb-control]
+
+  hermes-builder:
+    image: "${SMB_BUILDER_IMAGE:-hermeteam-smb-builder:local}"
+    build:
+      context: .
+      dockerfile: Dockerfile.smb-builder
+      args:
+        HERMES_BASE_IMAGE: "${SMB_HERMES_BASE_IMAGE:?A digest-pinned Hermes image is required}"
+    entrypoint: [/opt/hermes-sdlc-orchestrator/bin/hermes-with-orchestrator.sh]
+    restart: unless-stopped
+    init: true
+    labels:
+      hermeteam.agent: "true"
+      hermeteam.role: builder
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    cpus: "2.0"
+    mem_limit: 4g
+    stop_grace_period: 45s
+    environment:
+      HERMES_MANAGED_DIR: /etc/hermes
+      HERMES_DASHBOARD: "0"
+      API_SERVER_ENABLED: "true"
+      API_SERVER_HOST: "0.0.0.0"
+      API_SERVER_PORT: "8642"
+      HERMES_WORKSPACE_DIR: /opt/data/workspace
+      HERMES_WRITE_SAFE_ROOT: /opt/data
+      HERMES_DEFAULT_HERMES_MODEL_ID: hermeteam-subscribed
+      HERMES_DEFAULT_HERMES_MODEL_BASE_URL: http://subscription-relay:8085/v1
+      HERMES_DEFAULT_HERMES_MODEL_OPENAI_API_KEY: "${SMB_MODEL_RELAY_KEY:?Run scripts/smb/bootstrap.py}"
+      HERMES_DEFAULT_HERMES_JSON_REPAIR_MODEL_ID: hermeteam-subscribed
+      HERMES_DEFAULT_HERMES_JSON_REPAIR_MODEL_BASE_URL: http://subscription-relay:8085/v1
+      HERMES_DEFAULT_HERMES_JSON_REPAIR_OPENAI_API_KEY: "${SMB_MODEL_RELAY_KEY:?Run scripts/smb/bootstrap.py}"
+      OPENAI_API_KEY: "${SMB_MODEL_RELAY_KEY:?Run scripts/smb/bootstrap.py}"
+      HERMES_DEFAULT_API_SERVER_KEY: "${SMB_BUILDER_API_KEY:?Run scripts/smb/bootstrap.py}"
+      HERMES_DEFAULT_API_SERVER_MODEL_NAME: hermes-builder
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${SMB_BUILDER_GATEWAY_KEY:?Run scripts/smb/bootstrap.py}"
+      REPOSITORY_ID: "${SMB_GITHUB_REPOSITORY_FULL_NAME:?Set target repository}"
+      REPOSITORY_PROVIDER: github
+      REPOSITORY_ACCESS_MODE: github-direct-api-mcp
+      REPOSITORY_DEFAULT_BRANCH: "${SMB_GITHUB_DEFAULT_BRANCH:-main}"
+      REPOSITORY_CLONE_ALLOWED: "false"
+      GITHUB_API_BASE_URL: https://api.github.com
+      GITHUB_WEB_BASE_URL: https://github.com
+      GITHUB_OWNER: "${SMB_GITHUB_OWNER:?Run scripts/smb/bootstrap.py}"
+      GITHUB_REPOSITORY: "${SMB_GITHUB_REPOSITORY:?Run scripts/smb/bootstrap.py}"
+      GITHUB_REPOSITORY_FULL_NAME: "${SMB_GITHUB_REPOSITORY_FULL_NAME:?Set target repository}"
+      GITHUB_REPOSITORY_HTML_URL: "https://github.com/${SMB_GITHUB_REPOSITORY_FULL_NAME:?Set target repository}"
+      GITHUB_REPOSITORY_API_URL: "https://api.github.com/repos/${SMB_GITHUB_REPOSITORY_FULL_NAME:?Set target repository}"
+      ORCHESTRATOR_ENABLED: "false"
+      ORCHESTRATOR_ROLE: builder
+      ORCHESTRATOR_PROVIDER: github
+      ORCHESTRATOR_APPLY_TRANSITIONS: "false"
+      ORCHESTRATOR_TRANSITION_COMMENT_ONLY: "true"
+      ORCHESTRATOR_STARTUP_RUN_ENABLED: "false"
+      BUILDER_OPENHANDS_ENABLED: "false"
+    volumes:
+      - smb-builder-data:/opt/data
+      - ./workspace/builder:/opt/data/workspace
+      - smb-shared-skills:/opt/hermes-shared-skills:ro
+      - ./orchestrator:/opt/hermes-sdlc-orchestrator:ro
+      - ./profiles/smb-builder:/etc/hermes:ro
+      - ./profiles/smb-builder/SOUL.md:/opt/data/SOUL.md:ro
+    depends_on:
+      skills-superset-sync:
+        condition: service_completed_successfully
+      subscription-relay:
+        condition: service_healthy
+      capability-gateway:
+        condition: service_healthy
+    networks: [smb-control]
+    healthcheck:
+      test: [CMD, curl, -fsS, http://127.0.0.1:8642/health]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+networks:
+  smb-control:
+    driver: bridge
+
+volumes:
+  smb-gateway-data:
+  smb-builder-data:
+  smb-shared-skills:
+
+secrets:
+  smb_subscription_token:
+    file: ./secrets/smb-subscription.token
+  smb_github_app_private_key:
+    file: ./secrets/smb-github-app.pem

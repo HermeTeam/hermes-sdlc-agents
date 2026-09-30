@@ -166,8 +166,14 @@ function RoleCard({ role }: { role: RoleOverview }) {
   );
 }
 
+function visibleRoles(overview: OverviewResponse): readonly RoleOverview[] {
+  return overview.roles.filter((role) => !(
+    role.agentState === "DISABLED" && role.container.state === "MISSING" && role.sourceError === null
+  ));
+}
+
 function Summary({ overview }: { overview: OverviewResponse }) {
-  const roles = overview.roles;
+  const roles = visibleRoles(overview);
   const totals = roles.reduce(
     (result, role) => ({
       pending: result.pending + role.queue.pendingDue,
@@ -182,7 +188,7 @@ function Summary({ overview }: { overview: OverviewResponse }) {
     (role) => role.container.state === "RUNNING",
   ).length;
   const metrics = [
-    ["Containers running", `${running}/7`],
+    ["Containers running", `${running}/${roles.length}`],
     ["Agents working", String(totals.working)],
     ["Pending work", String(totals.pending)],
     ["Blocked work", String(totals.blocked)],
@@ -421,7 +427,7 @@ export function App() {
           Docker condition and queue state are intentionally shown separately.
         </p>
         <div className="roles">
-          {query.data.roles.map((role) => (
+          {visibleRoles(query.data).map((role) => (
             <RoleCard key={role.role} role={role} />
           ))}
         </div>

@@ -2,6 +2,8 @@
 
 English version: [bootstrap.md](bootstrap.md).
 
+> Это руководство относится к **полному SDLC-runtime из семи ролей**. Отдельный минимальный runtime с одним Builder и провайдером, назначенным по подписке, описан в [SMB Quickstart](SMB_QUICKSTART_RU.md). Нельзя комбинировать `compose.smb.yaml` с full Compose overlays.
+
 Это руководство описывает безопасное и воспроизводимое локальное развёртывание текущей ветки `master` HermeTeam. Базовый AI SDLC runtime, observability и capability-governance canary включаются поэтапно, чтобы каждый слой можно было проверить до включения автоматики.
 
 ## 1. Что поднимается локально

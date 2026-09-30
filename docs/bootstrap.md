@@ -2,6 +2,8 @@
 
 Russian version: [bootstrap_ru.md](bootstrap_ru.md).
 
+> This guide is for the **full seven-role SDLC deployment**. The separate one-Builder, pre-subscribed small-team runtime is documented in [SMB Quickstart](SMB_QUICKSTART.md). Do not combine `compose.smb.yaml` with the full Compose overlays.
+
 This guide describes a safe, repeatable local deployment of the current HermeTeam `master` branch. It separates the base AI SDLC runtime from optional observability and capability-governance canaries so operators can validate each layer before enabling automation.
 
 ## 1. What this bootstrap brings up

@@ -1,6 +1,8 @@
 .env
 secrets/*.env
 secrets/*.pem
+secrets/*.token
+.env.smb
 runtime/
 *.log
 *.zip

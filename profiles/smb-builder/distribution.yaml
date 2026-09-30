@@ -1,0 +1,26 @@
+name: hermes-builder
+version: 1.0.0-smb
+description: "Subscription-bound SMB Safe Builder with mandatory Dynamic Authority; GitHub PR only, no merge or provider token."
+hermes_requires: ">=0.19.0"
+author: "HermeTeam"
+license: "MIT"
+env_requires:
+  - name: HERMES_MODEL_ID
+    description: "Fixed subscription alias injected by HermeTeam, not selected by user."
+    required: true
+  - name: HERMES_MODEL_BASE_URL
+    description: "Internal HermeTeam subscription relay /v1."
+    required: true
+  - name: OPENAI_API_KEY
+    description: "Short internal relay credential, not the upstream provider token."
+    required: true
+  - name: GIT_PROVIDER_MCP_URL
+    description: "Mandatory internal Dynamic Authority MCP endpoint."
+    required: true
+  - name: GIT_PROVIDER_MCP_TOKEN
+    description: "Internal builder-to-Gateway key; never GitHub provider credentials."
+    required: true
+distribution_owned:
+  - distribution.yaml
+  - config.yaml
+  - SOUL.md

@@ -27,6 +27,7 @@ export interface OverviewCoordinatorOptions {
   readonly timeoutMs: number;
   readonly now?: () => Date;
   readonly cacheTtlMs?: number;
+  readonly activeRoles?: readonly RoleSlug[];
 }
 
 interface SourceSuccess<T> {
@@ -55,6 +56,7 @@ export class OverviewCoordinator {
   readonly #timeoutMs: number;
   readonly #now: () => Date;
   readonly #cacheTtlMs: number;
+  readonly #activeRoles: ReadonlySet<RoleSlug>;
   #inFlight: Promise<OverviewResponse> | null = null;
   #cached: {
     readonly expiresAt: number;
@@ -80,6 +82,10 @@ export class OverviewCoordinator {
     this.#timeoutMs = options.timeoutMs;
     this.#now = options.now ?? (() => new Date());
     this.#cacheTtlMs = options.cacheTtlMs ?? 0;
+    this.#activeRoles = new Set(options.activeRoles ?? ROLE_SLUGS);
+    if (this.#activeRoles.size < 1 || ![...this.#activeRoles].every((role) => ROLE_SLUGS.includes(role))) {
+      throw new TypeError("activeRoles must be nonempty canonical role slugs");
+    }
   }
 
   public getOverview(): Promise<OverviewResponse> {
@@ -110,7 +116,9 @@ export class OverviewCoordinator {
     const statuses = Object.fromEntries(
       ROLE_SLUGS.map((role) => [
         role,
-        deadline.limit(this.#roles.readStatus(role)),
+        this.#activeRoles.has(role)
+          ? deadline.limit(this.#roles.readStatus(role))
+          : Promise.resolve({ ok: false as const, code: "unavailable" as const }),
       ]),
     ) as Record<RoleSlug, Promise<SourceResult<RoleStatusPayload>>>;
     const [dockerResult, ...roleResults] = await Promise.all([
@@ -119,8 +127,11 @@ export class OverviewCoordinator {
     ]);
     const response = {
       generatedAt: this.#now().toISOString(),
-      partial: !dockerResult.ok || roleResults.some((result) => !result.ok),
+      partial: !dockerResult.ok || roleResults.some((result, index) =>
+        this.#activeRoles.has(ROLE_SLUGS[index]!) && !result.ok
+      ),
       roles: ROLE_SLUGS.map((role, index) => {
+        if (!this.#activeRoles.has(role)) return disabledRole(role);
         const roleResult = roleResults[index];
         if (roleResult === undefined) throw new Error("missing role result");
         const container = dockerResult.ok
@@ -157,7 +168,9 @@ export class OverviewCoordinator {
       return parseOverviewResponse({
         generatedAt: this.#now().toISOString(),
         partial: true,
-        roles: ROLE_SLUGS.map((role) => unavailableRole(role)),
+        roles: ROLE_SLUGS.map((role) =>
+          this.#activeRoles.has(role) ? unavailableRole(role) : disabledRole(role)
+        ),
       });
     } finally {
       deadline.close();
@@ -224,6 +237,23 @@ function unavailableContainer(role: RoleSlug): DockerContainerSnapshot {
     finishedAt: null,
     restartCount: 0,
   });
+}
+
+function disabledRole(role: RoleSlug): object {
+  return {
+    role,
+    container: {
+      state: "MISSING",
+      health: "none",
+      statusText: "Not installed in SMB runtime",
+      restartCount: 0,
+    },
+    agentState: "DISABLED",
+    orchestratorEnabled: false,
+    queue: EMPTY_QUEUE,
+    items: [],
+    sourceError: null,
+  };
 }
 
 function unavailableRole(role: RoleSlug): object {

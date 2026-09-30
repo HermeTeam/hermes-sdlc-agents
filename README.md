@@ -8,6 +8,12 @@ The project started as a practical multi-agent SDLC team built on Hermes Agent. 
 
 Russian version: [README_RU.md](README_RU.md).
 
+## SMB Safe Builder (3–30 developers)
+
+For one developer or CTO deploying one bounded coding-agent workflow, start with the [separate subscribed SMB runtime](docs/SMB_QUICKSTART.md) (`compose.smb.yaml`): **one Builder + mandatory Dynamic Authority/GitHub App broker + subscription-owned model relay + local dashboard**. The customer does not choose an AI provider or supply an upstream Qwen/OpenAI key; model and entitlement are pre-provisioned by HermeTeam. The full seven-role SDLC stack below remains available as a separate deployment.
+
+**Phase 1 limitation:** the subscription bundle issuer, GitHub App onboarding wizard, published release images and a proven 30-minute onboarding flow are not yet shipped in this repository. The SMB runtime requires operator-provisioned entitlement files and a sandbox GitHub App, and is not a substitute for real provider-state security canaries.
+
 ## Safe AI SDLC
 
 Traditional AI-assisted development usually evolves in one direction:
