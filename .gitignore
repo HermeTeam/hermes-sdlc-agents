@@ -1,4 +1,6 @@
 .env
+.env.smb
+secrets/smb/
 secrets/*.env
 secrets/*.pem
 runtime/

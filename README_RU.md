@@ -8,6 +8,17 @@
 
 English version: [README.md](README.md).
 
+## SMB Quickstart: один Safe Builder по подписке
+
+Для команды из 3–30 разработчиков предусмотрен отдельный [минимальный runtime](smb/README.md): один Builder, обязательный Capability Gateway с GitHub App, локальный Dashboard и read-only skills. Выбор AI-провайдера и модели **отсутствует**: они уже закреплены за подпиской HermeTeam. Установщик читает приватный entitlement, подготовленный сервисом подписки; ключ внешнего модельного провайдера покупатель не вводит. В этой первой реализации активация подписки и автоматическое подключение GitHub App ещё не реализованы — это предварительные условия.
+
+```bash
+python3 scripts/smb-quickstart.py check
+python3 scripts/smb-quickstart.py up
+```
+
+Отсутствие entitlement или GitHub App блокирует запуск, а не включает прямой PAT или BYOK fallback. Семиролевой runtime остаётся отдельным продвинутым режимом.
+
 ## Safe AI SDLC
 
 Обычная AI-assisted разработка часто развивается так:

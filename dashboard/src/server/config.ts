@@ -14,6 +14,7 @@ export interface DashboardConfig {
   readonly roleStatusPort: number;
   readonly dependencyTimeoutMs: number;
   readonly overviewTimeoutMs: number;
+  readonly runtimeMode: "full" | "smb";
 }
 
 export class DashboardConfigError extends Error {
@@ -29,6 +30,10 @@ export function loadDashboardConfig(
   environment: Environment = process.env,
 ): DashboardConfig {
   const roleServices = parseRoleServices(environment.ROLE_SERVICES);
+  const runtimeMode = environment.DASHBOARD_RUNTIME_MODE ?? "full";
+  if (runtimeMode !== "full" && runtimeMode !== "smb") {
+    throw new DashboardConfigError("DASHBOARD_RUNTIME_MODE must be full or smb");
+  }
   const dockerProxyUrl = parseDockerProxyUrl(
     environment.DOCKER_PROXY_URL ?? DEFAULT_DOCKER_PROXY_URL,
   );
@@ -56,6 +61,7 @@ export function loadDashboardConfig(
   return Object.freeze({
     dockerProxyUrl,
     roleServices,
+    runtimeMode,
     roleStatusPort,
     dependencyTimeoutMs,
     overviewTimeoutMs,

@@ -1,5 +1,8 @@
 # HermeTeam local bootstrap guide
 
+> **SMB mode:** For a single Safe Builder with a provider/model already supplied by a HermeTeam subscription, use [the separate SMB runtime](../smb/README.md) and `python3 scripts/smb-quickstart.py up`. The seven-role procedure below is the advanced/reference deployment; it is not the required first-run path for a team of 3–30 developers. SMB subscription issuance and GitHub App enrollment are prerequisites until the self-service onboarding phase is implemented.
+
+
 Russian version: [bootstrap_ru.md](bootstrap_ru.md).
 
 This guide describes a safe, repeatable local deployment of the current HermeTeam `master` branch. It separates the base AI SDLC runtime from optional observability and capability-governance canaries so operators can validate each layer before enabling automation.

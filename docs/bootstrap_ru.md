@@ -1,5 +1,8 @@
 # Локальное развёртывание HermeTeam
 
+> **SMB-режим:** для одного Safe Builder с заранее подключёнными по подписке HermeTeam провайдером и моделью используйте [отдельный минимальный runtime](../smb/README.md) и `python3 scripts/smb-quickstart.py up`. Семиролевая схема ниже — расширенный/reference deployment, а не обязательный первый запуск для команды из 3–30 разработчиков. Выдача подписочного entitlement и подключение GitHub App на этом этапе являются предварительными условиями.
+
+
 English version: [bootstrap.md](bootstrap.md).
 
 Это руководство описывает безопасное и воспроизводимое локальное развёртывание текущей ветки `master` HermeTeam. Базовый AI SDLC runtime, observability и capability-governance canary включаются поэтапно, чтобы каждый слой можно было проверить до включения автоматики.

@@ -182,7 +182,7 @@ function Summary({ overview }: { overview: OverviewResponse }) {
     (role) => role.container.state === "RUNNING",
   ).length;
   const metrics = [
-    ["Containers running", `${running}/7`],
+    ["Containers running", `${running}/${roles.length}`],
     ["Agents working", String(totals.working)],
     ["Pending work", String(totals.pending)],
     ["Blocked work", String(totals.blocked)],
