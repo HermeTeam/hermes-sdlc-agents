@@ -88,7 +88,7 @@ printf '\nHERMES_DASHBOARD_BASIC_AUTH_PASSWORD=%s\n' \
 
 This credential protects the native per-role Hermes dashboards exposed only when the debug overlay is enabled. It is separate from the central HermeTeam dashboard.
 
-## 5. Configure the Hermes image and LLM provider
+## 5. Configure the Hermes image and Qwen API Platform
 
 For an initial local test, the default image may be used:
 
@@ -98,15 +98,19 @@ HERMES_IMAGE=nousresearch/hermes-agent:latest
 
 After a successful canary, replace the mutable tag with an immutable image digest.
 
-Configure an OpenAI-compatible model endpoint:
+This branch standardizes the runtime on Qwen API Platform through its OpenAI-compatible API. Copy the exact OpenAI-compatible Base URL supplied with your API key; QwenCloud pay-as-you-go, QwenCloud Token Plan and regional Model Studio keys can require different endpoints. Never reuse a Base URL from a different key or plan. See [QwenCloud API-key documentation](https://docs.qwencloud.com/api-reference/preparation/api-key).
 
 ```dotenv
-HERMES_MODEL_ID=<model-id>
-HERMES_MODEL_BASE_URL=<openai-compatible-base-url>
-OPENAI_API_KEY=<llm-api-key>
+QWEN_API_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
+DASHSCOPE_API_KEY=<qwen-api-key>
+OPENAI_API_KEY=<qwen-api-key>
+
+HERMES_MODEL_ID=qwen3.7-plus
+HERMES_MODEL_BASE_URL=https://CHANGE_ME_QWEN_API_HOST/compatible-mode/v1
+HERMES_MODEL_OPENAI_API_KEY=<qwen-api-key>
 ```
 
-Review role-specific model overrides in `.env`. For example, the current defaults may specify dedicated Builder, Incident, or Learning models. Clear or replace an override if your provider does not expose that model.
+Role defaults are intentionally split by workload: Planner, Project Manager and Reviewer use `qwen3.7-max`; Builder and Release use `qwen3.7-plus`; Incident, Learning and JSON repair use `qwen3.5-flash`. Keep all model IDs, endpoint and API key values within the same Qwen account/region unless you have explicitly validated a cross-region setup.
 
 ## 6. Configure the target GitHub repository
 

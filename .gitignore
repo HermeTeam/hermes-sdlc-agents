@@ -26,3 +26,6 @@ pairing/
 pending/
 home/
 workspace/
+
+# Generated AI E2E evidence.
+verification/reports/

@@ -198,7 +198,7 @@ For the complete local deployment procedure, including role credentials, debug s
 - [Local bootstrap guide — English](docs/bootstrap.md)
 - [Локальное развёртывание — Русский](docs/bootstrap_ru.md)
 
-Requirements: Docker Engine with Compose v2, an OpenAI-compatible LLM gateway and GitHub credentials accepted by the official GitHub MCP Server.
+Requirements: Docker Engine with Compose v2, Qwen API Platform (OpenAI-compatible API) and GitHub credentials accepted by the official GitHub MCP Server.
 
 ```bash
 cd hermes-sdlc-agents
@@ -230,6 +230,19 @@ The secure default Compose mode publishes only the local read-only central dashb
 docker compose -f compose.yaml -f compose.debug.yaml up -d
 scripts/smoke-test.sh
 ```
+
+## AI E2E verification
+
+The Qwen verification pipeline is defined in `.github/workflows/ai-e2e-qwen.yml`. Its full run is trusted-only because it requires sandbox provider credentials: use `workflow_dispatch` after the workflow is available on the default branch, or during feature-branch development push a commit containing `[full-e2e]`. The full job is bound to the `ai-e2e-sandbox` environment. Stage 00 deploys HermeTeam from scratch in a disposable runner, probes the Qwen model matrix, starts all seven roles, and executes no-tool Hermes readiness canaries before the deterministic authority and dashboard gates run.
+
+Core assets:
+
+- `verification/config/models.qwen.yaml` — runtime and verification model matrix;
+- `verification/scenarios/p0/core.yaml` — zero-tolerance P0 scenario contracts;
+- `scripts/e2e/bootstrap-from-scratch.sh` — guarded fresh deployment;
+- `verification/qwen_probe.py` and `verification/hermes_canary.py` — provider and runtime readiness checks.
+
+The from-scratch path refuses to run unless `HERMETEAM_E2E_EPHEMERAL=1`; use only a non-production sandbox repository.
 
 ## Repository structure
 

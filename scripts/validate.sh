@@ -293,6 +293,8 @@ for role in sorted(expected_roles):
                 "MDB_MCP_CONNECTION_STRING",
                 "POSTGRES_MCP_CONNECTION_STRING",
             }
+            if role == "hermes-builder":
+                allowed_secret_keys.add("BUILDER_OPENHANDS_ENABLED")
             unknown_secret_keys = sorted(set(secret_values) - allowed_secret_keys)
             if unknown_secret_keys:
                 errors.append(f"{secret_template.relative_to(root)}: unsupported role env keys: {', '.join(unknown_secret_keys)}")

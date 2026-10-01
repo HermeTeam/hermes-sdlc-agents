@@ -9,17 +9,29 @@ s = socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.clos
 PY
 )"
 compose=(docker compose --project-directory "$root" -p "$project" -f "$root/dashboard/tests/e2e/compose.e2e.yaml")
-skip() { printf 'SKIP: dashboard E2E: %s\n' "$1"; exit 0; }
+skip() {
+  if [[ "${HERMETEAM_E2E_REQUIRE_DASHBOARD:-0}" == "1" ]]; then
+    printf 'FAIL: dashboard E2E prerequisite unavailable: %s\n' "$1" >&2
+    exit 2
+  fi
+  printf 'SKIP: dashboard E2E: %s\n' "$1"
+  exit 0
+}
 command -v docker >/dev/null 2>&1 || skip "Docker CLI is unavailable"
 docker compose version >/dev/null 2>&1 || skip "Docker Compose v2 is unavailable"
 docker info >/dev/null 2>&1 || skip "Docker daemon is unavailable"
-[[ -x /usr/bin/google-chrome || -x /usr/bin/google-chrome-stable || -x /snap/bin/chromium ]] || skip "Chromium executable is unavailable"
+chromium_path="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium || true)"
+if [[ -z "$chromium_path" ]]; then
+  [[ -d "${HOME}/.cache/ms-playwright" ]] || skip "Neither system Chrome nor a Playwright browser is installed"
+  unset PLAYWRIGHT_CHROMIUM_EXECUTABLE
+else
+  export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$chromium_path"
+fi
 [[ -d "$root/dashboard/node_modules/@playwright/test" ]] || skip "Playwright dependency is not installed; run npm --prefix dashboard ci"
 cleanup() { "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true; }
 trap cleanup EXIT INT TERM
 
 export E2E_PROJECT="$project" DASHBOARD_E2E_PORT="$port" DASHBOARD_E2E_BASE_URL="http://127.0.0.1:$port"
-export PLAYWRIGHT_CHROMIUM_EXECUTABLE="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium-browser || command -v chromium)"
 "${compose[@]}" up --build -d
 for _ in $(seq 1 60); do curl --fail --silent --show-error --max-time 2 "$DASHBOARD_E2E_BASE_URL/health" >/dev/null && break; sleep 1; done
 curl --fail --silent --show-error --max-time 2 "$DASHBOARD_E2E_BASE_URL/health" >/dev/null
