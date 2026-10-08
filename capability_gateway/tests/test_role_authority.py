@@ -64,7 +64,7 @@ class RoleAuthorityContracts(unittest.TestCase):
         args = {"owner": "HermeTeam", "repo": "e2e-sandbox", "issue_number": 23, "body": "Verified."}
         ctx = invoke("incident", "add_issue_comment", args)
         self.assertEqual(ctx.github_permissions, {"issues": "write"})
-        self.assertEqual(ctx.category, RiskCategory.MEDIUM)
+        self.assertEqual(ctx.category, RiskCategory.HIGH)
         mutated = {**args, "body": "Modified"}
         self.assertNotEqual(ctx.args_hash, invoke("incident", "add_issue_comment", mutated).args_hash)
         for invalid in (
