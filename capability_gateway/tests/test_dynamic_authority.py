@@ -185,6 +185,44 @@ class DynamicAuthorityTests(unittest.TestCase):
         self.assertEqual(raised.exception.code, "emergency_stop")
         self.assertEqual(self.broker.calls, [])
 
+    def test_planner_read_uses_minimal_scoped_app_token(self) -> None:
+        planner_key = "hermeteam-planner-key-with-unique-entropy"
+        self.proxy.role_keys["planner"] = planner_key
+        headers = {**self.headers, "Authorization": f"Bearer {planner_key}", "X-Hermes-Role": "hermes-planner"}
+        permit = self.proxy.permit(
+            headers=headers,
+            body=self.call("issue_read", {"owner": "HermeTeam", "repo": "demo", "issue_number": 1}),
+        )
+        self.assertEqual(permit.role, "planner")
+        self.assertEqual(permit.context.role, "planner")
+        self.assertEqual(self.broker.calls[-1], ("HermeTeam/demo", {"issues": "read"}))
+
+    def test_role_header_spoof_cannot_borrow_another_key(self) -> None:
+        self.proxy.role_keys["planner"] = "unique-planner-key-long-enough-to-use"
+        headers = {**self.headers, "X-Hermes-Role": "hermes-planner"}
+        with self.assertRaises(MCPAuthorityBlocked) as err:
+            self.proxy.permit(
+                headers=headers,
+                body=self.call("issue_read", {"owner": "HermeTeam", "repo": "demo"}),
+            )
+        self.assertEqual(err.exception.code, "unauthorized_agent")
+        self.assertEqual(self.broker.calls, [])
+
+    def test_planner_write_denied_without_broker_mint(self) -> None:
+        key = "unique-planner-key-long-enough-to-use"
+        self.proxy.role_keys["planner"] = key
+        headers = {**self.headers, "Authorization": f"Bearer {key}", "X-Hermes-Role": "hermes-planner"}
+        with self.assertRaises(MCPAuthorityBlocked) as err:
+            self.proxy.permit(
+                headers=headers,
+                body=self.call("push_files", {
+                    "owner": "HermeTeam", "repo": "demo",
+                    "branch": "agent/demo", "files": [{"path": "README.md", "content": "x"}],
+                }),
+            )
+        self.assertEqual(err.exception.code, "authority_denied")
+        self.assertEqual(self.broker.calls, [])
+
     def test_wrong_agent_key_is_denied(self) -> None:
         headers = dict(self.headers)
         headers["Authorization"] = "Bearer wrong-key"
