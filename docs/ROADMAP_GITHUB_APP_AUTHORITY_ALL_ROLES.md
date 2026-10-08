@@ -4,6 +4,17 @@
 **Security objective:** Give coding agents GitHub access without giving them GitHub credentials.
 **Status:** Implementation in progress. Do not merge into the Qwen E2E branch until the negative/positive canaries and the full sandbox test are green.
 
+## Implementation progress (2026-10-08)
+
+| Workstream | Implemented in this branch | Outstanding |
+|---|---|---|
+| P0 role policy | `role_authority.py` enforces default-deny role/tool/repository, Builder protected branches/paths; `mcp_proxy.py` authenticates role-bound keys | Discovery still uses Builder write-capable compatibility token; implement and live-test narrow discovery + tool visibility filtering |
+| P1 seven roles | `compose.dynamic-authority.yaml` overrides every agent MCP endpoint/token with internal key; Gateway role map validates actual call before mint | Run live non-Builder canaries, verify upstream MCP issues/PR semantics and permission scopes |
+| P2 orchestrators | Typed `orchestrator_rest.py` facade, internal `github_gateway.py` client, cron key propagation; deny unknown paths/roles; exact human approval for any state change | Enable orchestrators in isolated sandbox and exercise issue read, approval-granted transition, replay, failure recovery; review operational UX of approval requests |
+| P3 bootstrap + CI | Remove 13 PAT requirements and harness PAT from Qwen E2E; generate 14 internal role keys; inspect resolved Compose for token isolation; independent verifier mints GitHub App tokens | Real credentialed Qwen/GitHub sandbox run with usable App installation and configured secrets; eliminate obsolete legacy `.env` placeholders and required Compose interpolations |
+
+**No production-complete authority claim:** configuration and unit tests alone do not establish that all upstream tools behave correctly. Stage 00 retains `ORCHESTRATOR_ENABLED=false`; the existing provider-state canaries remain Builder-centric. Keep PR Draft until the remaining negative/positive and provider-state gates succeed.
+
 ## Architectural decision
 
 Every one of seven AI roles and seven role-local orchestrators must authenticate to HermeTeam, never directly to GitHub with a PAT/installation token. The server-side Capability Gateway alone holds GitHub App credentials, issues repository+permission-scoped installation tokens, executes the permitted GitHub MCP or REST request, and records evidence. A token's expiration is not a substitute for exact-request authority; grants remain independent.
