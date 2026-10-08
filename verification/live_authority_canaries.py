@@ -537,6 +537,61 @@ def one_shot_and_args_canary() -> dict[str, Any]:
 
 
 
+def container_orchestrator_probe(role: str, *, claim: str | None = None) -> dict[str, Any]:
+    """Call the typed facade without a PAT from an actual role container."""
+    if role not in {"planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"}:
+        raise ValueError("unknown E2E role")
+    code = r'''
+import json
+import os
+import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+payload = json.loads(sys.stdin.read())
+body = json.dumps({"op": "list_issues", "repository": payload["repository"]}).encode()
+req = Request(
+    "http://capability-gateway:8787/v1/orchestrator/github",
+    data=body, method="POST",
+    headers={
+        "Authorization": "Bearer " + os.environ["HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY"],
+        "X-HermeTeam-Orchestrator-Role": "hermes-" + payload["claim"],
+        "Content-Type": "application/json",
+    },
+)
+try:
+    with urlopen(req, timeout=40) as response:
+        status = response.status
+        data = json.loads(response.read(2000000))
+except HTTPError as exc:
+    status = exc.code
+    data = json.loads(exc.read(10000).decode())
+if status == 200:
+    data = {"list": isinstance(data.get("data"), list), "no_provider_token": "token" not in data}
+print(json.dumps({"status": status, "data": data}))
+'''
+    proc = subprocess.run(
+        [*COMPOSE, "exec", "-T", "hermes-" + role, "python", "-c", code],
+        input=json.dumps({"claim": claim or role, "repository": REPOSITORY}),
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=60, check=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def all_orchestrator_read_canary() -> dict[str, Any]:
+    """Real HTTP read across all seven orchestrator internal identities."""
+    results = {}
+    for role in ("planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"):
+        response = container_orchestrator_probe(role)
+        if response.get("status") != 200 or response.get("data") != {"list": True, "no_provider_token": True}:
+            raise AssertionError(f"orchestrator {role}: typed Gateway issue discovery failed")
+        results[role] = "PASS"
+    impersonation = container_orchestrator_probe("planner", claim="builder")
+    if impersonation.get("status") != 401:
+        raise AssertionError("orchestrator Planner could impersonate Builder")
+    return {"status": "PASS", "role_read_requests": results, "role_spoof_http_status": 401}
+
+
 def all_role_negative_authority_canary() -> dict[str, Any]:
     """Verify six additional role keys cannot mutate GitHub or impersonate Builder."""
     roles = ("planner", "project-manager", "reviewer", "release", "incident", "learning")
@@ -586,6 +641,7 @@ def main() -> int:
         results["safe_qwen_builder"] = safe_qwen_builder_canary()
         results["protected_path"] = protected_path_canary()
         results["all_role_negative_authority"] = all_role_negative_authority_canary()
+        results["all_orchestrator_read"] = all_orchestrator_read_canary()
         results["emergency_stop"] = emergency_stop_canary()
         results["one_shot_and_args"] = one_shot_and_args_canary()
         results["status"] = "PASS"
