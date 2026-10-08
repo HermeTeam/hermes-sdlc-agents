@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from capability_gateway.github_app import GitHubAppTokenBroker
+from capability_gateway.github_app import GitHubAppTokenBroker, GitHubAppUnavailable
 
 
 class FakeResponse:
@@ -110,6 +110,37 @@ class GitHubAppTokenBrokerTests(unittest.TestCase):
             self.assertEqual(read.token, "ghs_1")
             self.assertEqual(write.token, "ghs_2")
             self.assertEqual(calls, 2)
+
+
+    def test_overbroad_provider_permissions_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / "app.pem"
+            key.write_text("test-key", encoding="utf-8")
+            broker = GitHubAppTokenBroker(
+                app_id="123", installation_id="456", private_key_path=key,
+                api_base_url="https://api.github.test", jwt_factory=lambda: "app-jwt",
+            )
+            with patch("capability_gateway.github_app.urlopen", return_value=FakeResponse({
+                "token": "ghs_too_broad", "expires_at": "2099-01-01T00:00:00Z",
+                "permissions": {"contents": "read", "actions": "write"},
+            })):
+                with self.assertRaisesRegex(GitHubAppUnavailable, "unexpected or insufficient"):
+                    broker.mint(repository="HermeTeam/demo", permissions={"contents": "read"})
+
+    def test_provider_permissions_may_include_implicit_metadata_read(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            key = Path(directory) / "app.pem"
+            key.write_text("test-key", encoding="utf-8")
+            broker = GitHubAppTokenBroker(
+                app_id="123", installation_id="456", private_key_path=key,
+                api_base_url="https://api.github.test", jwt_factory=lambda: "app-jwt",
+            )
+            with patch("capability_gateway.github_app.urlopen", return_value=FakeResponse({
+                "token": "ghs_scoped", "expires_at": "2099-01-01T00:00:00Z",
+                "permissions": {"contents": "read", "metadata": "read"},
+            })):
+                token = broker.mint(repository="HermeTeam/demo", permissions={"contents": "read"})
+            self.assertEqual(token.permissions, {"contents": "read", "metadata": "read"})
 
 
 if __name__ == "__main__":
