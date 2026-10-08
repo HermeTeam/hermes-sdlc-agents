@@ -75,6 +75,9 @@ class Config:
     retry_lost_runs: bool = True
     retry_transient_failures: bool = True
     github_token: str | None = None
+    github_auth_mode: str = "legacy"
+    github_gateway_url: str | None = None
+    github_gateway_key: str | None = None
     github_api_base_url: str = "https://api.github.com"
     github_repository_full_name: str | None = None
     gitlab_token: str | None = None
@@ -138,6 +141,9 @@ class Config:
             retry_lost_runs=_bool(os.getenv("ORCHESTRATOR_RETRY_LOST_RUNS"), True),
             retry_transient_failures=_bool(os.getenv("ORCHESTRATOR_RETRY_TRANSIENT_FAILURES"), True),
             github_token=os.getenv("ORCHESTRATOR_GITHUB_TOKEN") or None,
+            github_auth_mode=os.getenv("ORCHESTRATOR_GITHUB_AUTH_MODE", "legacy").strip().lower(),
+            github_gateway_url=os.getenv("ORCHESTRATOR_GITHUB_GATEWAY_URL") or None,
+            github_gateway_key=os.getenv("ORCHESTRATOR_GITHUB_GATEWAY_KEY") or None,
             github_api_base_url=os.getenv("GITHUB_API_BASE_URL", "https://api.github.com").rstrip("/"),
             github_repository_full_name=os.getenv("GITHUB_REPOSITORY_FULL_NAME") or None,
             gitlab_token=os.getenv("ORCHESTRATOR_GITLAB_TOKEN") or None,
