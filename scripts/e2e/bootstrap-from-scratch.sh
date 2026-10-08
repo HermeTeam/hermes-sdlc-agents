@@ -174,6 +174,7 @@ PY
 python3 verification/validate.py
 scripts/validate.sh
 "${compose[@]}" config --quiet
+python3 verification/verify_authority_topology.py
 python3 verification/qwen_probe.py
 
 "${compose[@]}" up -d --build
@@ -199,7 +200,8 @@ cat > verification/reports/stage-00-bootstrap.json <<EOF
   "repository": "${E2E_SANDBOX_REPOSITORY_FULL_NAME}",
   "builder_authority_path": "capability-gateway-github-app",
   "all_roles_gateway": true,
-  "orchestrator_gateway": true,
+  "orchestrator_gateway_configured": true,
+  "orchestrator_gateway_runtime_tested": false,
   "orchestrator_enabled": false
 }
 EOF
