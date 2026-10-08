@@ -32,7 +32,9 @@ _READ_ACTIONS: dict[str, ActionSpec] = {
 }
 _COMMENT_ACTION = ActionSpec(
     "repository.issue.comment",
-    RiskCategory.MEDIUM,
+    # Until commitment changes, incident context and learning approval can
+    # be independently established, every role comment is human-approved.
+    RiskCategory.HIGH,
     {"issues": "write"},
     True,
 )
