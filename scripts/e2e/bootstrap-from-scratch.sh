@@ -24,13 +24,6 @@ require E2E_GITHUB_APP_ID
 require E2E_GITHUB_APP_INSTALLATION_ID
 require E2E_GITHUB_APP_PRIVATE_KEY
 
-for role in PLANNER PROJECT_MANAGER REVIEWER RELEASE INCIDENT LEARNING; do
-  require "E2E_${role}_GITHUB_MCP_TOKEN"
-done
-for role in PLANNER PROJECT_MANAGER BUILDER REVIEWER RELEASE INCIDENT LEARNING; do
-  require "E2E_ORCHESTRATOR_${role}_GITHUB_TOKEN"
-done
-
 if [[ ! "${E2E_SANDBOX_REPOSITORY_FULL_NAME}" =~ ^[^/]+/[^/]+$ ]]; then
   echo "E2E_SANDBOX_REPOSITORY_FULL_NAME must be owner/repository" >&2
   exit 2
@@ -111,14 +104,14 @@ for role, model in role_models.items():
     setv(f"{role}_HERMES_MODEL_ID", model)
     setv(f"{role}_HERMES_MODEL_BASE_URL", qwen_base)
     setv(f"{role}_HERMES_MODEL_OPENAI_API_KEY", qwen_key)
-    if role == "BUILDER":
-        setv("BUILDER_GITHUB_MCP_TOKEN", "DYNAMIC_AUTHORITY_NO_PROVIDER_TOKEN")
-    else:
-        setv(f"{role}_GITHUB_MCP_TOKEN", os.environ[f"E2E_{role}_GITHUB_MCP_TOKEN"])
-    setv(
-        f"ORCHESTRATOR_{role}_GITHUB_TOKEN",
-        os.environ[f"E2E_ORCHESTRATOR_{role}_GITHUB_TOKEN"],
-    )
+    # Legacy Compose validation still recognises these names, but the secure
+    # overlay substitutes gateway-only internal credentials into containers.
+    # These sentinel strings are deliberately NOT GitHub credentials.
+    setv(f"{role}_GITHUB_MCP_TOKEN", "NO_PROVIDER_CREDENTIAL_GATEWAY_ONLY")
+    setv(f"ORCHESTRATOR_{role}_GITHUB_TOKEN", "NO_PROVIDER_CREDENTIAL_GATEWAY_ONLY")
+    setv(f"ORCHESTRATOR_{role}_GATEWAY_KEY", secrets.token_hex(32))
+    if role != "BUILDER":
+        setv(f"CAPABILITY_{role}_GATEWAY_KEY", secrets.token_hex(32))
 
 setv("REPOSITORY_ID", repo)
 setv("REPOSITORY_PROVIDER", "github")
@@ -136,7 +129,7 @@ setv("ORCHESTRATOR_ENABLED", "false")
 setv("ORCHESTRATOR_APPLY_TRANSITIONS", "false")
 setv("ORCHESTRATOR_TRANSITION_COMMENT_ONLY", "true")
 
-# Preferred E2E topology: Builder -> Capability Gateway -> GitHub App -> GitHub MCP.
+# Seven agent MCP clients and seven orchestrators -> Capability Gateway -> GitHub App.
 setv("CAPABILITY_ADMIN_KEY", secrets.token_hex(32))
 setv("DASHBOARD_GOVERNANCE_KEY", secrets.token_hex(32))
 setv("BUILDER_CAPABILITY_GATEWAY_KEY", secrets.token_hex(32))
@@ -205,6 +198,8 @@ cat > verification/reports/stage-00-bootstrap.json <<EOF
   "provider": "qwen-api-platform",
   "repository": "${E2E_SANDBOX_REPOSITORY_FULL_NAME}",
   "builder_authority_path": "capability-gateway-github-app",
+  "all_roles_gateway": true,
+  "orchestrator_gateway": true,
   "orchestrator_enabled": false
 }
 EOF
