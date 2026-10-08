@@ -45,6 +45,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_PLANNER_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
@@ -57,6 +58,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_PROJECT_MANAGER_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
@@ -69,6 +71,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_BUILDER_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
@@ -81,6 +84,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_REVIEWER_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
@@ -93,6 +97,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_RELEASE_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
@@ -105,6 +110,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_INCIDENT_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
@@ -117,6 +123,7 @@ services:
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_LEARNING_GATEWAY_KEY:?Set internal orchestrator identity}"
       HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy
