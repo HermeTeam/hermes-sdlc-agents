@@ -8,26 +8,6 @@ import sys
 from collections.abc import Mapping
 from urllib.parse import urlsplit
 
-ROLE_TOKENS = (
-    "E2E_PLANNER_GITHUB_MCP_TOKEN",
-    "E2E_PROJECT_MANAGER_GITHUB_MCP_TOKEN",
-    "E2E_REVIEWER_GITHUB_MCP_TOKEN",
-    "E2E_RELEASE_GITHUB_MCP_TOKEN",
-    "E2E_INCIDENT_GITHUB_MCP_TOKEN",
-    "E2E_LEARNING_GITHUB_MCP_TOKEN",
-)
-ORCHESTRATOR_TOKENS = tuple(
-    f"E2E_ORCHESTRATOR_{role}_GITHUB_TOKEN"
-    for role in (
-        "PLANNER",
-        "PROJECT_MANAGER",
-        "BUILDER",
-        "REVIEWER",
-        "RELEASE",
-        "INCIDENT",
-        "LEARNING",
-    )
-)
 REQUIRED = (
     "QWEN_API_KEY",
     "QWEN_API_BASE_URL",
@@ -35,8 +15,7 @@ REQUIRED = (
     "E2E_GITHUB_APP_ID",
     "E2E_GITHUB_APP_INSTALLATION_ID",
     "E2E_GITHUB_APP_PRIVATE_KEY",
-    "E2E_HARNESS_GITHUB_TOKEN",
-) + ROLE_TOKENS + ORCHESTRATOR_TOKENS
+)
 
 
 def check(env: Mapping[str, str]) -> list[str]:
@@ -67,11 +46,6 @@ def check(env: Mapping[str, str]) -> list[str]:
         ):
             errors.append("QWEN_API_BASE_URL must be the actual HTTPS OpenAI-compatible /v1 URL from the Qwen API portal")
 
-    present = [(name, env[name]) for name in ROLE_TOKENS + ORCHESTRATOR_TOKENS if env.get(name)]
-    for index, (name, token) in enumerate(present):
-        for other_name, other_token in present[:index]:
-            if token == other_token:
-                errors.append(f"Separate role credentials required: {other_name} and {name} must differ")
 
     return errors
 
@@ -83,7 +57,7 @@ def main() -> int:
         for problem in problems:
             print("- " + problem, file=sys.stderr)
         return 2
-    print("Full E2E prerequisites PASS: sandbox variables and credential slots are set")
+    print("Full E2E prerequisites PASS: Qwen and GitHub App credentials are set; all internal role credentials are generated at bootstrap")
     return 0
 
 
