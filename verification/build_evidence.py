@@ -61,6 +61,16 @@ def build() -> dict:
     if not stage00.get("repository"):
         raise RuntimeError("Stage 00 has no sandbox repository evidence")
 
+    topology = required_json(reports / "authority-topology.json")
+    require_pass(topology, "role/runner credential-isolation topology")
+    if (
+        len(topology.get("roles_verified") or []) != 7
+        or len(topology.get("role_local_orchestrators_verified") or []) != 7
+        or topology.get("provider_tokens_exposed_to_roles") is not False
+        or topology.get("gateway_only") is not True
+    ):
+        raise RuntimeError("Stage 00 did not prove all fourteen internal Gateway identities")
+
     readiness = required_json(reports / "hermes-qwen-readiness.json")
     for role in REQUIRED_ROLES:
         if readiness.get(role) != "PASS":
@@ -92,6 +102,7 @@ def build() -> dict:
         "model_matrix_sha256": sha256(ROOT / "verification/config/models.qwen.yaml"),
         "p0_scenarios_sha256": sha256(ROOT / "verification/scenarios/p0/core.yaml"),
         "stage00": stage00,
+        "authority_topology": topology,
         "hermes_role_readiness": readiness,
         "live_authority_canaries": live_authority,
         "gates": gates,
