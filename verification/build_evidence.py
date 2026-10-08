@@ -21,6 +21,7 @@ REQUIRED_ROLES = (
 REQUIRED_CANARIES = (
     "safe_qwen_builder",
     "protected_path",
+    "all_role_negative_authority",
     "emergency_stop",
     "one_shot_and_args",
 )
@@ -88,6 +89,13 @@ def build() -> dict:
         raise RuntimeError("Builder canary lacks unchanged-default-branch evidence")
     if live_authority["protected_path"].get("provider_branch_absent") is not True:
         raise RuntimeError("Protected-path canary lacks provider branch absence evidence")
+    role_negative = live_authority["all_role_negative_authority"]
+    if (
+        len(role_negative.get("denied_role_mutations") or {}) != 6
+        or role_negative.get("role_impersonation") != "unauthorized_agent"
+        or role_negative.get("provider_default_branch_unchanged") is not True
+    ):
+        raise RuntimeError("All-role negative authority evidence missing or invalid")
 
     gates: dict[str, str] = {}
     for name in REQUIRED_GATES:
