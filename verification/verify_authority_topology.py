@@ -69,7 +69,7 @@ def check_topology(services: Mapping[str, Any], configured: Mapping[str, str]) -
             raise RuntimeError(f"{role}: orchestrator uses wrong Gateway endpoint")
         if env.get("HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY") != orch_key:
             raise RuntimeError(f"{role}: orchestrator is missing its internal identity")
-        if env.get("HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN"):
+        if env.get("HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN") or env.get("ORCHESTRATOR_GITHUB_TOKEN"):
             raise RuntimeError(f"{role}: an orchestrator provider token remains exposed")
         for forbidden in ("GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_ID", "GITHUB_APP_INSTALLATION_ID"):
             if env.get(forbidden):
