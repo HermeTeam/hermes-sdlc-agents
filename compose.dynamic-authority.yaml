@@ -1,13 +1,25 @@
-# Canary-only dynamic request authority overlay.
+# Multi-role dynamic authority overlay: all seven agent+orchestrator identities are internal.
 # Use together with compose.yaml and compose.capability-gateway.yaml.
-# The Builder no longer receives a GitHub provider token in this mode; its
-# repository MCP credential is an internal HermeTeam gateway key.
+# GitHub App credentials exist only in the Gateway, never in AI role containers.
 services:
   capability-gateway:
     environment:
       CAPABILITY_EXECUTION_MODE: dynamic
       CAPABILITY_UPSTREAM_MCP_URL: "${GIT_PROVIDER_MCP_URL:?Set GIT_PROVIDER_MCP_URL in .env}"
       BUILDER_CAPABILITY_GATEWAY_KEY: "${BUILDER_CAPABILITY_GATEWAY_KEY:?Set BUILDER_CAPABILITY_GATEWAY_KEY in .env}"
+      CAPABILITY_PLANNER_GATEWAY_KEY: "${CAPABILITY_PLANNER_GATEWAY_KEY:?Set internal planner identity}"
+      CAPABILITY_PROJECT_MANAGER_GATEWAY_KEY: "${CAPABILITY_PROJECT_MANAGER_GATEWAY_KEY:?Set internal project-manager identity}"
+      CAPABILITY_REVIEWER_GATEWAY_KEY: "${CAPABILITY_REVIEWER_GATEWAY_KEY:?Set internal reviewer identity}"
+      CAPABILITY_RELEASE_GATEWAY_KEY: "${CAPABILITY_RELEASE_GATEWAY_KEY:?Set internal release identity}"
+      CAPABILITY_INCIDENT_GATEWAY_KEY: "${CAPABILITY_INCIDENT_GATEWAY_KEY:?Set internal incident identity}"
+      CAPABILITY_LEARNING_GATEWAY_KEY: "${CAPABILITY_LEARNING_GATEWAY_KEY:?Set internal learning identity}"
+      ORCHESTRATOR_PLANNER_GATEWAY_KEY: "${ORCHESTRATOR_PLANNER_GATEWAY_KEY:?Set internal orchestrator planner identity}"
+      ORCHESTRATOR_PROJECT_MANAGER_GATEWAY_KEY: "${ORCHESTRATOR_PROJECT_MANAGER_GATEWAY_KEY:?Set internal orchestrator project-manager identity}"
+      ORCHESTRATOR_BUILDER_GATEWAY_KEY: "${ORCHESTRATOR_BUILDER_GATEWAY_KEY:?Set internal orchestrator builder identity}"
+      ORCHESTRATOR_REVIEWER_GATEWAY_KEY: "${ORCHESTRATOR_REVIEWER_GATEWAY_KEY:?Set internal orchestrator reviewer identity}"
+      ORCHESTRATOR_RELEASE_GATEWAY_KEY: "${ORCHESTRATOR_RELEASE_GATEWAY_KEY:?Set internal orchestrator release identity}"
+      ORCHESTRATOR_INCIDENT_GATEWAY_KEY: "${ORCHESTRATOR_INCIDENT_GATEWAY_KEY:?Set internal orchestrator incident identity}"
+      ORCHESTRATOR_LEARNING_GATEWAY_KEY: "${ORCHESTRATOR_LEARNING_GATEWAY_KEY:?Set internal orchestrator learning identity}"
       GITHUB_APP_ID: "${GITHUB_APP_ID:?Set GITHUB_APP_ID in .env}"
       GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:?Set GITHUB_APP_INSTALLATION_ID in .env}"
       GITHUB_APP_PRIVATE_KEY_PATH: /run/secrets/github_app_private_key
@@ -25,12 +37,93 @@ services:
     secrets:
       - github_app_private_key
 
+  hermes-planner:
+    environment:
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${CAPABILITY_PLANNER_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_PLANNER_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
+
+  hermes-project-manager:
+    environment:
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${CAPABILITY_PROJECT_MANAGER_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_PROJECT_MANAGER_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
+
   hermes-builder:
     environment:
-      # Override the direct provider endpoint and token from compose.yaml. The value
-      # below is an internal gateway credential, not a GitHub credential.
       GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
-      GIT_PROVIDER_MCP_TOKEN: "${BUILDER_CAPABILITY_GATEWAY_KEY:?Set BUILDER_CAPABILITY_GATEWAY_KEY in .env}"
+      GIT_PROVIDER_MCP_TOKEN: "${BUILDER_CAPABILITY_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_BUILDER_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
+
+  hermes-reviewer:
+    environment:
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${CAPABILITY_REVIEWER_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_REVIEWER_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
+
+  hermes-release:
+    environment:
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${CAPABILITY_RELEASE_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_RELEASE_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
+
+  hermes-incident:
+    environment:
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${CAPABILITY_INCIDENT_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_INCIDENT_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
+    depends_on:
+      capability-gateway:
+        condition: service_healthy
+
+  hermes-learning:
+    environment:
+      GIT_PROVIDER_MCP_URL: http://capability-gateway:8787/mcp
+      GIT_PROVIDER_MCP_TOKEN: "${CAPABILITY_LEARNING_GATEWAY_KEY:?Set internal MCP identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_AUTH_MODE: gateway
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_URL: http://capability-gateway:8787
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY: "${ORCHESTRATOR_LEARNING_GATEWAY_KEY:?Set internal orchestrator identity}"
+      HERMES_DEFAULT_ORCHESTRATOR_GITHUB_TOKEN: ""
+      ORCHESTRATOR_GITHUB_TOKEN: ""
     depends_on:
       capability-gateway:
         condition: service_healthy

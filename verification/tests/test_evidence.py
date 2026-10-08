@@ -37,6 +37,16 @@ class EvidenceGateTests(unittest.TestCase):
             {"status": "PASS", "provider": "qwen-api-platform", "repository": "test-org/disposable"},
         )
         self.write_json(
+            "authority-topology.json",
+            {
+                "status": "PASS",
+                "roles_verified": list(evidence.REQUIRED_ROLES),
+                "role_local_orchestrators_verified": list(evidence.REQUIRED_ROLES),
+                "provider_tokens_exposed_to_roles": False,
+                "gateway_only": True,
+            },
+        )
+        self.write_json(
             "hermes-qwen-readiness.json",
             {role: "PASS" for role in evidence.REQUIRED_ROLES},
         )
@@ -46,6 +56,27 @@ class EvidenceGateTests(unittest.TestCase):
                 "status": "PASS",
                 "safe_qwen_builder": {"status": "PASS", "default_branch_unchanged": True},
                 "protected_path": {"status": "PASS", "provider_branch_absent": True},
+                "orchestrator_one_shot_write": {
+                    "status": "PASS",
+                    "provider_comment_verified": True,
+                    "approval_exact": True,
+                    "args_change_separate_approval": True,
+                    "replay_blocked": True,
+                },
+                "all_orchestrator_read": {
+                    "status": "PASS",
+                    "role_read_requests": {role: "PASS" for role in evidence.REQUIRED_ROLES},
+                    "role_spoof_http_status": 401,
+                },
+                "all_role_negative_authority": {
+                    "status": "PASS",
+                    "denied_role_mutations": {
+                        role: "authority_denied"
+                        for role in evidence.REQUIRED_ROLES if role != "builder"
+                    },
+                    "role_impersonation": "unauthorized_agent",
+                    "provider_default_branch_unchanged": True,
+                },
                 "emergency_stop": {"status": "PASS"},
                 "one_shot_and_args": {"status": "PASS"},
             },
@@ -67,6 +98,11 @@ class EvidenceGateTests(unittest.TestCase):
 
     def test_missing_stage_zero_cannot_be_reported_as_pass(self) -> None:
         (self.reports / "stage-00-bootstrap.json").unlink()
+        with self.assertRaisesRegex(RuntimeError, "Missing required E2E evidence"):
+            self.build()
+
+    def test_missing_authority_topology_cannot_be_green(self) -> None:
+        (self.reports / "authority-topology.json").unlink()
         with self.assertRaisesRegex(RuntimeError, "Missing required E2E evidence"):
             self.build()
 

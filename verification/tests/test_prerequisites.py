@@ -34,10 +34,10 @@ class PrerequisiteTests(unittest.TestCase):
         """Catches a slow one-secret-at-a-time failure loop."""
         env = self.good_env()
         del env["QWEN_API_KEY"]
-        del env["E2E_HARNESS_GITHUB_TOKEN"]
+        del env["E2E_GITHUB_APP_PRIVATE_KEY"]
         errors = check_prerequisites.check(env)
         self.assertIn("Missing QWEN_API_KEY", errors)
-        self.assertIn("Missing E2E_HARNESS_GITHUB_TOKEN", errors)
+        self.assertIn("Missing E2E_GITHUB_APP_PRIVATE_KEY", errors)
 
     def test_source_repo_cannot_be_sandbox(self) -> None:
         """Catches an accidental live test against the source repository."""
@@ -57,10 +57,12 @@ class PrerequisiteTests(unittest.TestCase):
         env["QWEN_API_BASE_URL"] = "http://YOUR_API_ENDPOINT/compatible-mode/v1"
         self.assertTrue(any("QWEN_API_BASE_URL" in x for x in check_prerequisites.check(env)))
 
-    def test_reusing_role_credentials_fails(self) -> None:
+    def test_static_role_pat_secrets_are_not_required(self) -> None:
         env = self.good_env()
-        env["E2E_REVIEWER_GITHUB_MCP_TOKEN"] = env["E2E_PLANNER_GITHUB_MCP_TOKEN"]
-        self.assertTrue(any("Separate role credentials" in x for x in check_prerequisites.check(env)))
+        self.assertFalse(any("E2E_PLANNER_GITHUB_MCP_TOKEN" in x for x in check_prerequisites.REQUIRED))
+        self.assertFalse(any("E2E_ORCHESTRATOR_BUILDER_GITHUB_TOKEN" in x for x in check_prerequisites.REQUIRED))
+        self.assertEqual(check_prerequisites.check(env), [])
+
 
 
 if __name__ == "__main__":

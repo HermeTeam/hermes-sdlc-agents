@@ -20,6 +20,10 @@ from .authority import (
 from .github_app import GitHubAppTokenBroker, ProviderToken
 from .governance import GovernanceStore
 from .models import RiskCategory
+from .role_authority import role_invocation_context, role_action_spec
+
+ROLE_NAMES = ("planner", "project-manager", "builder", "reviewer", "release", "incident", "learning")
+ROLE_KEY_ENV = {role: "CAPABILITY_" + role.upper().replace("-", "_") + "_GATEWAY_KEY" for role in ROLE_NAMES}
 
 
 MAX_MCP_REQUEST_BYTES = 2 * 1024 * 1024
@@ -44,6 +48,7 @@ class ExecutionPermit:
     grant_id: str | None
     authority_source: str
     context: InvocationContext | None
+    role: str = "builder"
 
 
 class DynamicAuthorityProxy:
@@ -67,6 +72,7 @@ class DynamicAuthorityProxy:
         protected_patterns: tuple[str, ...],
         execution_grant_ttl_seconds: int = 60,
         upstream_timeout_seconds: float = 180.0,
+        role_keys: Mapping[str, str] | None = None,
     ) -> None:
         parsed = urlsplit(upstream_url)
         if parsed.scheme not in {"https", "http"} or not parsed.hostname:
@@ -83,6 +89,13 @@ class DynamicAuthorityProxy:
         self.token_broker = token_broker
         self.upstream_url = upstream_url
         self.builder_key = builder_key
+        self.role_keys = {"builder": builder_key}
+        for role, key in (role_keys or {}).items():
+            if role not in ROLE_NAMES or len(key) < 24:
+                raise MCPProxyUnavailable("invalid configured role gateway identity")
+            self.role_keys[role] = key
+        if len(set(self.role_keys.values())) != len(self.role_keys):
+            raise MCPProxyUnavailable("role gateway keys must be unique")
         self.configured_repository = configured_repository
         self.default_branch = default_branch
         self.protected_patterns = protected_patterns
@@ -114,21 +127,29 @@ class DynamicAuthorityProxy:
             upstream_timeout_seconds=float(
                 os.environ.get("CAPABILITY_UPSTREAM_TIMEOUT_SECONDS", "180")
             ),
+            role_keys={
+                role: value for role, env_name in ROLE_KEY_ENV.items()
+                if role != "builder" and (value := os.environ.get(env_name, "").strip())
+            },
         )
 
     def permit(self, *, headers: Mapping[str, str], body: bytes | None) -> ExecutionPermit:
-        self._authenticate(headers)
+        role = self._authenticate(headers)
         snapshot = self.store.snapshot()
         if snapshot.emergency_stop:
             raise MCPAuthorityBlocked("emergency_stop", "all capability execution is disabled")
 
         rpc = _parse_rpc(body)
         if rpc is None or rpc.get("method") != "tools/call":
+            # Builder retains its upstream discovery compatibility path. Other
+            # roles use read-only provider discovery; tools/call is independently
+            # authorized against the strict role map below.
+            discovery = BUILDER_DISCOVERY_PERMISSIONS if role == "builder" else {"contents": "read", "issues": "read"}
             token = self.token_broker.mint(
                 repository=self.configured_repository,
-                permissions=BUILDER_DISCOVERY_PERMISSIONS,
+                permissions=discovery,
             )
-            return ExecutionPermit(token, None, "DISCOVERY", None)
+            return ExecutionPermit(token, None, "DISCOVERY", None, role)
 
         params = rpc.get("params")
         if not isinstance(params, dict):
@@ -145,8 +166,8 @@ class DynamicAuthorityProxy:
             run_id = _bounded_header(headers, "Mcp-Session-Id", 200) or "sessionless"
         intent = _bounded_header(headers, "X-HermeTeam-Intent", 1000)
         try:
-            context = builder_invocation_context(
-                agent_id="hermes-builder",
+            context = role_invocation_context(
+                role=role,
                 run_id=run_id,
                 tool_name=tool_name,
                 arguments=arguments,
@@ -213,16 +234,21 @@ class DynamicAuthorityProxy:
                 source = "AUTO"
             grant_id = self.store.record_auto_execution(context, authority_source=source)
 
-        return ExecutionPermit(token, grant_id, source, context)
+        return ExecutionPermit(token, grant_id, source, context, role)
 
-    def _authenticate(self, headers: Mapping[str, str]) -> None:
-        role = _bounded_header(headers, "X-Hermes-Role", 100)
-        if role not in {"builder", "hermes-builder"}:
-            raise MCPAuthorityBlocked("unauthorized_agent", "only hermes-builder is enabled in this canary")
+    def _authenticate(self, headers: Mapping[str, str]) -> str:
+        claimed_role = _bounded_header(headers, "X-Hermes-Role", 100)
+        role = (claimed_role or "").removeprefix("hermes-")
         supplied = headers.get("Authorization", "")
-        expected = f"Bearer {self.builder_key}"
-        if not hmac.compare_digest(supplied, expected):
-            raise MCPAuthorityBlocked("unauthorized_agent", "invalid gateway agent credential")
+        # Never trust role headers alone. Determine identity through the
+        # distinct server-configured secret and then compare the claimed role.
+        resolved = None
+        for identity, secret in self.role_keys.items():
+            if hmac.compare_digest(supplied, f"Bearer {secret}"):
+                resolved = identity
+        if resolved is None or resolved != role:
+            raise MCPAuthorityBlocked("unauthorized_agent", "invalid gateway role identity")
+        return resolved
 
     def forward(
         self,

@@ -1,7 +1,7 @@
 ---
 name: hermeteam-deploy-evolve
 description: "Interactive evidence-driven deployment of HermeTeam with safe recovery branching and reviewed self-evolution."
-version: 1.3.1
+version: 1.4.0
 author: "HermeTeam"
 license: "MIT"
 platforms: [linux, macos, windows]
@@ -72,7 +72,7 @@ hermes-builder-openhands
    └─ read-only skills_superset → ~/.openhands/skills discovery view
 ```
 
-Dynamic request authority is currently a **Builder canary** unless current repository code proves broader coverage. Other roles may still use role-specific provider credentials.
+The stacked Qwen E2E authority branch routes **all seven agents and role-local orchestrators** through the GitHub App Capability Gateway in the explicit dynamic-authority Compose overlay. This is a **configuration and unit-tested migration**; live GitHub provider-state verification remains Builder-centric until the full sandbox canary matrix has passed. Other deployment modes may still use legacy credentials.
 
 ## Source precedence
 
@@ -98,7 +98,7 @@ If current behavior contradicts this skill, enter `repo-drift/<sha>`, block the 
 | `dynamic+observability` | authority + Flight Recorder/Langfuse | same |
 | `dynamic+openhands` | authority + isolated OpenHands/LSP coding assist | same; OpenHands has no provider path |
 | `legacy-builder-canary` | explicit comparison only | direct role credential |
-| `e2e-qwen` | disposable from-scratch verification runner | sandbox-only provider credentials |
+| `e2e-qwen` | disposable from-scratch verification runner | 14 internal role/runner keys; GitHub App only for provider authority |
 
 Never choose legacy mode automatically because GitHub App setup failed.
 
@@ -108,15 +108,17 @@ The repository-owned E2E harness lives under `verification/` with the entrypoint
 
 1. require a disposable runner and `HERMETEAM_E2E_EPHEMERAL=1`;
 2. run `python3 verification/check_prerequisites.py` before dependency installation; report only missing credential names, never values, and require a sandbox repository distinct from the source repository;
-3. require a non-production sandbox repository and distinct role/provider credentials;
+3. require a non-production sandbox repository and **one GitHub App installation**; no role MCP PATs, orchestrator PATs or harness PATs;
 4. bootstrap a fresh `.env` rather than reusing operator state;
 5. configure the Qwen OpenAI-compatible endpoint supplied with the actual key or Token Plan; never substitute a different key/plan/region Base URL, and apply the role model matrix;
-6. configure the Builder dynamic-authority path with a sandbox-only GitHub App; keep the independent harness cleanup token outside HermeTeam configuration;
+6. generate seven agent and seven orchestrator **internal** Gateway identities; run `verification/verify_authority_topology.py` against effective Compose before startup; the independent harness obtains an installation token from the GitHub App itself;
 7. keep `ORCHESTRATOR_ENABLED=false` through Stage 00;
 8. validate configuration and probe Qwen before container startup;
-9. build/start the full debug + Capability Gateway + dynamic-authority stack, run liveness checks, then execute a no-tool readiness run for every role;
+9. build/start the full debug + Capability Gateway + dynamic-authority stack, run liveness checks, then execute a no-tool readiness run for every role; never declare orchestrator runtime E2E coverage from the Stage 00 topology check alone;
 10. run provider-state canaries only against the sandbox repository;
 11. persist only sanitized evidence; do not archive raw container logs by default. The evidence builder fails closed if any stage, role or independently recorded gate is missing; the Qwen judge NEEDS_REVIEW and any coverage gaps block full-E2E success.
+
+Required sandbox E2E evidence now includes `verification/verify_authority_topology.py`, all seven role-readiness runs, six denied non-Builder write probes with independently unchanged GitHub state, role-identity spoofing denials, seven read-only orchestrator facade probes, and a disposable sandbox Issue comment that requires an exact one-shot grant and cannot be replayed. The verifier obtains a **separate short-lived GitHub App installation token**; it never injects that token into any role container. These tests are not considered passed until a real credentialed sandbox workflow run uploads its validated evidence.
 
 ## Interactive protocol
 

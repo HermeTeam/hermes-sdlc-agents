@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+from functools import lru_cache
+from capability_gateway.github_app import GitHubAppTokenBroker
 import json
 import os
 from pathlib import Path
@@ -42,9 +44,23 @@ ENV = parse_dotenv(ROOT / ".env")
 REPOSITORY = ENV["GITHUB_REPOSITORY_FULL_NAME"]
 OWNER, REPO = REPOSITORY.split("/", 1)
 DEFAULT_BRANCH = ENV["REPOSITORY_DEFAULT_BRANCH"]
-HARNESS_TOKEN = os.environ.get("E2E_HARNESS_GITHUB_TOKEN", "").strip()
-if not HARNESS_TOKEN:
-    raise SystemExit("E2E_HARNESS_GITHUB_TOKEN is required for live E2E provider verification/cleanup")
+@lru_cache(maxsize=1)
+def verifier_broker() -> GitHubAppTokenBroker:
+    """Verifier runs outside agent containers; GitHub App credentials never reach them."""
+    return GitHubAppTokenBroker(
+        app_id=os.environ["E2E_GITHUB_APP_ID"],
+        installation_id=os.environ["E2E_GITHUB_APP_INSTALLATION_ID"],
+        private_key_path=ROOT / "secrets" / "e2e-github-app-private-key.pem",
+        cache_seconds=300,
+    )
+
+
+def harness_token() -> str:
+    """Mint/refresh a short-lived, sandbox-scoped verifier token as needed."""
+    return verifier_broker().mint(
+        repository=REPOSITORY,
+        permissions={"contents": "write", "pull_requests": "write", "issues": "write"},
+    ).token
 
 RUN_TOKEN = (
     os.environ.get("GITHUB_RUN_ID")
@@ -66,7 +82,7 @@ def github_request(
         data=data,
         method=method,
         headers={
-            "Authorization": "Bearer " + HARNESS_TOKEN,
+            "Authorization": "Bearer " + harness_token(),
             "Accept": "application/vnd.github+json",
             "Content-Type": "application/json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -142,7 +158,7 @@ def cleanup(branch: str, pr_number: int | None) -> None:
             "https://api.github.com/repos/" + REPOSITORY + "/git/refs/heads/" + quote(branch, safe="/"),
             method="DELETE",
             headers={
-                "Authorization": "Bearer " + HARNESS_TOKEN,
+                "Authorization": "Bearer " + harness_token(),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "HermeTeam-E2E-Harness",
@@ -241,7 +257,9 @@ print(json.dumps(out))
     return value if isinstance(value, list) else []
 
 
-def container_builder_mcp(tool_name: str, arguments: dict[str, Any], request_id: int) -> dict[str, Any]:
+def container_role_mcp(role: str, tool_name: str, arguments: dict[str, Any], request_id: int, *, claimed_role: str | None = None) -> dict[str, Any]:
+    if role not in {"planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"}:
+        raise ValueError("unknown E2E role")
     code = r'''
 import json
 import os
@@ -263,7 +281,7 @@ req = Request(
         "Authorization": "Bearer " + os.environ["GIT_PROVIDER_MCP_TOKEN"],
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "X-Hermes-Role": "hermes-builder",
+        "X-Hermes-Role": "hermes-" + payload["claimed_role"],
         "Mcp-Session-Id": "e2e-authority-canary",
         "X-HermeTeam-Run-Id": "e2e-authority-canary",
     },
@@ -282,9 +300,9 @@ except Exception:
 print(json.dumps({"http_status": status, "body": body}))
 '''
     proc = subprocess.run(
-        [*COMPOSE, "exec", "-T", "hermes-builder", "python", "-c", code],
+        [*COMPOSE, "exec", "-T", "hermes-" + role, "python", "-c", code],
         input=json.dumps(
-            {"request_id": request_id, "tool_name": tool_name, "arguments": arguments}
+            {"request_id": request_id, "tool_name": tool_name, "arguments": arguments, "claimed_role": claimed_role or role}
         ),
         text=True,
         stdout=subprocess.PIPE,
@@ -293,6 +311,10 @@ print(json.dumps({"http_status": status, "body": body}))
         check=True,
     )
     return json.loads(proc.stdout)
+
+
+def container_builder_mcp(tool_name: str, arguments: dict[str, Any], request_id: int) -> dict[str, Any]:
+    return container_role_mcp("builder", tool_name, arguments, request_id)
 
 
 def gateway_admin(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -514,11 +536,184 @@ def one_shot_and_args_canary() -> dict[str, Any]:
     }
 
 
+
+def container_orchestrator_probe(
+    role: str, *, claim: str | None = None,
+    operation: str = "list_issues", arguments: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Call the typed facade without a PAT from an actual role container."""
+    if role not in {"planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"}:
+        raise ValueError("unknown E2E role")
+    code = r'''
+import json
+import os
+import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+payload = json.loads(sys.stdin.read())
+body = json.dumps({"op": payload["operation"], "repository": payload["repository"], **payload["arguments"]}).encode()
+req = Request(
+    "http://capability-gateway:8787/v1/orchestrator/github",
+    data=body, method="POST",
+    headers={
+        "Authorization": "Bearer " + os.environ["HERMES_DEFAULT_ORCHESTRATOR_GITHUB_GATEWAY_KEY"],
+        "X-HermeTeam-Orchestrator-Role": "hermes-" + payload["claim"],
+        "Content-Type": "application/json",
+    },
+)
+try:
+    with urlopen(req, timeout=40) as response:
+        status = response.status
+        data = json.loads(response.read(2000000))
+except HTTPError as exc:
+    status = exc.code
+    data = json.loads(exc.read(10000).decode())
+if status == 200:
+    data = {
+        "list": isinstance(data.get("data"), list),
+        "no_provider_token": "token" not in data,
+    } if payload["operation"] == "list_issues" else {"accepted": "data" in data}
+print(json.dumps({"status": status, "data": data}))
+'''
+    proc = subprocess.run(
+        [*COMPOSE, "exec", "-T", "hermes-" + role, "python", "-c", code],
+        input=json.dumps({"claim": claim or role, "repository": REPOSITORY, "operation": operation, "arguments": arguments or {}}),
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        timeout=60, check=True,
+    )
+    return json.loads(proc.stdout)
+
+
+def all_orchestrator_read_canary() -> dict[str, Any]:
+    """Real HTTP read across all seven orchestrator internal identities."""
+    results = {}
+    for role in ("planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"):
+        response = container_orchestrator_probe(role)
+        if response.get("status") != 200 or response.get("data") != {"list": True, "no_provider_token": True}:
+            raise AssertionError(f"orchestrator {role}: typed Gateway issue discovery failed")
+        results[role] = "PASS"
+    impersonation = container_orchestrator_probe("planner", claim="builder")
+    if impersonation.get("status") != 401:
+        raise AssertionError("orchestrator Planner could impersonate Builder")
+    return {"status": "PASS", "role_read_requests": results, "role_spoof_http_status": 401}
+
+
+def orchestrator_one_shot_write_canary() -> dict[str, Any]:
+    """Exact human grant releases ONE sandbox comment, confirmed via GitHub REST."""
+    _, issue = github_request(
+        "POST", "/issues",
+        body={
+            "title": f"HermeTeam disposable orchestrator authority E2E {RUN_TOKEN}",
+            "body": "E2E authority validation only. This issue will be closed after the check.",
+        },
+    )
+    issue_number = int(issue["number"])
+    comment = f"HermeTeam exact one-shot orchestrator evidence {RUN_TOKEN}"
+    try:
+        fields = {"issue_number": issue_number, "comment": comment}
+        first = container_orchestrator_probe("project-manager", operation="add_comment", arguments=fields)
+        pending = first.get("data") or {}
+        if first.get("status") != 409 or pending.get("error") != "approval_required":
+            raise AssertionError("orchestrator mutation bypassed exact human approval")
+        request_id = str(pending.get("request_id") or "")
+        if not request_id:
+            raise AssertionError("orchestrator approval request missing request_id")
+
+        modified = container_orchestrator_probe(
+            "project-manager", operation="add_comment",
+            arguments={"issue_number": issue_number, "comment": comment + " different"},
+        )
+        changed_data = modified.get("data") or {}
+        if (
+            modified.get("status") != 409
+            or changed_data.get("error") != "approval_required"
+            or changed_data.get("request_id") == request_id
+        ):
+            raise AssertionError("mutated orchestrator arguments reused original approval")
+
+        gateway_admin("POST", "/v1/governance/allow-once", {
+            "request_id": request_id, "tool_id": "github:orchestrator.add_comment",
+        })
+        released = container_orchestrator_probe(
+            "project-manager", operation="add_comment", arguments=fields,
+        )
+        if released.get("status") != 200 or not (released.get("data") or {}).get("accepted"):
+            raise AssertionError("approved orchestrator comment was not executed")
+
+        _, comments = github_request("GET", f"/issues/{issue_number}/comments?per_page=100")
+        if sum(1 for item in comments if item.get("body") == comment) != 1:
+            raise AssertionError("independent GitHub state does not contain exactly one approved comment")
+
+        replay = container_orchestrator_probe(
+            "project-manager", operation="add_comment", arguments=fields,
+        )
+        if replay.get("status") != 409 or (replay.get("data") or {}).get("error") != "approval_required":
+            raise AssertionError("orchestrator one-shot grant was replayable")
+
+        return {
+            "status": "PASS",
+            "provider_comment_verified": True,
+            "approval_exact": True,
+            "args_change_separate_approval": True,
+            "replay_blocked": True,
+            "sandbox_issue": issue_number,
+        }
+    finally:
+        # Cleanup is intentionally limited to a freshly created sandbox Issue.
+        github_request("PATCH", f"/issues/{issue_number}", body={"state": "closed"})
+
+
+def all_role_negative_authority_canary() -> dict[str, Any]:
+    """Verify six additional role keys cannot mutate GitHub or impersonate Builder."""
+    roles = ("planner", "project-manager", "reviewer", "release", "incident", "learning")
+    before_sha = default_sha()
+    denied = {}
+    for index, role in enumerate(roles):
+        branch = f"agent/e2e-{RUN_TOKEN}-{role}-denied"
+        if branch_state(branch) is not None:
+            raise AssertionError("negative role canary branch already exists")
+        response = container_role_mcp(
+            role,
+            "push_files",
+            {
+                "owner": OWNER, "repo": REPO,
+                "branch": branch,
+                "files": [{"path": f"e2e/forbidden-{role}.txt", "content": "must never be written"}],
+            },
+            700 + index,
+        )
+        reason = rpc_error_code(response)
+        if reason != "authority_denied":
+            raise AssertionError(f"{role}: provider write was not explicitly denied: {reason}")
+        if branch_state(branch) is not None:
+            raise AssertionError(f"{role}: denied write nevertheless changed GitHub state")
+        denied[role] = reason
+
+    spoofed = container_role_mcp(
+        "planner", "get_file_contents",
+        {"owner": OWNER, "repo": REPO, "path": "README.md"},
+        799, claimed_role="builder",
+    )
+    if rpc_error_code(spoofed) != "unauthorized_agent":
+        raise AssertionError("Planner bearer credential spoofed the Builder role")
+    if default_sha() != before_sha:
+        raise AssertionError("negative role tests mutated the default branch")
+    return {
+        "status": "PASS",
+        "denied_role_mutations": denied,
+        "role_impersonation": "unauthorized_agent",
+        "provider_default_branch_unchanged": True,
+    }
+
+
 def main() -> int:
     results: dict[str, Any] = {}
     try:
         results["safe_qwen_builder"] = safe_qwen_builder_canary()
         results["protected_path"] = protected_path_canary()
+        results["all_role_negative_authority"] = all_role_negative_authority_canary()
+        results["all_orchestrator_read"] = all_orchestrator_read_canary()
+        results["orchestrator_one_shot_write"] = orchestrator_one_shot_write_canary()
         results["emergency_stop"] = emergency_stop_canary()
         results["one_shot_and_args"] = one_shot_and_args_canary()
         results["status"] = "PASS"

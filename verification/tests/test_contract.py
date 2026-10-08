@@ -53,7 +53,9 @@ class VerificationContractTests(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/ai-e2e-qwen.yml").read_text(encoding="utf-8")
         self.assertNotIn("require \"E2E_BUILDER_GITHUB_MCP_TOKEN\"", bootstrap)
         self.assertNotIn("secrets.E2E_BUILDER_GITHUB_MCP_TOKEN", workflow)
-        self.assertIn("DYNAMIC_AUTHORITY_NO_PROVIDER_TOKEN", bootstrap)
+        self.assertIn("NO_PROVIDER_CREDENTIAL_GATEWAY_ONLY", bootstrap)
+        self.assertNotIn('E2E_PLANNER_GITHUB_MCP_TOKEN', bootstrap)
+        self.assertNotIn('E2E_ORCHESTRATOR_BUILDER_GITHUB_TOKEN', bootstrap)
 
     def test_live_canary_targets_dynamic_authority_overlay(self) -> None:
         text = (ROOT / "verification/live_authority_canaries.py").read_text(encoding="utf-8")

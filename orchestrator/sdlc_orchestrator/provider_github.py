@@ -3,20 +3,30 @@ from __future__ import annotations
 import hashlib
 import json
 from urllib.error import HTTPError, URLError
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, unquote, urlencode
 from urllib.request import Request, urlopen
 
 from .config import Config, ConfigError
+from .github_gateway import gateway_request
 from .provider_base import WorkItem
 from .transitions import ProviderTransitionResult
 
 
 def fetch_issues(config: Config) -> list[WorkItem]:
-    if not config.github_token:
-        raise ConfigError("ORCHESTRATOR_GITHUB_TOKEN is required when GitHub discovery is enabled")
+    if config.github_auth_mode not in {"legacy", "gateway"}:
+        raise ConfigError("unknown ORCHESTRATOR_GITHUB_AUTH_MODE")
+    if config.github_auth_mode == "legacy" and not config.github_token:
+        raise ConfigError("ORCHESTRATOR_GITHUB_TOKEN required only in explicit legacy mode")
     repository = config.github_repository_full_name or config.repository_id
     if "/" not in repository:
         raise ConfigError("GITHUB_REPOSITORY_FULL_NAME must be owner/repo for GitHub discovery")
+
+    if config.github_auth_mode == "gateway":
+        payload = gateway_request(config, "list_issues")
+        if not isinstance(payload, list):
+            raise RuntimeError("Gateway issue list is malformed")
+        return [normalized for issue in payload if isinstance(issue, dict)
+                if (normalized := normalize_issue(issue, repository)) is not None]
 
     url = f"{config.github_api_base_url}/repos/{repository}/issues?{urlencode({'state': 'open', 'per_page': '100'})}"
     request = Request(
@@ -64,8 +74,11 @@ def normalize_issue(issue: dict, repository_id: str) -> WorkItem | None:
 
 class GitHubTransitionAdapter:
     def __init__(self, config: Config) -> None:
-        if not config.github_token:
-            raise ConfigError("ORCHESTRATOR_GITHUB_TOKEN is required for GitHub transitions")
+        if config.github_auth_mode not in {"legacy", "gateway"}:
+            raise ConfigError("unknown ORCHESTRATOR_GITHUB_AUTH_MODE")
+        if config.github_auth_mode == "legacy" and not config.github_token:
+            raise ConfigError("ORCHESTRATOR_GITHUB_TOKEN required only in explicit legacy mode")
+        self._config = config
         self._token = config.github_token
         self._base_url = config.github_api_base_url
         self._repository = config.github_repository_full_name or config.repository_id
@@ -122,6 +135,25 @@ class GitHubTransitionAdapter:
         return any(marker in str(comment.get("body") or "") for comment in comments if isinstance(comment, dict))
 
     def _request(self, path: str, *, method: str, body: dict | None = None, tolerate_404: bool = False):
+        if self._config.github_auth_mode == "gateway":
+            prefix = f"/repos/{self._repository}/issues/"
+            if not path.startswith(prefix):
+                raise ConfigError("orchestrator attempted an unsupported Gateway path")
+            tail = path[len(prefix):]
+            number_text, sep, suffix = tail.partition("/")
+            if not number_text.isdigit() or not sep:
+                raise ConfigError("invalid orchestrator issue path")
+            number = int(number_text)
+            if suffix == "labels" and method == "POST" and isinstance(body, dict):
+                return gateway_request(self._config, "add_labels", issue_number=number, labels=body.get("labels"))
+            if suffix.startswith("labels/") and method == "DELETE":
+                return gateway_request(self._config, "remove_label", issue_number=number, label=unquote(suffix[len("labels/"):]))
+            if suffix == "comments?per_page=100" and method == "GET":
+                return gateway_request(self._config, "list_comments", issue_number=number)
+            if suffix == "comments" and method == "POST" and isinstance(body, dict):
+                return gateway_request(self._config, "add_comment", issue_number=number, comment=body.get("body"))
+            raise ConfigError("orchestrator operation is not in the Gateway allowlist")
+
         data = None if body is None else json.dumps(body).encode("utf-8")
         request = Request(
             f"{self._base_url}{path}",

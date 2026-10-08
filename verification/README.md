@@ -27,20 +27,23 @@ The pipeline uses Qwen API Platform through its OpenAI-compatible API.
 
 `QWEN_API_BASE_URL` is mandatory for the full job and must be the actual OpenAI-compatible Base URL from the Qwen API key or Token Plan account. Pay-as-you-go, Token Plan and regional Model Studio endpoints are not interchangeable. The bootstrap refuses to silently substitute another endpoint. Run `verification/check_prerequisites.py` first to report all missing credential names without exposing their values.
 
-## Required full-E2E secrets
+## Required full-E2E secrets and variables
 
-The full job runs via `workflow_dispatch` after the workflow is present on the default branch. While developing this feature branch, a push whose commit message contains `[full-e2e]` can run it; the job still targets the protected `ai-e2e-sandbox` environment and therefore must not receive production credentials.
+Full E2E runs only in the protected `ai-e2e-sandbox` environment and against a dedicated non-production repository.
 
-The workflow expects:
+- `QWEN_API_KEY` (secret) and `QWEN_API_BASE_URL` (variable, matching the key).
+- `E2E_SANDBOX_REPOSITORY_FULL_NAME` (variable; not the HermeTeam source repository).
+- `E2E_GITHUB_APP_ID`, `E2E_GITHUB_APP_INSTALLATION_ID` (variables), and `E2E_GITHUB_APP_PRIVATE_KEY` (secret).
 
-- `QWEN_API_KEY`
-- `E2E_SANDBOX_REPOSITORY_FULL_NAME`
-- `E2E_GITHUB_APP_ID`, `E2E_GITHUB_APP_INSTALLATION_ID`, `E2E_GITHUB_APP_PRIVATE_KEY`
-- `E2E_HARNESS_GITHUB_TOKEN` scoped only to the sandbox repository for independent state verification and cleanup
-- six direct-provider role tokens: `E2E_<ROLE>_GITHUB_MCP_TOKEN` for Planner, Project Manager, Reviewer, Release, Incident and Learning; Builder deliberately has no provider token in the dynamic-authority run
-- seven distinct read-only `E2E_ORCHESTRATOR_<ROLE>_GITHUB_TOKEN` values
+**Do not configure 6 role-scoped GitHub MCP PATs, 7 orchestrator PATs or a harness PAT.** Stage 00 generates 14 distinct *internal HermeTeam* Gateway keys. The independent verifier mints its own short-lived, sandbox-restricted GitHub App installation tokens in the test runner; they are never given to AI agents or orchestrator containers.
 
-The sandbox repository must not be a production repository. The GitHub App must be installed only on the sandbox target with the Builder canary permission superset. The harness token is never written to HermeTeam configuration or injected into its containers. The bootstrap script refuses to reset state unless `HERMETEAM_E2E_EPHEMERAL=1`.
+The full job can be started on a trusted branch push with `[full-e2e]` or by workflow_dispatch when available; privileged credentials must not be exposed to untrusted PR code. The bootstrap refuses to reset any state without `HERMETEAM_E2E_EPHEMERAL=1`.
+
+## Current coverage boundary
+
+`verification/verify_authority_topology.py` inspects **resolved Compose**, requires each of the seven role containers to use Gateway MCP and each role-local orchestrator to use the typed internal Gateway endpoint, and fails if a provider token or GitHub App key reaches a role. This is a configuration test, **not proof that an orchestrator has executed an Issue transition**. Stage 00 deliberately keeps `ORCHESTRATOR_ENABLED=false`. Credentialed live canaries now also attempt forbidden GitHub writes from the six non-Builder roles (with independent branch-state checks), verify that Planner cannot impersonate Builder, perform issue-list reads through all seven internal orchestrator Gateway identities, and reject orchestrator role spoofing. The pipeline now also includes a disposable sandbox Issue test for an exact, human-approved, one-shot orchestrator comment, including independent GitHub provider-state verification and replay denial. These live canaries are **authored but not yet verified by a credentialed full run**; they do not establish coverage for every MCP tool or for unattended scheduler behavior.
+
+For migration scope and outstanding security gates see `docs/ROADMAP_GITHUB_APP_AUTHORITY_ALL_ROLES.md`.
 
 ## P0 invariants
 
