@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import base64
+from functools import lru_cache
+from capability_gateway.github_app import GitHubAppTokenBroker
 import json
 import os
 from pathlib import Path
@@ -42,9 +44,23 @@ ENV = parse_dotenv(ROOT / ".env")
 REPOSITORY = ENV["GITHUB_REPOSITORY_FULL_NAME"]
 OWNER, REPO = REPOSITORY.split("/", 1)
 DEFAULT_BRANCH = ENV["REPOSITORY_DEFAULT_BRANCH"]
-HARNESS_TOKEN = os.environ.get("E2E_HARNESS_GITHUB_TOKEN", "").strip()
-if not HARNESS_TOKEN:
-    raise SystemExit("E2E_HARNESS_GITHUB_TOKEN is required for live E2E provider verification/cleanup")
+@lru_cache(maxsize=1)
+def verifier_broker() -> GitHubAppTokenBroker:
+    """Verifier runs outside agent containers; GitHub App credentials never reach them."""
+    return GitHubAppTokenBroker(
+        app_id=os.environ["E2E_GITHUB_APP_ID"],
+        installation_id=os.environ["E2E_GITHUB_APP_INSTALLATION_ID"],
+        private_key_path=ROOT / "secrets" / "e2e-github-app-private-key.pem",
+        cache_seconds=300,
+    )
+
+
+def harness_token() -> str:
+    """Mint/refresh a short-lived, sandbox-scoped verifier token as needed."""
+    return verifier_broker().mint(
+        repository=REPOSITORY,
+        permissions={"contents": "write", "pull_requests": "write"},
+    ).token
 
 RUN_TOKEN = (
     os.environ.get("GITHUB_RUN_ID")
@@ -66,7 +82,7 @@ def github_request(
         data=data,
         method=method,
         headers={
-            "Authorization": "Bearer " + HARNESS_TOKEN,
+            "Authorization": "Bearer " + harness_token(),
             "Accept": "application/vnd.github+json",
             "Content-Type": "application/json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -142,7 +158,7 @@ def cleanup(branch: str, pr_number: int | None) -> None:
             "https://api.github.com/repos/" + REPOSITORY + "/git/refs/heads/" + quote(branch, safe="/"),
             method="DELETE",
             headers={
-                "Authorization": "Bearer " + HARNESS_TOKEN,
+                "Authorization": "Bearer " + harness_token(),
                 "Accept": "application/vnd.github+json",
                 "X-GitHub-Api-Version": "2022-11-28",
                 "User-Agent": "HermeTeam-E2E-Harness",
