@@ -22,6 +22,7 @@ REQUIRED_CANARIES = (
     "safe_qwen_builder",
     "protected_path",
     "all_role_negative_authority",
+    "all_orchestrator_read",
     "emergency_stop",
     "one_shot_and_args",
 )
@@ -96,6 +97,14 @@ def build() -> dict:
         or role_negative.get("provider_default_branch_unchanged") is not True
     ):
         raise RuntimeError("All-role negative authority evidence missing or invalid")
+
+    orchestrators = live_authority["all_orchestrator_read"]
+    if (
+        len(orchestrators.get("role_read_requests") or {}) != 7
+        or any(value != "PASS" for value in orchestrators.get("role_read_requests", {}).values())
+        or orchestrators.get("role_spoof_http_status") != 401
+    ):
+        raise RuntimeError("Typed Gateway did not prove all seven orchestrator read identities")
 
     gates: dict[str, str] = {}
     for name in REQUIRED_GATES:
