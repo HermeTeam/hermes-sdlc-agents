@@ -23,6 +23,7 @@ REQUIRED_CANARIES = (
     "protected_path",
     "all_role_negative_authority",
     "all_orchestrator_read",
+    "orchestrator_one_shot_write",
     "emergency_stop",
     "one_shot_and_args",
 )
@@ -105,6 +106,13 @@ def build() -> dict:
         or orchestrators.get("role_spoof_http_status") != 401
     ):
         raise RuntimeError("Typed Gateway did not prove all seven orchestrator read identities")
+
+    orchestrator_write = live_authority["orchestrator_one_shot_write"]
+    if any(orchestrator_write.get(name) is not True for name in (
+        "provider_comment_verified", "approval_exact",
+        "args_change_separate_approval", "replay_blocked",
+    )):
+        raise RuntimeError("Orchestrator one-shot provider-state evidence is incomplete")
 
     gates: dict[str, str] = {}
     for name in REQUIRED_GATES:
