@@ -221,6 +221,9 @@ scripts/smoke-test.sh
 
 ## AI E2E verification
 
+**Разрабатываемая stacked-ветка (не production default).** Переход на GitHub App authority для всех ролей ведётся в `feature/qwen-e2e-github-app-authority`, PR направлен в `feature/qwen-e2e-verification-pipeline`. В её dynamic-authority Compose overlay все семь AI-ролей и семь role-local orchestrators используют только внутренние идентификаторы HermeTeam Gateway, а не GitHub PAT. Stage 00 создаёт внутренние ключи и проверяет итоговую Compose-конфигурацию; независимый verifier получает краткоживущий токен GitHub App. Ограничения и оставшиеся E2E-гейты приведены в [дорожной карте](docs/ROADMAP_GITHUB_APP_AUTHORITY_ALL_ROLES.md). Базовый Compose пока сохраняет legacy-контракт; до успешных credentialed sandbox canaries миграция не считается production-complete.
+
+
 Qwen verification pipeline находится в `.github/workflows/ai-e2e-qwen.yml`. Полный прогон запускается только в trusted context: после появления workflow в default branch — через `workflow_dispatch`, а при разработке этой feature-ветки — push commit с `[full-e2e]` в сообщении. Full job привязан к environment `ai-e2e-sandbox` и использует только sandbox provider credentials. Нулевой этап разворачивает HermeTeam с чистого состояния в disposable runner, проверяет Qwen model matrix, запускает все семь ролей и выполняет no-tool Hermes readiness canaries до deterministic authority и dashboard gates.
 
 Основные артефакты:
