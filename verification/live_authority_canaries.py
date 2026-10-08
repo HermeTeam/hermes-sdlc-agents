@@ -59,7 +59,7 @@ def harness_token() -> str:
     """Mint/refresh a short-lived, sandbox-scoped verifier token as needed."""
     return verifier_broker().mint(
         repository=REPOSITORY,
-        permissions={"contents": "write", "pull_requests": "write"},
+        permissions={"contents": "write", "pull_requests": "write", "issues": "write"},
     ).token
 
 RUN_TOKEN = (
@@ -537,7 +537,10 @@ def one_shot_and_args_canary() -> dict[str, Any]:
 
 
 
-def container_orchestrator_probe(role: str, *, claim: str | None = None) -> dict[str, Any]:
+def container_orchestrator_probe(
+    role: str, *, claim: str | None = None,
+    operation: str = "list_issues", arguments: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Call the typed facade without a PAT from an actual role container."""
     if role not in {"planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"}:
         raise ValueError("unknown E2E role")
@@ -548,7 +551,7 @@ import sys
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 payload = json.loads(sys.stdin.read())
-body = json.dumps({"op": "list_issues", "repository": payload["repository"]}).encode()
+body = json.dumps({"op": payload["operation"], "repository": payload["repository"], **payload["arguments"]}).encode()
 req = Request(
     "http://capability-gateway:8787/v1/orchestrator/github",
     data=body, method="POST",
@@ -566,12 +569,15 @@ except HTTPError as exc:
     status = exc.code
     data = json.loads(exc.read(10000).decode())
 if status == 200:
-    data = {"list": isinstance(data.get("data"), list), "no_provider_token": "token" not in data}
+    data = {
+        "list": isinstance(data.get("data"), list),
+        "no_provider_token": "token" not in data,
+    } if payload["operation"] == "list_issues" else {"accepted": "data" in data}
 print(json.dumps({"status": status, "data": data}))
 '''
     proc = subprocess.run(
         [*COMPOSE, "exec", "-T", "hermes-" + role, "python", "-c", code],
-        input=json.dumps({"claim": claim or role, "repository": REPOSITORY}),
+        input=json.dumps({"claim": claim or role, "repository": REPOSITORY, "operation": operation, "arguments": arguments or {}}),
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         timeout=60, check=True,
     )
