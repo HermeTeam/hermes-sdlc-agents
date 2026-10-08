@@ -233,6 +233,9 @@ scripts/smoke-test.sh
 
 ## AI E2E verification
 
+**Stacked development branch (not the default production mode).** The GitHub App authority migration is developed on `feature/qwen-e2e-github-app-authority`, with PR targeted at `feature/qwen-e2e-verification-pipeline`. In its dynamic-authority Compose overlay, all seven AI roles and seven role-local orchestrators use *internal HermeTeam* Gateway identities rather than GitHub PATs. Stage 00 generates identities and tests the effective Compose topology; the independent verifier uses a short-lived GitHub App installation token. See [migration roadmap](docs/ROADMAP_GITHUB_APP_AUTHORITY_ALL_ROLES.md) for limitations. Default Compose and older deployments still have legacy credential contracts; do not call this production complete without credentialed sandbox canaries.
+
+
 The Qwen verification pipeline is defined in `.github/workflows/ai-e2e-qwen.yml`. Its full run is trusted-only because it requires sandbox provider credentials: use `workflow_dispatch` after the workflow is available on the default branch, or during feature-branch development push a commit containing `[full-e2e]`. The full job is bound to the `ai-e2e-sandbox` environment. Stage 00 deploys HermeTeam from scratch in a disposable runner, probes the Qwen model matrix, starts all seven roles, and executes no-tool Hermes readiness canaries before the deterministic authority and dashboard gates run.
 
 Core assets:
