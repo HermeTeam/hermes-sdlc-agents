@@ -10,6 +10,7 @@ from typing import Any
 from .catalogs import CatalogUnavailable, discover_tools
 from .core import assess_risk, resolve
 from .github_app import GitHubAppUnavailable
+from .orchestrator_rest import OrchestratorGitHubFacade, OrchestratorAuthorityError
 from .governance import GovernanceStore
 from .judge import JudgeUnavailable, OpenAICompatibleJudge
 from .mcp_proxy import (
@@ -53,6 +54,11 @@ class CapabilityGateway:
             )
             if self.execution_mode == "dynamic"
             else None
+        )
+        self.orchestrator_facade = (
+            OrchestratorGitHubFacade.from_environment(
+                store=self.store, broker=self.mcp_proxy.token_broker
+            ) if self.mcp_proxy is not None else None
         )
 
     def resolve_intent(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -195,6 +201,17 @@ def make_handler(gateway: CapabilityGateway):
                 return self._mcp()
             try:
                 body = self._body()
+                if self.path == "/v1/orchestrator/github":
+                    if gateway.orchestrator_facade is None:
+                        return self._json(503, {"error": "orchestrator_facade_unconfigured"})
+                    try:
+                        result = gateway.orchestrator_facade.execute(headers=self.headers, request=body)
+                        return self._json(200, result)
+                    except OrchestratorAuthorityError as exc:
+                        status = 401 if exc.code == "unauthorized_orchestrator" else (409 if exc.code == "approval_required" else 403)
+                        return self._json(status, {"error": exc.code, "request_id": exc.request_id})
+                    except GitHubAppUnavailable:
+                        return self._json(503, {"error": "provider_authority_unavailable"})
                 if self.path == "/v1/resolve":
                     result = gateway.resolve_intent(body)
                     status = 423 if result.get("emergency_stop") else 200
