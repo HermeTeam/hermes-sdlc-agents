@@ -126,9 +126,24 @@ class GitHubAppTokenBroker:
             if not isinstance(token, str) or not token or not isinstance(expires_at, str):
                 raise ValueError("invalid provider token response")
             if not isinstance(returned_permissions, dict):
-                returned_permissions = normalized_permissions
+                raise ValueError("missing provider token permissions")
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise GitHubAppUnavailable("installation token response was malformed") from exc
+
+        # A requested read scope must not silently become write, and an
+        # unknown write permission must not ride along with a cached token.
+        # GitHub may add implicit metadata:read to installation tokens.
+        unexpected = {
+            name: level for name, level in returned_permissions.items()
+            if name not in normalized_permissions and not (name == "metadata" and level == "read")
+        }
+        mismatched = {
+            name: (expected, returned_permissions.get(name))
+            for name, expected in normalized_permissions.items()
+            if returned_permissions.get(name) != expected
+        }
+        if unexpected or mismatched:
+            raise GitHubAppUnavailable("provider issued unexpected or insufficient installation permissions")
 
         value = ProviderToken(
             token=token,
