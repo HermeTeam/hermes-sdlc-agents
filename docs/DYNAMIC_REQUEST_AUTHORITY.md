@@ -64,6 +64,19 @@ The dashboard shows this scope before the operator approves it.
 
 If upstream execution fails after the grant has been consumed, a new human approval is required. This is intentionally conservative.
 
+
+## Stacked Qwen E2E migration: all-role Gateway mode
+
+The development branch `feature/qwen-e2e-github-app-authority` extends the Builder canary **without changing the legacy base Compose deployment**:
+
+- In `compose.dynamic-authority.yaml`, all seven AI role containers use `http://capability-gateway:8787/mcp` and a **different internal HermeTeam gateway key**, not a GitHub PAT.
+- `capability_gateway/mcp_proxy.py` authenticates the internal key and the `X-Hermes-Role` claim together, then evaluates `role_authority.py`; unknown/cross-repository or privilege-escalating calls fail before GitHub token minting.
+- Seven orchestrators use `ORCHESTRATOR_GITHUB_AUTH_MODE=gateway` and distinct internal identities, with only the typed `/v1/orchestrator/github` facade permitted. All orchestrator GitHub mutations require exact, single-use human grants in this stage.
+- E2E Stage 00 generates 14 internal identities; `verification/verify_authority_topology.py` checks the resolved Compose environment without printing keys. The provider-state verifier uses a sandbox-scoped short-lived GitHub App token.
+- Existing Builder-only negative/positive live canaries do not prove the six other roles or live orchestrator transitions. Orchestrators remain disabled during initial bootstrap; those live gates are pending.
+
+The original Builder instructions below remain relevant specifically to the legacy Builder canary; the complete migration acceptance gates are maintained in `docs/ROADMAP_GITHUB_APP_AUTHORITY_ALL_ROLES.md`. **Do not merge or deploy as production-complete until independent provider-state verification is green for all seven roles and orchestrators.**
+
 ## Provider token model
 
 The gateway creates a short-lived GitHub App installation token only after request authorization. Tokens are narrowed to:
