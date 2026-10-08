@@ -118,6 +118,8 @@ The repository-owned E2E harness lives under `verification/` with the entrypoint
 10. run provider-state canaries only against the sandbox repository;
 11. persist only sanitized evidence; do not archive raw container logs by default. The evidence builder fails closed if any stage, role or independently recorded gate is missing; the Qwen judge NEEDS_REVIEW and any coverage gaps block full-E2E success.
 
+Required sandbox E2E evidence now includes `verification/verify_authority_topology.py`, all seven role-readiness runs, six denied non-Builder write probes with independently unchanged GitHub state, role-identity spoofing denials, seven read-only orchestrator facade probes, and a disposable sandbox Issue comment that requires an exact one-shot grant and cannot be replayed. The verifier obtains a **separate short-lived GitHub App installation token**; it never injects that token into any role container. These tests are not considered passed until a real credentialed sandbox workflow run uploads its validated evidence.
+
 ## Interactive protocol
 
 At each phase:
