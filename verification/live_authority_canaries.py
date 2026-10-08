@@ -598,6 +598,71 @@ def all_orchestrator_read_canary() -> dict[str, Any]:
     return {"status": "PASS", "role_read_requests": results, "role_spoof_http_status": 401}
 
 
+def orchestrator_one_shot_write_canary() -> dict[str, Any]:
+    """Exact human grant releases ONE sandbox comment, confirmed via GitHub REST."""
+    _, issue = github_request(
+        "POST", "/issues",
+        body={
+            "title": f"HermeTeam disposable orchestrator authority E2E {RUN_TOKEN}",
+            "body": "E2E authority validation only. This issue will be closed after the check.",
+        },
+    )
+    issue_number = int(issue["number"])
+    comment = f"HermeTeam exact one-shot orchestrator evidence {RUN_TOKEN}"
+    try:
+        fields = {"issue_number": issue_number, "comment": comment}
+        first = container_orchestrator_probe("project-manager", operation="add_comment", arguments=fields)
+        pending = first.get("data") or {}
+        if first.get("status") != 409 or pending.get("error") != "approval_required":
+            raise AssertionError("orchestrator mutation bypassed exact human approval")
+        request_id = str(pending.get("request_id") or "")
+        if not request_id:
+            raise AssertionError("orchestrator approval request missing request_id")
+
+        modified = container_orchestrator_probe(
+            "project-manager", operation="add_comment",
+            arguments={"issue_number": issue_number, "comment": comment + " different"},
+        )
+        changed_data = modified.get("data") or {}
+        if (
+            modified.get("status") != 409
+            or changed_data.get("error") != "approval_required"
+            or changed_data.get("request_id") == request_id
+        ):
+            raise AssertionError("mutated orchestrator arguments reused original approval")
+
+        gateway_admin("POST", "/v1/governance/allow-once", {
+            "request_id": request_id, "tool_id": "github:orchestrator.add_comment",
+        })
+        released = container_orchestrator_probe(
+            "project-manager", operation="add_comment", arguments=fields,
+        )
+        if released.get("status") != 200 or not (released.get("data") or {}).get("accepted"):
+            raise AssertionError("approved orchestrator comment was not executed")
+
+        _, comments = github_request("GET", f"/issues/{issue_number}/comments?per_page=100")
+        if sum(1 for item in comments if item.get("body") == comment) != 1:
+            raise AssertionError("independent GitHub state does not contain exactly one approved comment")
+
+        replay = container_orchestrator_probe(
+            "project-manager", operation="add_comment", arguments=fields,
+        )
+        if replay.get("status") != 409 or (replay.get("data") or {}).get("error") != "approval_required":
+            raise AssertionError("orchestrator one-shot grant was replayable")
+
+        return {
+            "status": "PASS",
+            "provider_comment_verified": True,
+            "approval_exact": True,
+            "args_change_separate_approval": True,
+            "replay_blocked": True,
+            "sandbox_issue": issue_number,
+        }
+    finally:
+        # Cleanup is intentionally limited to a freshly created sandbox Issue.
+        github_request("PATCH", f"/issues/{issue_number}", body={"state": "closed"})
+
+
 def all_role_negative_authority_canary() -> dict[str, Any]:
     """Verify six additional role keys cannot mutate GitHub or impersonate Builder."""
     roles = ("planner", "project-manager", "reviewer", "release", "incident", "learning")
@@ -648,6 +713,7 @@ def main() -> int:
         results["protected_path"] = protected_path_canary()
         results["all_role_negative_authority"] = all_role_negative_authority_canary()
         results["all_orchestrator_read"] = all_orchestrator_read_canary()
+        results["orchestrator_one_shot_write"] = orchestrator_one_shot_write_canary()
         results["emergency_stop"] = emergency_stop_canary()
         results["one_shot_and_args"] = one_shot_and_args_canary()
         results["status"] = "PASS"
