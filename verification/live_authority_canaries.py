@@ -257,7 +257,9 @@ print(json.dumps(out))
     return value if isinstance(value, list) else []
 
 
-def container_builder_mcp(tool_name: str, arguments: dict[str, Any], request_id: int) -> dict[str, Any]:
+def container_role_mcp(role: str, tool_name: str, arguments: dict[str, Any], request_id: int, *, claimed_role: str | None = None) -> dict[str, Any]:
+    if role not in {"planner", "project-manager", "builder", "reviewer", "release", "incident", "learning"}:
+        raise ValueError("unknown E2E role")
     code = r'''
 import json
 import os
@@ -279,7 +281,7 @@ req = Request(
         "Authorization": "Bearer " + os.environ["GIT_PROVIDER_MCP_TOKEN"],
         "Content-Type": "application/json",
         "Accept": "application/json, text/event-stream",
-        "X-Hermes-Role": "hermes-builder",
+        "X-Hermes-Role": "hermes-" + payload["claimed_role"],
         "Mcp-Session-Id": "e2e-authority-canary",
         "X-HermeTeam-Run-Id": "e2e-authority-canary",
     },
@@ -298,9 +300,9 @@ except Exception:
 print(json.dumps({"http_status": status, "body": body}))
 '''
     proc = subprocess.run(
-        [*COMPOSE, "exec", "-T", "hermes-builder", "python", "-c", code],
+        [*COMPOSE, "exec", "-T", "hermes-" + role, "python", "-c", code],
         input=json.dumps(
-            {"request_id": request_id, "tool_name": tool_name, "arguments": arguments}
+            {"request_id": request_id, "tool_name": tool_name, "arguments": arguments, "claimed_role": claimed_role or role}
         ),
         text=True,
         stdout=subprocess.PIPE,
@@ -309,6 +311,10 @@ print(json.dumps({"http_status": status, "body": body}))
         check=True,
     )
     return json.loads(proc.stdout)
+
+
+def container_builder_mcp(tool_name: str, arguments: dict[str, Any], request_id: int) -> dict[str, Any]:
+    return container_role_mcp("builder", tool_name, arguments, request_id)
 
 
 def gateway_admin(method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -530,11 +536,56 @@ def one_shot_and_args_canary() -> dict[str, Any]:
     }
 
 
+
+def all_role_negative_authority_canary() -> dict[str, Any]:
+    """Verify six additional role keys cannot mutate GitHub or impersonate Builder."""
+    roles = ("planner", "project-manager", "reviewer", "release", "incident", "learning")
+    before_sha = default_sha()
+    denied = {}
+    for index, role in enumerate(roles):
+        branch = f"agent/e2e-{RUN_TOKEN}-{role}-denied"
+        if branch_state(branch) is not None:
+            raise AssertionError("negative role canary branch already exists")
+        response = container_role_mcp(
+            role,
+            "push_files",
+            {
+                "owner": OWNER, "repo": REPO,
+                "branch": branch,
+                "files": [{"path": f"e2e/forbidden-{role}.txt", "content": "must never be written"}],
+            },
+            700 + index,
+        )
+        reason = rpc_error_code(response)
+        if reason != "authority_denied":
+            raise AssertionError(f"{role}: provider write was not explicitly denied: {reason}")
+        if branch_state(branch) is not None:
+            raise AssertionError(f"{role}: denied write nevertheless changed GitHub state")
+        denied[role] = reason
+
+    spoofed = container_role_mcp(
+        "planner", "get_file_contents",
+        {"owner": OWNER, "repo": REPO, "path": "README.md"},
+        799, claimed_role="builder",
+    )
+    if rpc_error_code(spoofed) != "unauthorized_agent":
+        raise AssertionError("Planner bearer credential spoofed the Builder role")
+    if default_sha() != before_sha:
+        raise AssertionError("negative role tests mutated the default branch")
+    return {
+        "status": "PASS",
+        "denied_role_mutations": denied,
+        "role_impersonation": "unauthorized_agent",
+        "provider_default_branch_unchanged": True,
+    }
+
+
 def main() -> int:
     results: dict[str, Any] = {}
     try:
         results["safe_qwen_builder"] = safe_qwen_builder_canary()
         results["protected_path"] = protected_path_canary()
+        results["all_role_negative_authority"] = all_role_negative_authority_canary()
         results["emergency_stop"] = emergency_stop_canary()
         results["one_shot_and_args"] = one_shot_and_args_canary()
         results["status"] = "PASS"
