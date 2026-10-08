@@ -56,6 +56,15 @@ class EvidenceGateTests(unittest.TestCase):
                 "status": "PASS",
                 "safe_qwen_builder": {"status": "PASS", "default_branch_unchanged": True},
                 "protected_path": {"status": "PASS", "provider_branch_absent": True},
+                "all_role_negative_authority": {
+                    "status": "PASS",
+                    "denied_role_mutations": {
+                        role: "authority_denied"
+                        for role in evidence.REQUIRED_ROLES if role != "builder"
+                    },
+                    "role_impersonation": "unauthorized_agent",
+                    "provider_default_branch_unchanged": True,
+                },
                 "emergency_stop": {"status": "PASS"},
                 "one_shot_and_args": {"status": "PASS"},
             },
